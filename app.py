@@ -7,7 +7,7 @@ from io import BytesIO
 from supabase import create_client, Client
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(page_title="Sistema de Ponto Mult Processing", page_icon="⏱️", layout="centered")
+st.set_page_config(page_title="Sistema de Ponto Eletrônico", page_icon="⏱️", layout="centered")
 
 # --- DEFINIÇÃO DO FUSO HORÁRIO DE BRASÍLIA ---
 fuso_br = ZoneInfo("America/Sao_Paulo")
@@ -151,7 +151,6 @@ pontos = {
     "SAÍDA": dados_hoje[0]["horario_saida"] if dados_hoje else None
 }
 
-# Tradução para persistência correta na coluna do banco
 colunas_banco = {
     "ENTRADA": "horario_entrada",
     "SAÍDA ALMOÇO": "saida_almoco",
@@ -159,12 +158,11 @@ colunas_banco = {
     "SAÍDA": "horario_saida"
 }
 
-# Converte strings de datas vindas do banco para datetime objetos com timezone
 for k, v in pontos.items():
     if v and isinstance(v, str):
         pontos[k] = datetime.fromisoformat(v).astimezone(fuso_br)
 
-# --- GERENCIAMENTO VISUAL DE MARCAÇÕES (ENTRADA, ALMOÇOS, SAÍDA) ---
+# --- GERENCIAMENTO VISUAL DE MARCAÇÕES ---
 if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
     st.subheader(f"📍 Registrar {opcao}")
     col1, col2, col3 = st.columns([1, 2, 1])
@@ -203,39 +201,54 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                 st.session_state[f'confirmar_{opcao}'] = False
                 st.rerun()
 
-# --- OPÇÃO: LOG ---
+# --- OPÇÃO: LOG MODIFICADA PARA LINHAS SIMPLES CRONOLÓGICAS ---
 elif opcao == "LOG":
     st.subheader("📢 Mural de Atividades (Tempo Real)")
-    st.caption("Abaixo estão os registros recentes da equipe baseados no horário de Brasília.")
+    st.caption("Abaixo estão os registros recentes da equipe ordenados do mais recente ao mais antigo.")
     st.markdown("---")
     
-    logs = executar_query_supabase("buscar_logs")
-    if not logs:
+    logs_banco = executar_query_supabase("buscar_logs")
+    if not logs_banco:
         st.info("Nenhum registro ativo no mural recente.")
     else:
-        for item in logs:
+        lista_eventos = []
+        
+        # Mapeamento estético para os textos das ações
+        labels_acoes = {
+            "horario_entrada": "entrada",
+            "saida_almoco": "saida almoço",
+            "retorno_almoco": "retorno almoço",
+            "horario_saida": "saida"
+        }
+        
+        # Desmembra cada linha agrupada do banco em batidas individuais
+        for item in logs_banco:
             nome = item["nome_completo"]
             dt_compara = datetime.strptime(item["data"], "%Y-%m-%d").strftime("%d/%m")
             
-            acoes = []
-            if item["horario_entrada"]:
-                ent = datetime.fromisoformat(item["horario_entrada"]).astimezone(fuso_br).strftime("%H:%M")
-                acoes.append(f"🟢 Entrou às {ent}")
-            if item["saida_almoco"]:
-                salm = datetime.fromisoformat(item["saida_almoco"]).astimezone(fuso_br).strftime("%H:%M")
-                acoes.append(f"🟡 Almoço saiu às {salm}")
-            if item["retorno_almoco"]:
-                ralm = datetime.fromisoformat(item["retorno_almoco"]).astimezone(fuso_br).strftime("%H:%M")
-                acoes.append(f"🟠 Almoço retornou às {ralm}")
-            if item["horario_saida"]:
-                sai = datetime.fromisoformat(item["horario_saida"]).astimezone(fuso_br).strftime("%H:%M")
-                acoes.append(f"🔵 Saiu às {sai}")
-                
-            if acoes:
-                st.write(f"**{nome}** ({dt_compara}):")
-                for acao in acoes:
-                    st.write(f"└ {acao}")
-                st.markdown("<div style='opacity:0.3; margin:5px 0;'>---</div>", unsafe_allow_html=True)
+            for coluna, label in labels_acoes.items():
+                valor_hora = item.get(coluna)
+                if valor_hora:
+                    # Converte a string ISO para objeto datetime com timezone de Brasília
+                    dt_objeto = datetime.fromisoformat(valor_hora).astimezone(fuso_br)
+                    lista_eventos.append({
+                        "nome": nome,
+                        "data_str": dt_compara,
+                        "acao": label,
+                        "hora_str": dt_objeto.strftime("%H:%M"),
+                        "objeto_tempo": dt_objeto # Usado como critério de ordenação real
+                    })
+        
+        if not lista_eventos:
+            st.info("Nenhum evento registrado para exibir.")
+        else:
+            # Ordena todos os eventos misturados pelo horário real da batida (decrescente = mais recentes no topo)
+            lista_eventos.sort(key=lambda x: x["objeto_tempo"], reverse=True)
+            
+            # Renderiza as linhas simplificadas na tela
+            for evento in lista_eventos:
+                st.write(f"**{evento['nome']}**: {evento['acao']} {evento['hora_str']} ({evento['data_str']})")
+                st.markdown("<div style='opacity:0.15; margin:2px 0;'>---</div>", unsafe_allow_html=True)
 
 # --- OPÇÃO: RELATÓRIO ---
 elif opcao == "RELATÓRIO":
