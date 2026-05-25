@@ -323,22 +323,57 @@ elif opcao == "LOG":
 # --- MENU: RELATÓRIO CORRIGIDO PARA FORMATO BRASILEIRO NATIVO (TELA + EXCEL) ---
 elif opcao == "RELATÓRIO":
     st.title("📊 Espelho de Ponto Pessoal")
-    st.caption(f"Filtro e exportação de folhas e históricos para o colaborador: **{user_name}**")
+    
+    # 1. Definição dos e-mails administrativos que possuem acesso total
+    admins_permitidos = [
+        "renan.veloso@multprocessing.com.br",
+        "marcello@multprocessing.com.br"
+    ]
+    
+    # 2. Inicializa as variáveis de escopo da busca
+    email_busca = user_email
+    nome_busca = user_name
+    
+    # 3. Se o usuário logado for admin, liberamos o container de seleção de funcionários
+    if user_email in admins_permitidos:
+        st.markdown("### 🔑 Painel de Gestão (Administrador)")
+        
+        # Buscamos a lista de todos os usuários cadastrados no banco para alimentar o menu suspenso
+        try:
+            usuarios_banco = supabase.table("usuarios_ponto").select("email, nome").execute()
+            if usuarios_banco.data:
+                # Criamos um dicionário amigável para o selectbox: "Nome Completo (email@...)"
+                opcoes_usuarios = {f"{u['nome']} ({u['email']})": u for u in usuarios_banco.data}
+                
+                usuario_selecionado_str = st.selectbox(
+                    "Selecione o colaborador que deseja consultar:",
+                    options=list(opcoes_usuarios.keys())
+                )
+                
+                # Sobrescrevemos as variáveis de busca com o funcionário escolhido no menu suspenso
+                colaborador_escolhido = opcoes_usuarios[usuario_selecionado_str]
+                email_busca = colaborador_escolhido["email"]
+                nome_busca = colaborador_escolhido["nome"]
+        except Exception as e:
+            st.error("Erro ao carregar a lista de funcionários.")
+            
+    st.caption(f"Filtro e exportação de folhas e históricos para: **{nome_busca}**")
     st.write("")
     
+    # Container de filtros por Data
     with st.container():
         col1, col2 = st.columns(2)
         with col1:
             data_inicio = st.date_input(
                 "🗓️ Data Inicial", 
                 hoje - timedelta(days=7),
-                format="DD/MM/YYYY"  # Correção: Força o seletor a exibir no padrão brasileiro
+                format="DD/MM/YYYY"
             )
         with col2:
             data_fim = st.date_input(
                 "🗓️ Data Final", 
                 hoje,
-                format="DD/MM/YYYY"  # Correção: Força o seletor a exibir no padrão brasileiro
+                format="DD/MM/YYYY"
             )
         
     st.write("---")
@@ -346,15 +381,16 @@ elif opcao == "RELATÓRIO":
     if data_inicio > data_fim:
         st.error("Erro: A data inicial não pode ser maior que a data final.")
     else:
+        # A query agora utiliza a variável dinâmica 'email_busca'
         dados_relatorio = executar_query_supabase(
             "buscar_relatorio", 
-            email=user_email, 
+            email=email_busca, 
             data_filtro=data_inicio, 
             data_fim=data_fim
         )
         
         if not dados_relatorio:
-            st.info("Você não possui registros de ponto cadastrados nesse período selecionado.")
+            st.info(f"Não foram encontrados registros de ponto para {nome_busca} no período selecionado.")
         else:
             df = pd.DataFrame(dados_relatorio)
             df.columns = ["Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída"]
@@ -379,16 +415,11 @@ elif opcao == "RELATÓRIO":
             # Exibe na tela com o formato DD/MM/AAAA garantido
             st.dataframe(df_tela, use_container_width=True)
             
-            # --- EXPORTAÇÃO EXCEL PROCESSADA COM MÁSCARA PT-BR ---
+            # --- EXPORTAÇÃO EXCEL PROCESSADA ---
             output = BytesIO()
-            
-            # Cópia para o Excel
             df_excel = df.copy()
-            
-            # Formato
             df_excel["Data"] = pd.to_datetime(df_excel["Data"]).dt.strftime('%d/%m/%Y')
             
-            # Exporta para o arquivo de Excel
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
                 df_excel.to_excel(writer, index=False, sheet_name='Folha de Ponto')
             
@@ -396,9 +427,9 @@ elif opcao == "RELATÓRIO":
             
             st.write("")
             st.download_button(
-                label="📥 Baixar Planilha Oficial (.xlsx)", 
+                label=f"📥 Baixar Planilha de {nome_busca} (.xlsx)", 
                 data=dados_excel, 
-                file_name=f"relatorio_ponto_{user_name.replace(' ', '_')}.xlsx", 
+                file_name=f"relatorio_ponto_{nome_busca.replace(' ', '_')}.xlsx", 
                 mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                 use_container_width=True
             )
