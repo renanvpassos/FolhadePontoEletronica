@@ -67,8 +67,8 @@ def verificar_login_google():
         client_id = st.secrets["auth"]["client_id"]
         redirect_uri = st.secrets["auth"]["redirect_uri"]
         
-        # URL de Autenticação do Google OpenID Connect
-        login_url = f"https://accounts.google.com/o/oauth2/v2/auth?client_id={client_id}&redirect_uri={redirect_uri}&response_type=id_token&scope=openid%20email%20profile&nonce=ponto_nonce"
+        # URL de Autenticação do Google OpenID Connect (AJUSTADA PARA LOGIN INTERNO)
+        login_url = f"https://accounts.google.com/o/oauth2/v2/auth?client_id={client_id}&redirect_uri={redirect_uri}&response_type=id_token&scope=openid%20email%20profile&nonce=ponto_nonce&prompt=consent"
         
         # Botão personalizado estilizado do Google
         st.markdown(
