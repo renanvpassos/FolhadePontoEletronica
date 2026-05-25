@@ -385,10 +385,11 @@ elif opcao == "RELATÓRIO":
             # Cópia para o Excel
             df_excel = df.copy()
             
-            # Isso remove o '00:00:00' e envia um objeto de data puro para o Excel
-            df_excel["Data"] = pd.to_datetime(df_excel["Data"]).dt.date
+            # Formato
+            df_excel["Data"] = pd.to_datetime(df_excel["Data"]).dt.strftime('%d/%m/%Y')
             
-            with pd.ExcelWriter(output, engine='openpyxl', date_format='dd/mm/yyyy') as writer:
+            # Exporta para o arquivo de Excel
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
                 df_excel.to_excel(writer, index=False, sheet_name='Folha de Ponto')
             
             dados_excel = output.getvalue()
