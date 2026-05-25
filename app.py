@@ -29,7 +29,7 @@ def criptografar_senha(senha):
     return hashlib.sha256(senha.encode()).hexdigest()
 
 # --- FUNÇÕES DO BANCO DE DADOS (SUPABASE) ---
-def ejecutar_query_supabase(operacao, data_dict=None, email=None, data_filtro=None, data_fim=None):
+def executar_query_supabase(operacao, data_dict=None, email=None, data_filtro=None, data_fim=None):
     if operacao == "buscar_hoje":
         res = supabase.table("registro_ponto").select("horario_entrada, horario_saida").eq("email", email).eq("data", data_filtro).execute()
         return res.data
@@ -112,8 +112,8 @@ user_info = st.session_state.get("user_info", {})
 user_email = user_info.get("email")
 user_name = user_info.get("name", "Colaborador")
 
-hoje = obter_hoje_br() # <-- Garante data correta do Brasil
-agora_br = obter_agora_br() # <-- Garante hora correta do Brasil
+hoje = obter_hoje_br() 
+agora_br = obter_agora_br() 
 
 # --- LIMPEZA AUTOMÁTICA DO LOG (1 EM 1 MÊS) ---
 executar_query_supabase("limpar_log", data_filtro=hoje - timedelta(days=30))
@@ -130,11 +130,10 @@ if st.sidebar.button("🚪 Sair / Desconectar"):
     st.rerun()
 
 # --- BUSCA HISTÓRICO DE HOJE PARA MANIPULAR OS BOTÕES ---
-dados_hoje = ejecutar_query_supabase("buscar_hoje", email=user_email, data_filtro=hoje)
+dados_hoje = executar_query_supabase("buscar_hoje", email=user_email, data_filtro=hoje)
 entrada_registrada = dados_hoje[0]["horario_entrada"] if dados_hoje else None
 saida_registrada = dados_hoje[0]["horario_saida"] if dados_hoje else None
 
-# Garante conversão e leitura no fuso de Brasília
 if entrada_registrada and isinstance(entrada_registrada, str):
     entrada_registrada = datetime.fromisoformat(entrada_registrada).astimezone(fuso_br)
 if saida_registrada and isinstance(saida_registrada, str):
@@ -154,9 +153,9 @@ if opcao == "ENTRADA":
                     "email": user_email, 
                     "nome_completo": user_name, 
                     "data": str(hoje), 
-                    "horario_entrada": agora_br.isoformat() # Salva com marcador de timezone
+                    "horario_entrada": agora_br.isoformat() 
                 }
-                ejecutar_query_supabase("salvar_entrada", data_dict=dados_ponto)
+                executar_query_supabase("salvar_entrada", data_dict=dados_ponto)
                 st.success("Entrada gravada com sucesso!")
                 st.rerun()
 
@@ -199,7 +198,7 @@ elif opcao == "SAÍDA":
                 
                 c1, c2 = st.columns(2)
                 if c1.button("Sim, Confirmar", use_container_width=True):
-                    ejecutar_query_supabase(
+                    executar_query_supabase(
                         "salvar_saida", 
                         data_dict={"horario_saida": agora_br.isoformat()}, 
                         email=user_email, 
@@ -218,7 +217,7 @@ elif opcao == "LOG":
     st.caption("Abaixo estão as entradas e saídas recentes da equipe baseadas no horário de Brasília.")
     st.markdown("---")
     
-    logs = ejecutar_query_supabase("buscar_logs")
+    logs = executar_query_supabase("buscar_logs")
     if not logs:
         st.info("Nenhum registro ativo no mural recente.")
     else:
@@ -248,7 +247,7 @@ elif opcao == "RELATÓRIO":
     if data_inicio > data_fim:
         st.error("Erro: A data inicial não pode ser maior que a data final.")
     else:
-        dados_relatorio = ejecutar_query_supabase(
+        dados_relatorio = executar_query_supabase(
             "buscar_relatorio", 
             email=user_email, 
             data_filtro=data_inicio, 
