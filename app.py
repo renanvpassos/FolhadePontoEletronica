@@ -524,19 +524,21 @@ elif opcao == "RELATÓRIO":
                                     # Se a célula de horário foi limpa ou alterada para "-"
                                     if valor_celula == "-":
                                         dados_update[col_banco] = None
+                                    # --- TRECHO CORRIGIDO E BLINDADO ---
                                     else:
                                         try:
-                                            # Se o supervisor digitou apenas HH:MM, adicionamos os segundos zerados
+                                            # Se o supervisor digitou apenas HH:MM (5 caracteres), lê com um formato, se incluiu segundos lê com outro
                                             if len(valor_celula) == 5:
-                                                valor_celula += ":00"
+                                                hora_objeto = datetime.strptime(valor_celula, "%H:%M").time()
+                                            else:
+                                                hora_objeto = datetime.strptime(valor_celula, "%H:%M:%S").time()
                                                 
-                                            # Reconstrói o timestamp ISO combinando a data da linha com a hora alterada
-                                            h_partes = list(map(int, valor_celula.split(":")))
-                                            h_objeto = datetime.time(h_partes[0], h_partes[1], h_partes[2])
-                                            dt_combinado = datetime.combine(datetime.strptime(data_original, "%Y-%m-%d").date(), h_objeto).replace(tzinfo=fuso_br)
+                                            # Reconstrói o timestamp ISO de forma nativa e segura
+                                            data_objeto = datetime.strptime(data_original, "%Y-%m-%d").date()
+                                            dt_combinado = datetime.combine(data_objeto, hora_objeto).replace(tzinfo=fuso_br)
                                             dados_update[col_banco] = dt_combinado.isoformat()
                                         except Exception as e:
-                                            st.error(f"Erro ao processar o horário '{valor_celula}' na linha do dia {data_original}. Certifique-se de usar o formato HH:MM:SS.")
+                                            st.error(f"🛑 Erro de digitação: O valor '{valor_celula}' no dia {data_original} não é um horário válido. Use o formato HH:MM ou HH:MM:SS (Ex: 19:31).")
                                             st.stop()
                                             
                             # Envia as alterações daquela linha via upsert para o Supabase
