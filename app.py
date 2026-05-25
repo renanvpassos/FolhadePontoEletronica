@@ -237,7 +237,7 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                     else:
                         # Se o formato estiver válido, converte a string para um objeto datetime válido
                         h_partes = list(map(int, hora_digitada.split(":")))
-                        hora_manual_objeto = datetime.time(h_partes[0], h_partes[1])
+                        hora_manual_objeto = datetime.strptime(hora_digitada, "%H:%M").time()
                         horario_final_gravacao = datetime.combine(hoje, hora_manual_objeto).replace(tzinfo=fuso_br)
                     
                     # Verifica se o horário digitado é diferente do horário atual do servidor (ignora segundos)
