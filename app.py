@@ -524,7 +524,6 @@ elif opcao == "RELATÓRIO":
                                     # Se a célula de horário foi limpa ou alterada para "-"
                                     if valor_celula == "-":
                                         dados_update[col_banco] = None
-                                    # --- TRECHO CORRIGIDO E BLINDADO ---
                                     else:
                                         try:
                                             # Se o supervisor digitou apenas HH:MM (5 caracteres), lê com um formato, se incluiu segundos lê com outro
@@ -536,6 +535,12 @@ elif opcao == "RELATÓRIO":
                                             # Reconstrói o timestamp ISO de forma nativa e segura
                                             data_objeto = datetime.strptime(data_original, "%Y-%m-%d").date()
                                             dt_combinado = datetime.combine(data_objeto, hora_objeto).replace(tzinfo=fuso_br)
+                                            
+                                            # --- VALIDAÇÃO DE SEGURANÇA: IMPEDIR HORÁRIO NO FUTURO ---
+                                            if dt_combinado > agora_br:
+                                                st.error(f"🛑 Erro de validação: O horário '{valor_celula}' definido para o dia {data_original} está no futuro. Não é permitido registrar pontos maiores que o horário atual ({agora_br.strftime('%H:%M:%S')}).")
+                                                st.stop()
+                                                
                                             dados_update[col_banco] = dt_combinado.isoformat()
                                         except Exception as e:
                                             st.error(f"🛑 Erro de digitação: O valor '{valor_celula}' no dia {data_original} não é um horário válido. Use o formato HH:MM ou HH:MM:SS (Ex: 19:31).")
