@@ -397,7 +397,7 @@ elif opcao == "RELATÓRIO":
     email_busca = user_email
     nome_busca = user_name
     
-    # 1. Busca dinâmica no banco para verificar o cargo do usuário logado em tempo real
+    # 1. Busca dinâmica no banco para verificar o cargo do usuário logado
     cargo_usuario = "Colaborador"
     try:
         dados_usuario_logado = supabase.table("usuarios_ponto").select("cargo").eq("email", user_email).execute()
@@ -406,22 +406,22 @@ elif opcao == "RELATÓRIO":
     except Exception as e:
         st.error("Erro ao verificar nível de acesso do usuário.")
 
-    # 2. Se o cargo for 'Supervisor', liberamos o painel de gestão e o menu de seleção
+    lista_todos_usuarios = []
+    
+    # 2. Se for 'Supervisor', liberamos o painel e guardamos a lista completa para o relatório geral
     if cargo_usuario == "Supervisor":
         st.markdown("### 🔑 Painel de Gestão (Supervisor)")
         try:
-            # Busca todos os colaboradores cadastrados para listar no menu suspenso
             usuarios_banco = supabase.table("usuarios_ponto").select("email, nome").execute()
             if usuarios_banco.data:
-                # Monta o dicionário amigável "Nome Completo (email)"
+                lista_todos_usuarios = usuarios_banco.data
                 opcoes_usuarios = {f"{u['nome']} ({u['email']})": u for u in usuarios_banco.data}
                 
                 usuario_selecionado_str = st.selectbox(
-                    "Selecione o colaborador que deseja consultar:",
+                    "Selecione o colaborador que deseja consultar na tela:",
                     options=list(opcoes_usuarios.keys())
                 )
                 
-                # Redefine os parâmetros de busca para olhar os dados do funcionário selecionado
                 colaborador_escolhido = opcoes_usuarios[usuario_selecionado_str]
                 email_busca = colaborador_escolhido["email"]
                 nome_busca = colaborador_escolhido["nome"]
@@ -444,21 +444,12 @@ elif opcao == "RELATÓRIO":
     if data_inicio > data_fim:
         st.error("Erro: A data inicial não pode ser maior que a data final.")
     else:
-        # Realiza a busca utilizando a variável dinâmica definida pela validação acima
-        dados_relatorio = executar_query_supabase(
-            "buscar_relatorio", 
-            email=email_busca, 
-            data_filtro=data_inicio, 
-            data_fim=data_fim
-        )
-        
-        if not dados_relatorio:
-            st.info(f"Não foram encontrados registros de ponto para {nome_busca} no período selecionado.")
-        else:
-            df = pd.DataFrame(dados_relatorio)
-            
-            # Mapeamento e renomeação exata das colunas retornadas pelo banco
-            df.columns = ["Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", "Justificativa Entrada", "Justificativa Saída"]
+        # --- FUNÇÃO INTERNA PARA TRATAR E FORMATAR DATAFRAMES ---
+        def processar_dados_ponto(dados):
+            if not dados:
+                return pd.DataFrame(columns=["Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", "Justificativa Entrada", "Justificativa Saída"])
+            df_temp = pd.DataFrame(dados)
+            df_temp.columns = ["Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", "Justificativa Entrada", "Justificativa Saída"]
             
             def formata_hora(x):
                 if not x: return "-"
@@ -467,37 +458,76 @@ elif opcao == "RELATÓRIO":
                 except:
                     return "-"
 
-            # Formata os horários de batida
-            df["Entrada"] = df["Entrada"].apply(formata_hora)
-            df["Saída Almoço"] = df["Saída Almoço"].apply(formata_hora)
-            df["Retorno Almoço"] = df["Retorno Almoço"].apply(formata_hora)
-            df["Saída"] = df["Saída"].apply(formata_hora)
+            df_temp["Entrada"] = df_temp["Entrada"].apply(formata_hora)
+            df_temp["Saída Almoço"] = df_temp["Saída Almoço"].apply(formata_hora)
+            df_temp["Retorno Almoço"] = df_temp["Retorno Almoço"].apply(formata_hora)
+            df_temp["Saída"] = df_temp["Saída"].apply(formata_hora)
+            df_temp["Justificativa Entrada"] = df_temp["Justificativa Entrada"].fillna("-").replace("", "-")
+            df_temp["Justificativa Saída"] = df_temp["Justificativa Saída"].fillna("-").replace("", "-")
+            return df_temp
+
+        # Busca dados do usuário selecionado na tela
+        dados_relatorio = executar_query_supabase("buscar_relatorio", email=email_busca, data_filtro=data_inicio, data_fim=data_fim)
+        
+        if not dados_relatorio:
+            st.info(f"Não foram encontrados registros de ponto para {nome_busca} no período selecionado.")
+        else:
+            df = processar_dados_ponto(dados_relatorio)
             
-            # Limpa campos de justificativas vazias ou nulas
-            df["Justificativa Entrada"] = df["Justificativa Entrada"].fillna("-").replace("", "-")
-            df["Justificativa Saída"] = df["Justificativa Saída"].fillna("-").replace("", "-")
-            
-            # Renderização visual na tela com formato brasileiro String
+            # Cópia formatada para exibição em tela (Data em formato BR String)
             df_tela = df.copy()
             df_tela["Data"] = pd.to_datetime(df_tela["Data"]).dt.strftime('%d/%m/%Y')
-            
             st.dataframe(df_tela, use_container_width=True)
             
-            # --- EXPORTAÇÃO EXCEL PROCESSADA ---
-            output = BytesIO()
-            df_excel = df.copy()
-            df_excel["Data"] = pd.to_datetime(df_excel["Data"]).dt.strftime('%d/%m/%Y')
+            # --- EXPORTAÇÃO INDIVIDUAL (Padrão para todos) ---
+            output_ind = BytesIO()
+            df_excel_ind = df.copy()
+            df_excel_ind["Data"] = pd.to_datetime(df_excel_ind["Data"]).dt.strftime('%d/%m/%Y')
             
-            with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                df_excel.to_excel(writer, index=False, sheet_name='Folha de Ponto')
-            
-            dados_excel = output.getvalue()
+            with pd.ExcelWriter(output_ind, engine='openpyxl') as writer:
+                df_excel_ind.to_excel(writer, index=False, sheet_name='Folha de Ponto')
             
             st.write("")
             st.download_button(
                 label=f"📥 Baixar Planilha de {nome_busca} (.xlsx)", 
-                data=dados_excel, 
+                data=output_ind.getvalue(), 
                 file_name=f"relatorio_ponto_{nome_busca.replace(' ', '_')}.xlsx", 
                 mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                 use_container_width=True
             )
+
+        # --- EXPORTAÇÃO MULTI-ABAS EXCLUSIVA PARA SUPERVISORES ---
+        if cargo_usuario == "Supervisor" and lista_todos_usuarios:
+            st.write("---")
+            st.markdown("##### 🗂️ Exportação Avançada")
+            
+            if st.button("📊 Gerar Relatório Consolidado de Todos os Funcionários", use_container_width=True, type="primary"):
+                with st.spinner("Compilando registros e gerando abas..."):
+                    output_geral = BytesIO()
+                    
+                    # Abre o escritor do pandas para criar um único arquivo com múltiplas planilhas
+                    with pd.ExcelWriter(output_geral, engine='openpyxl') as writer:
+                        for colaborador in lista_todos_usuarios:
+                            e_lista = colaborador["email"]
+                            n_lista = colaborador["nome"]
+                            
+                            # Busca os dados de cada um no banco
+                            dados_c = executar_query_supabase("buscar_relatorio", email=e_lista, data_filtro=data_inicio, data_fim=data_fim)
+                            df_c = processar_dados_ponto(dados_c)
+                            df_c["Data"] = pd.to_datetime(df_c["Data"]).dt.strftime('%d/%m/%Y')
+                            
+                            # Limita o nome da aba ao limite de 31 caracteres do Excel para evitar erros
+                            nome_aba = n_lista.split(" ")[0] + " " + (n_lista.split(" ")[-1] if len(n_lista.split(" ")) > 1 else "")
+                            nome_aba = nome_aba[:30]
+                            
+                            # Salva os dados do funcionário atual em sua própria aba
+                            df_c.to_excel(writer, index=False, sheet_name=nome_aba)
+                    
+                    st.success("Planilha consolidada gerada com sucesso! Clique no botão abaixo para baixar.")
+                    st.download_button(
+                        label="📥 Baixar Planilha Geral com Todos os Funcionários (.xlsx)",
+                        data=output_geral.getvalue(),
+                        file_name=f"relatorio_consolidado_equipe.xlsx",
+                        mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                        use_container_width=True
+                    )
