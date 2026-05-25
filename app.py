@@ -178,14 +178,15 @@ for k, v in pontos.items():
         pontos[k] = datetime.fromisoformat(v).astimezone(fuso_br)
 
 # --- MENU: REGISTRO DE HORÁRIOS ---
+# --- MENU: REGISTRO DE HORÁRIOS (COM ALTERAÇÃO MANUAL E JUSTIFICATIVA) ---
 if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
     st.title(f"📍 Registro de {opcao.title()}")
     
     c_data, c_hora = st.columns(2)
     with c_data:
-        st.metric(label="🗓️ Data", value=hoje.strftime('%d/%m/%Y'))
+        st.metric(label="🗓️ Data Oficial", value=hoje.strftime('%d/%m/%Y'))
     with c_hora:
-        st.metric(label="⏱️ Horário", value=agora_br.strftime('%H:%M'))
+        st.metric(label="⏱️ Horário do Servidor (Brasília)", value=agora_br.strftime('%H:%M'))
         
     st.write("")
     
@@ -209,8 +210,27 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                 
         if st.session_state.get(f'confirmar_{opcao}', False):
             st.write("")
-            with st.expander("⚠️ CONFIRMAÇÃO DE SEGURANÇA", expanded=True):
+            with st.expander("⚠️ CONFIGURAÇÃO E CONFIRMAÇÃO DO PONTO", expanded=True):
                 
+                # --- NOVOS CAMPOS: AJUSTE MANUAL E JUSTIFICATIVA (APENAS PARA ENTRADA E SAÍDA) ---
+                horario_final_gravacao = agora_br
+                justificativa = None
+                
+                if opcao in ["ENTRADA", "SAÍDA"]:
+                    st.markdown("##### 📝 Ajuste Manual do Registro")
+                    # Seletor de horário manual preenchido com a hora atual do servidor
+                    hora_manual = st.time_input("Caso necessário, ajuste o horário do ponto abaixo:", value=agora_br.time())
+                    
+                    # Se o horário inserido for diferente do horário atual do servidor, torna a justificativa OBRIGATÓRIA
+                    foi_alterado = hora_manual.strftime('%H:%M') != agora_br.time().strftime('%H:%M')
+                    
+                    label_justificativa = "Justificativa da marcação:" if not foi_alterado else "Justificativa (OBRIGATÓRIA para horários alterados manualmente):"
+                    justificativa = st.text_area(label_justificativa, key=f"just_{opcao}").strip()
+                    
+                    # Combina a data de hoje com o horário escolhido pelo usuário
+                    horario_final_gravacao = datetime.combine(hoje, hora_manual).replace(tzinfo=fuso_br)
+                
+                # --- LÓGICA DE EXIBIÇÃO DA JORNADA EXCLUSIVA PARA A OPÇÃO "SAÍDA" ---
                 if opcao == "SAÍDA":
                     if not pontos["ENTRADA"]:
                         st.error("⚠️ Não é possível calcular a jornada porque a **ENTRADA** de hoje não foi registrada.")
@@ -219,7 +239,7 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                         t_entrada = pontos["ENTRADA"]
                         t_saida_alm = pontos["SAÍDA ALMOÇO"]
                         t_retorno_alm = pontos["RETORNO ALMOÇO"]
-                        t_saida_atual = agora_br
+                        t_saida_atual = horario_final_gravacao
                         
                         tempo_total = t_saida_atual - t_entrada
                         total_segundos = int(tempo_total.total_seconds())
@@ -245,24 +265,38 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                             minutos_ext = (segundos_extras % 3600) // 60
                             msg_extra = f"🔥 **{horas_ext:02d}h {minutos_ext:02d}min** de hora extra."
                             
-                        st.info(f"📊 **Resumo da Jornada de Hoje:**\n\n"
-                                f"⏱️ Tempo Trabalhado: **{horas_trab:02d}h {minutos_trab:02d}min**\n\n"
-                                f"🚀 Horas Extra: {msg_extra}")
+                        st.info(f"📊 **Resumo da Jornada Calculada:**\n\n"
+                                f"⏱️ Tempo Líquido Trabalhado: **{horas_trab:02d}h {minutos_trab:02d}min**\n\n"
+                                f"🚀 Banco de Horas: {msg_extra}")
                                 
-                        msg_confirmacao = f"Confirmar gravação do horário de Saída (**{agora_br.strftime('%H:%M:%S')}**)?"
+                        msg_confirmacao = f"Confirmar gravação do horário de Saída como **{horario_final_gravacao.strftime('%H:%M:%S')}**?"
                 else:
-                    msg_confirmacao = f"Deseja gravar o horário atual (**{agora_br.strftime('%H:%M:%S')}**) na opção **{opcao}**?"
+                    msg_confirmacao = f"Deseja gravar o horário **{horario_final_gravacao.strftime('%H:%M:%S')}** na opção **{opcao}**?"
                 
                 st.warning(msg_confirmacao)
                 
                 c1, c2 = st.columns(2)
-                if c1.button("Confirmar Marcação", key=f"sim_{opcao}", use_container_width=True, type="primary"):
+                
+                # Validação do Botão de Confirmação
+                bloquear_confirmacao = False
+                if opcao in ["ENTRADA", "SAÍDA"] and hora_manual.strftime('%H:%M') != agora_br.time().strftime('%H:%M') and not justificativa:
+                    bloquear_confirmacao = True
+                    st.error("🛑 Você alterou o horário manualmente. Digite uma justificativa para poder confirmar.")
+                
+                if c1.button("Confirmar Marcação", key=f"sim_{opcao}", use_container_width=True, type="primary", disabled=bloquear_confirmacao):
                     dados_ponto = {
                         "email": user_email,
                         "nome_completo": user_name,
                         "data": str(hoje),
-                        colunas_banco[opcao]: agora_br.isoformat()
+                        colunas_banco[opcao]: horario_final_gravacao.isoformat()
                     }
+                    
+                    # Adiciona a justificativa no dicionário se ela existir (Campos mapeados: justificativa_entrada ou justificativa_saida)
+                    if opcao == "ENTRADA" and justificativa:
+                        dados_ponto["justificativa_entrada"] = justificativa
+                    elif opcao == "SAÍDA" and justificativa:
+                        dados_ponto["justificativa_saida"] = justificativa
+                        
                     executar_query_supabase("salvar_ponto", data_dict=dados_ponto)
                     st.session_state[f'confirmar_{opcao}'] = False
                     st.success(f"Horário gravado com sucesso!")
