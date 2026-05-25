@@ -3,7 +3,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import hashlib
-from io import BytesIO
+from io import BytesIO  # <-- Nova importação para manipular o arquivo Excel na memória
 from supabase import create_client, Client
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
@@ -52,22 +52,12 @@ def executar_query_supabase(operacao, data_dict=None, email=None, data_filtro=No
         res = supabase.table("registro_ponto").select("data, horario_entrada, horario_saida").eq("email", email).gte("data", str(data_filtro)).lte("data", str(data_fim)).order("data", desc=True).execute()
         return res.data
 
-# --- EXIBIÇÃO DO LOGOTIPO DA EMPRESA ---
-def exibir_logo():
-    logo_url = "http://panalpina.golservices.com.br/aplicacoes/imagens/mplogo.png"
-    col_logo, col_espaco = st.columns([1, 3])
-    with col_logo:
-        st.image(logo_url, use_container_width=True)
-
 # --- SISTEMA NATIVO DE LOGIN E CADASTRO ---
 def gerenciar_acesso():
     if "connected" not in st.session_state:
         st.session_state["connected"] = False
 
     if not st.session_state["connected"]:
-        # Exibe a logo no topo da tela de login/cadastro
-        exibir_logo()
-        
         st.title("⏱️ Sistema de Ponto Eletrônico")
         st.write("---")
         
@@ -128,9 +118,6 @@ agora_br = obter_agora_br()
 
 # --- LIMPEZA AUTOMÁTICA DO LOG (1 EM 1 MÊS) ---
 executar_query_supabase("limpar_log", data_filtro=hoje - timedelta(days=30))
-
-# --- EXIBIÇÃO DO LOGOTIPO NA ÁREA LOGADA ---
-exibir_logo()
 
 # --- INTERFACE / MENU LATERAL ---
 st.sidebar.write(f"Olá, **{user_name}**!")
@@ -247,7 +234,7 @@ elif opcao == "LOG":
                 st.write(f"🔵 **{nome}** saiu às {sai} ({dt_compara})")
             st.markdown("<div style='opacity:0.3; margin:5px 0;'>---</div>", unsafe_allow_html=True)
 
-# --- OPÇÃO: RELATÓRIO ---
+# --- OPÇÃO: RELATÓRIO CORRIGIDA PARA EXCEL (.XLSX) ---
 elif opcao == "RELATÓRIO":
     st.subheader(f"📊 Relatório Pessoal de Horas")
     st.caption(f"Visualizando os registros de: {user_name}")
@@ -283,8 +270,10 @@ elif opcao == "RELATÓRIO":
             # --- LÓGICA DE EXPORTAÇÃO PARA EXCEL (.XLSX) ---
             output = BytesIO()
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                # Salva o DataFrame na planilha com o nome 'Folha de Ponto'
                 df.to_excel(writer, index=False, sheet_name='Folha de Ponto')
             
+            # Prepara os dados binários da planilha para o download
             dados_excel = output.getvalue()
             
             st.download_button(
