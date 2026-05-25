@@ -7,7 +7,7 @@ from io import BytesIO  # <-- Nova importação para manipular o arquivo Excel n
 from supabase import create_client, Client
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(page_title="Sistema de Ponto Eletrônico", page_icon="⏱️", layout="centered")
+st.set_page_config(page_title="Sistema de Ponto Eletrônico - Mult Processing", page_icon="⏱️", layout="centered")
 
 # --- DEFINIÇÃO DO FUSO HORÁRIO DE BRASÍLIA ---
 fuso_br = ZoneInfo("America/Sao_Paulo")
