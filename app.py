@@ -2,18 +2,24 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta, date
 from streamlit_google_auth import Authenticate
+from sqlalchemy import text # <-- Adicione esta linha nova aqui em cima
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Sistema de Ponto Eletrônico", page_icon="⏱️", layout="centered")
 
-# --- NOVA CONEXÃO NATIVA DO STREAMLIT ---
-# Ela lê automaticamente o bloco [postgres] das suas secrets sem precisar do psycopg2!
+# --- CONEXÃO NATIVA DO STREAMLIT ---
 conn = st.connection("postgres", type="sql")
 
 def executar_query(query, params=(), fetch=False):
-    # O Streamlit gerencia a abertura e fechamento das conexões automaticamente aqui
+    # Transforma a string SQL em um objeto de texto executável pelo SQLAlchemy
+    query_formatada = text(query)
+    
     with conn.session as session:
-        result = session.execute(query, params)
+        # Se os parâmetros forem passados como tupla (ex: (user_email, hoje)), 
+        # o SQLAlchemy prefere que convertamos para dicionário ou usemos mapeamento posicional.
+        # Para manter seu código simples, convertemos os parâmetros caso existam:
+        result = session.execute(query_formatada, params)
+        
         if fetch:
             return result.fetchall()
         session.commit()
