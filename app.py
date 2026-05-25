@@ -326,7 +326,7 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
 # --- MENU: LOG ---
 elif opcao == "LOG":
     st.title("📢 Mural de Atividades")
-    st.caption("Log de atividades da equipe.")
+    st.caption("Linha do tempo das batidas eletrônicas registradas pela equipe hoje (Ordem Cronológica).")
     st.write("---")
     
     logs_banco = executar_query_supabase("buscar_logs")
@@ -335,10 +335,10 @@ elif opcao == "LOG":
     else:
         lista_eventos = []
         labels_acoes = {
-            "horario_entrada": "🟢 ENTROU",
+            "horario_entrada": "🟢 realizou ENTRADA",
             "saida_almoco": "🟡 saiu para o ALMOÇO",
-            "retorno_almoco": " 🔵 retornou do almoço",
-            "horario_saida": "🟠 SAIU"
+            "retorno_almoco": "🟠 RETORNOU do almoço",
+            "horario_saida": "🔵 realizou SAÍDA"
         }
         
         for item in logs_banco:
@@ -349,27 +349,45 @@ elif opcao == "LOG":
                 valor_hora = item.get(coluna)
                 if valor_hora:
                     dt_objeto = datetime.fromisoformat(valor_hora).astimezone(fuso_br)
+                    
+                    # Captura a justificativa certa dependendo de qual coluna estamos lendo
+                    just_texto = None
+                    if coluna == "horario_entrada" and item.get("justificativa_entrada"):
+                        just_texto = item["justificativa_entrada"]
+                    elif coluna == "horario_saida" and item.get("justificativa_saida"):
+                        just_texto = item["justificativa_saida"]
+                    
                     lista_eventos.append({
                         "nome": nome,
                         "data_str": dt_compara,
                         "acao": label,
                         "hora_str": dt_objeto.strftime("%H:%M:%S"),
-                        "objeto_tempo": dt_objeto 
+                        "objeto_tempo": dt_objeto,
+                        "justificativa": just_texto
                     })
         
         if not lista_eventos:
             st.info("Nenhum registro encontrado.")
         else:
+            # Ordena do mais antigo para o mais recente (Cronológica)
             lista_eventos.sort(key=lambda x: x["objeto_tempo"], reverse=False)
             
             with st.container():
                 for evento in lista_eventos:
-                    st.markdown(
+                    # Monta o HTML básico da linha do log
+                    html_log = (
                         f'<div class="card-log">'
-                        f'⏱️ <b>{evento["hora_str"]}</b> - <b>{evento["nome"]}</b> {evento["acao"]} <span style="float: right; color: gray; font-size: 0.85em;">📅 {evento["data_str"]}</span>'
-                        f'</div>', 
-                        unsafe_allow_html=True
+                        f'⏱️ <b>{evento["hora_str"]}</b> - <b>{evento["nome"]}</b> {evento["acao"]} '
+                        f'<span style="float: right; color: gray; font-size: 0.85em;">📅 {evento["data_str"]}</span>'
                     )
+                    
+                    # Se houver justificativa gravada, insere uma quebra de linha interna e formata o texto
+                    if evento["justificativa"]:
+                        html_log += f'<br><span style="color: #6c757d; font-size: 0.9em; font-style: italic; padding-left: 24px; display: inline-block; margin-top: 5px;">💬 Justificativa: {evento["justificativa"]}</span>'
+                    
+                    html_log += '</div>'
+                    
+                    st.markdown(html_log, unsafe_allow_html=True)
 
 # --- MENU: RELATÓRIO CORRIGIDO PARA FORMATO BRASILEIRO NATIVO (TELA + EXCEL) ---
 elif opcao == "RELATÓRIO":
