@@ -9,10 +9,9 @@ from supabase import create_client, Client
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Sistema de Ponto Eletrônico", page_icon="⏱️", layout="centered")
 
-# --- ESTILIZAÇÃO CSS CUSTOMIZADA PARA DEIXAR A INTERFACE MODERNA ---
+# --- ESTILIZAÇÃO CSS CUSTOMIZADA ---
 st.markdown("""
     <style>
-        /* Estilização dos blocos e containers */
         .card-ponto {
             background-color: #f8f9fa;
             padding: 25px;
@@ -29,7 +28,6 @@ st.markdown("""
             margin-bottom: 10px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.02);
         }
-        /* Ajuste do botão lateral de Sair */
         .stButton>button {
             border-radius: 8px;
         }
@@ -193,11 +191,10 @@ for k, v in pontos.items():
     if v and isinstance(v, str):
         pontos[k] = datetime.fromisoformat(v).astimezone(fuso_br)
 
-# --- MENU: REGISTRO DE HORÁRIOS (ENTRADA, ALMOÇOS, SAÍDA) ---
+# --- MENU: REGISTRO DE HORÁRIOS ---
 if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
     st.title(f"📍 Registro de {opcao.title()}")
     
-    # Grid de informações superiores (Cards de Metadados)
     c_data, c_hora = st.columns(2)
     with c_data:
         st.metric(label="🗓️ Data Oficial", value=hoje.strftime('%d/%m/%Y'))
@@ -206,7 +203,6 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
         
     st.write("")
     
-    # Bloco / Container Principal de Ação
     with st.container():
         st.markdown('<div class="card-ponto">', unsafe_allow_html=True)
         horario_atual_ponto = pontos[opcao]
@@ -220,17 +216,66 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
             
         st.markdown('</div>', unsafe_allow_html=True)
         
-        # Centralização do Botão de Ponto
         col_btn_1, col_btn_2, col_btn_3 = st.columns([1, 2, 1])
         with col_btn_2:
             if st.button(texto_botao, use_container_width=True, type="secondary" if horario_atual_ponto else "primary"):
                 st.session_state[f'confirmar_{opcao}'] = True
                 
-        # Container de Confirmação de Segurança
         if st.session_state.get(f'confirmar_{opcao}', False):
             st.write("")
             with st.expander("⚠️ CONFIRMAÇÃO DE SEGURANÇA", expanded=True):
-                st.warning(f"Deseja gravar o horário atual (**{agora_br.strftime('%H:%M:%S')}**) na opção **{opcao}**?")
+                
+                # --- LÓGICA DE JORNADA EXCLUSIVA PARA A OPÇÃO "SAÍDA" ---
+                if opcao == "SAÍDA":
+                    if not pontos["ENTRADA"]:
+                        st.error("⚠️ Não é possível calcular a jornada porque a **ENTRADA** de hoje não foi registrada.")
+                        msg_confirmacao = f"Deseja gravar a Saída mesmo sem o ponto de Entrada?"
+                    else:
+                        # Pega os valores reais cadastrados ou assume o horário atual para a saída
+                        t_entrada = pontos["ENTRADA"]
+                        t_saida_alm = pontos["SAÍDA ALMOÇO"]
+                        t_retorno_alm = pontos["RETORNO ALMOÇO"]
+                        t_saida_atual = agora_br
+                        
+                        # Calcula a duração total desde a entrada até a saída atual
+                        tempo_total = t_saida_atual - t_entrada
+                        total_segundos = int(tempo_total.total_seconds())
+                        
+                        # Deduz o tempo de almoço se ambas as batidas existirem
+                        segundos_almoco = 0
+                        if t_saida_alm and t_retorno_alm:
+                            if t_retorno_alm > t_saida_alm:
+                                segundos_almoco = int((t_retorno_alm - t_saida_alm).total_seconds())
+                        
+                        # Jornada líquida trabalhada (Tempo Total menos o Almoço)
+                        segundos_trabalhados = total_segundos - segundos_almoco
+                        if segundos_trabalhados < 0:
+                            segundos_trabalhados = 0
+                            
+                        horas_trab = segundos_trabalhados // 3600
+                        minutos_trab = (segundos_trabalhados % 3600) // 60
+                        
+                        # Define a jornada padrão esperada (9 horas no total, ex: 8h úteis + 1h almoço = 9h totais deduzindo o almoço)
+                        # Caso queira considerar estritamente 8h líquidas trabalhadas:
+                        jornada_padrao_segundos = 8 * 3600 
+                        
+                        msg_extra = "Não houve hora extra."
+                        if segundos_trabalhados > jornada_padrao_segundos:
+                            segundos_extras = segundos_trabalhados - jornada_padrao_segundos
+                            horas_ext = segundos_extras // 3600
+                            minutos_ext = (segundos_extras % 3600) // 60
+                            msg_extra = f"🔥 **{horas_ext:02d}h {minutos_ext:02d}min** de hora extra."
+                            
+                        st.info(f"📊 **Resumo da Jornada de Hoje:**\n\n"
+                                f"⏱️ Tempo Líquido Trabalhado: **{horas_trab:02d}h {minutos_trab:02d}min**\n\n"
+                                f"🚀 Banco de Horas: {msg_extra}")
+                                
+                        msg_confirmacao = f"Confirmar gravação do horário de Saída (**{agora_br.strftime('%H:%M:%S')}**)?"
+                else:
+                    msg_confirmacao = f"Deseja gravar o horário atual (**{agora_br.strftime('%H:%M:%S')}**) na opção **{opcao}**?"
+                
+                st.warning(msg_confirmacao)
+                
                 c1, c2 = st.columns(2)
                 if c1.button("Confirmar Marcação", key=f"sim_{opcao}", use_container_width=True, type="primary"):
                     dados_ponto = {
@@ -248,7 +293,7 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                     st.session_state[f'confirmar_{opcao}'] = False
                     st.rerun()
 
-# --- MENU: LOG (MURAL CRONOLÓGICO RENDERIZADO EM CARDS) ---
+# --- MENU: LOG ---
 elif opcao == "LOG":
     st.title("📢 Mural de Atividades")
     st.caption("Linha do tempo das batidas eletrônicas registradas pela equipe hoje (Ordem Cronológica).")
@@ -287,7 +332,6 @@ elif opcao == "LOG":
         else:
             lista_eventos.sort(key=lambda x: x["objeto_tempo"], reverse=False)
             
-            # Container do Mural de Atividades formatado em Listagem Limpa
             with st.container():
                 for evento in lista_eventos:
                     st.markdown(
@@ -297,13 +341,12 @@ elif opcao == "LOG":
                         unsafe_allow_html=True
                     )
 
-# --- MENU: RELATÓRIO PESSAL FORMATADO ---
+# --- MENU: RELATÓRIO ---
 elif opcao == "RELATÓRIO":
     st.title("📊 Espelho de Ponto Pessoal")
     st.caption(f"Filtro e exportação de folhas e históricos para o colaborador: **{user_name}**")
     st.write("")
     
-    # Card com filtros de busca
     with st.container():
         col1, col2 = st.columns(2)
         with col1:
@@ -342,10 +385,8 @@ elif opcao == "RELATÓRIO":
             df["Retorno Almoço"] = df["Retorno Almoço"].apply(formata_hora)
             df["Saída"] = df["Saída"].apply(formata_hora)
             
-            # Tabela Estilizada Ocupando Tela Cheia
             st.dataframe(df, use_container_width=True)
             
-            # --- EXPORTAÇÃO EXCEL COM BOTÃO DESTACADO ---
             output = BytesIO()
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
                 df.to_excel(writer, index=False, sheet_name='Folha de Ponto')
