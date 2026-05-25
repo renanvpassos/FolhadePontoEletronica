@@ -74,23 +74,12 @@ def executar_query_supabase(operacao, data_dict=None, email=None, data_filtro=No
         res = supabase.table("registro_ponto").select("data, horario_entrada, saida_almoco, retorno_almoco, horario_saida").eq("email", email).gte("data", str(data_filtro)).lte("data", str(data_fim)).order("data", desc=True).execute()
         return res.data
 
-# --- EXIBIÇÃO DO LOGOTIPO DA EMPRESA ---
-def exibir_logo():
-    logo_url = "http://panalpina.golservices.com.br/aplicacoes/imagens/mplogo.png"
-    st.markdown(
-        f'<div style="text-align: left; margin-bottom: 25px;">'
-        f'<img src="{logo_url}" style="max-width: 160px; height: auto;">'
-        f'</div>',
-        unsafe_allow_html=True
-    )
-
 # --- SISTEMA NATIVO DE LOGIN E CADASTRO ---
 def gerenciar_acesso():
     if "connected" not in st.session_state:
         st.session_state["connected"] = False
 
     if not st.session_state["connected"]:
-        exibir_logo()
         st.title("⏱️ Sistema de Ponto Eletrônico")
         st.write("Por favor, faça o acesso ou crie uma conta para registrar suas jornadas.")
         st.write("---")
@@ -152,9 +141,6 @@ agora_br = obter_agora_br()
 
 # --- LIMPEZA AUTOMÁTICA DO LOG (1 EM 1 MÊS) ---
 executar_query_supabase("limpar_log", data_filtro=hoje - timedelta(days=30))
-
-# --- EXIBIÇÃO DO LOGOTIPO NA ÁREA LOGADA ---
-exibir_logo()
 
 # --- INTERFACE / MENU LATERAL ---
 st.sidebar.markdown(f"### 👤 Usuário Ativo")
@@ -225,29 +211,24 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
             st.write("")
             with st.expander("⚠️ CONFIRMAÇÃO DE SEGURANÇA", expanded=True):
                 
-                # --- LÓGICA DE JORNADA EXCLUSIVA PARA A OPÇÃO "SAÍDA" ---
                 if opcao == "SAÍDA":
                     if not pontos["ENTRADA"]:
                         st.error("⚠️ Não é possível calcular a jornada porque a **ENTRADA** de hoje não foi registrada.")
                         msg_confirmacao = f"Deseja gravar a Saída mesmo sem o ponto de Entrada?"
                     else:
-                        # Pega os valores reais cadastrados ou assume o horário atual para a saída
                         t_entrada = pontos["ENTRADA"]
                         t_saida_alm = pontos["SAÍDA ALMOÇO"]
                         t_retorno_alm = pontos["RETORNO ALMOÇO"]
                         t_saida_atual = agora_br
                         
-                        # Calcula a duração total desde a entrada até a saída atual
                         tempo_total = t_saida_atual - t_entrada
                         total_segundos = int(tempo_total.total_seconds())
                         
-                        # Deduz o tempo de almoço se ambas as batidas existirem
                         segundos_almoco = 0
                         if t_saida_alm and t_retorno_alm:
                             if t_retorno_alm > t_saida_alm:
                                 segundos_almoco = int((t_retorno_alm - t_saida_alm).total_seconds())
                         
-                        # Jornada líquida trabalhada (Tempo Total menos o Almoço)
                         segundos_trabalhados = total_segundos - segundos_almoco
                         if segundos_trabalhados < 0:
                             segundos_trabalhados = 0
@@ -255,8 +236,6 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                         horas_trab = segundos_trabalhados // 3600
                         minutos_trab = (segundos_trabalhados % 3600) // 60
                         
-                        # Define a jornada padrão esperada (9 horas no total, ex: 8h úteis + 1h almoço = 9h totais deduzindo o almoço)
-                        # Caso queira considerar estritamente 8h líquidas trabalhadas:
                         jornada_padrao_segundos = 8 * 3600 
                         
                         msg_extra = "Não houve hora extra."
@@ -267,8 +246,8 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                             msg_extra = f"🔥 **{horas_ext:02d}h {minutos_ext:02d}min** de hora extra."
                             
                         st.info(f"📊 **Resumo da Jornada de Hoje:**\n\n"
-                                f"⏱️ Tempo Líquido Trabalhado: **{horas_trab:02d}h {minutos_trab:02d}min**\n\n"
-                                f"🚀 Banco de Horas: {msg_extra}")
+                                f"⏱️ Tempo Trabalhado: **{horas_trab:02d}h {minutos_trab:02d}min**\n\n"
+                                f"🚀 Horas Extra: {msg_extra}")
                                 
                         msg_confirmacao = f"Confirmar gravação do horário de Saída (**{agora_br.strftime('%H:%M:%S')}**)?"
                 else:
@@ -305,10 +284,10 @@ elif opcao == "LOG":
     else:
         lista_eventos = []
         labels_acoes = {
-            "horario_entrada": "🟢 realizou ENTRADA",
+            "horario_entrada": "🟢 ENTROU",
             "saida_almoco": "🟡 saiu para o ALMOÇO",
-            "retorno_almoco": "🟠 RETORNOU do almoço",
-            "horario_saida": "🔵 realizou SAÍDA"
+            "retorno_almoco": " 🔵retornou do almoço",
+            "horario_saida": "🟠 SAIU"
         }
         
         for item in logs_banco:
@@ -341,7 +320,7 @@ elif opcao == "LOG":
                         unsafe_allow_html=True
                     )
 
-# --- MENU: RELATÓRIO ---
+# --- MENU: RELATÓRIO CORRIGIDO PARA FORMATO BRASILEIRO NATIVO (TELA + EXCEL) ---
 elif opcao == "RELATÓRIO":
     st.title("📊 Espelho de Ponto Pessoal")
     st.caption(f"Filtro e exportação de folhas e históricos para o colaborador: **{user_name}**")
@@ -379,16 +358,24 @@ elif opcao == "RELATÓRIO":
                 except:
                     return "-"
 
-            df["Data"] = df["Data"].apply(lambda x: datetime.strptime(x, "%Y-%m-%d").strftime('%d/%m/%Y'))
+            # CORREÇÃO: Transforma a coluna de data string em um tipo datetime legítimo do pandas para o Excel entender a formatação
+            df["Data"] = pd.to_datetime(df["Data"], format="%Y-%m-%d")
+            
             df["Entrada"] = df["Entrada"].apply(formata_hora)
             df["Saída Almoço"] = df["Saída Almoço"].apply(formata_hora)
             df["Retorno Almoço"] = df["Retorno Almoço"].apply(formata_hora)
             df["Saída"] = df["Saída"].apply(formata_hora)
             
-            st.dataframe(df, use_container_width=True)
+            # Formatação de exibição visual na tela do Streamlit (Cópia temporária para string formatada)
+            df_tela = df.copy()
+            df_tela["Data"] = df_tela["Data"].dt.strftime('%d/%m/%Y')
             
+            st.dataframe(df_tela, use_container_width=True)
+            
+            # --- EXPORTAÇÃO EXCEL PROCESSADA COM MÁSCARA PT-BR ---
             output = BytesIO()
-            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            # Adicionado datetime_format para forçar o mecanismo do Excel a escrever como DD/MM/AAAA por padrão
+            with pd.ExcelWriter(output, engine='openpyxl', datetime_format='dd/mm/yyyy') as writer:
                 df.to_excel(writer, index=False, sheet_name='Folha de Ponto')
             
             dados_excel = output.getvalue()
