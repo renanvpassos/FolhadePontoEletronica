@@ -382,12 +382,13 @@ elif opcao == "RELATÓRIO":
             # --- EXPORTAÇÃO EXCEL PROCESSADA COM MÁSCARA PT-BR ---
             output = BytesIO()
             
-            # Para o Excel, convertemos a coluna original para um objeto Datetime legítimo,
-            # assim o ExcelWriter consegue aplicar a máscara de célula de data nativa 'dd/mm/yyyy'
+            # Cópia para o Excel
             df_excel = df.copy()
-            df_excel["Data"] = pd.to_datetime(df_excel["Data"])
             
-            with pd.ExcelWriter(output, engine='openpyxl', datetime_format='dd/mm/yyyy') as writer:
+            # Isso remove o '00:00:00' e envia um objeto de data puro para o Excel
+            df_excel["Data"] = pd.to_datetime(df_excel["Data"]).dt.date
+            
+            with pd.ExcelWriter(output, engine='openpyxl', date_format='dd/mm/yyyy') as writer:
                 df_excel.to_excel(writer, index=False, sheet_name='Folha de Ponto')
             
             dados_excel = output.getvalue()
