@@ -9,6 +9,33 @@ from supabase import create_client, Client
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Sistema de Ponto Eletrônico", page_icon="⏱️", layout="centered")
 
+# --- ESTILIZAÇÃO CSS CUSTOMIZADA PARA DEIXAR A INTERFACE MODERNA ---
+st.markdown("""
+    <style>
+        /* Estilização dos blocos e containers */
+        .card-ponto {
+            background-color: #f8f9fa;
+            padding: 25px;
+            border-radius: 12px;
+            border-left: 5px solid #4D96FF;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            margin-bottom: 20px;
+        }
+        .card-log {
+            background-color: #ffffff;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
+            margin-bottom: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        }
+        /* Ajuste do botão lateral de Sair */
+        .stButton>button {
+            border-radius: 8px;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
 # --- DEFINIÇÃO DO FUSO HORÁRIO DE BRASÍLIA ---
 fuso_br = ZoneInfo("America/Sao_Paulo")
 
@@ -53,8 +80,8 @@ def executar_query_supabase(operacao, data_dict=None, email=None, data_filtro=No
 def exibir_logo():
     logo_url = "http://panalpina.golservices.com.br/aplicacoes/imagens/mplogo.png"
     st.markdown(
-        f'<div style="text-align: left; margin-bottom: 20px;">'
-        f'<img src="{logo_url}" style="max-width: 180px; height: auto;">'
+        f'<div style="text-align: left; margin-bottom: 25px;">'
+        f'<img src="{logo_url}" style="max-width: 160px; height: auto;">'
         f'</div>',
         unsafe_allow_html=True
     )
@@ -67,6 +94,7 @@ def gerenciar_acesso():
     if not st.session_state["connected"]:
         exibir_logo()
         st.title("⏱️ Sistema de Ponto Eletrônico")
+        st.write("Por favor, faça o acesso ou crie uma conta para registrar suas jornadas.")
         st.write("---")
         
         aba_login, aba_cadastro = st.tabs(["🔒 Acessar Sistema", "📝 Criar Cadastro"])
@@ -131,13 +159,16 @@ executar_query_supabase("limpar_log", data_filtro=hoje - timedelta(days=30))
 exibir_logo()
 
 # --- INTERFACE / MENU LATERAL ---
-st.sidebar.write(f"Olá, **{user_name}**!")
+st.sidebar.markdown(f"### 👤 Usuário Ativo")
+st.sidebar.write(f"Olá, **{user_name}**")
 st.sidebar.caption(user_email)
+st.sidebar.markdown("---")
 
-opcao = st.sidebar.radio("Menu de Navegação", ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA", "LOG", "RELATÓRIO"])
+st.sidebar.markdown("### 📋 Navegação")
+opcao = st.sidebar.radio("Selecione a ação:", ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA", "LOG", "RELATÓRIO"], label_visibility="collapsed")
 
 st.sidebar.markdown("---")
-if st.sidebar.button("🚪 Sair / Desconectar"):
+if st.sidebar.button("🚪 Sair / Desconectar", use_container_width=True, type="secondary"):
     st.session_state.clear()
     st.rerun()
 
@@ -162,62 +193,77 @@ for k, v in pontos.items():
     if v and isinstance(v, str):
         pontos[k] = datetime.fromisoformat(v).astimezone(fuso_br)
 
-# --- GERENCIAMENTO VISUAL DE MARCAÇÕES ---
+# --- MENU: REGISTRO DE HORÁRIOS (ENTRADA, ALMOÇOS, SAÍDA) ---
 if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
-    st.subheader(f"📍 Registrar {opcao}")
-    col1, col2, col3 = st.columns([1, 2, 1])
+    st.title(f"📍 Registro de {opcao.title()}")
     
-    with col2:
-        st.write(f"**Data de hoje (Brasília):** {hoje.strftime('%d/%m/%Y')}")
+    # Grid de informações superiores (Cards de Metadados)
+    c_data, c_hora = st.columns(2)
+    with c_data:
+        st.metric(label="🗓️ Data Oficial", value=hoje.strftime('%d/%m/%Y'))
+    with c_hora:
+        st.metric(label="⏱️ Horário do Servidor (Brasília)", value=agora_br.strftime('%H:%M'))
+        
+    st.write("")
+    
+    # Bloco / Container Principal de Ação
+    with st.container():
+        st.markdown('<div class="card-ponto">', unsafe_allow_html=True)
         horario_atual_ponto = pontos[opcao]
         
         if horario_atual_ponto:
-            st.info(f"Seu ponto de **{opcao}** registrado hoje é às: **{horario_atual_ponto.strftime('%H:%M:%S')}**")
-            texto_botao = f"🔄 ALTERAR HORÁRIO DE {opcao}"
+            st.success(f"✅ Seu ponto de **{opcao}** de hoje já está registrado: **{horario_atual_ponto.strftime('%H:%M:%S')}**")
+            texto_botao = f"🔄 Alterar Horário de {opcao.title()}"
         else:
-            texto_botao = f"🔴 REGISTRAR {opcao}"
+            st.info(f"ℹ️ Você ainda não marcou sua **{opcao.title()}** para o dia de hoje.")
+            texto_botao = f"🔴 Registrar {opcao.title()}"
             
-        if st.button(texto_botao, use_container_width=True, type="secondary" if horario_atual_ponto else "primary"):
-            st.session_state[f'confirmar_{opcao}'] = True
-            
-        if st.session_state.get(f'confirmar_{opcao}', False):
-            st.markdown("---")
-            st.warning(f"⚠️ **Confirmação:** Deseja gravar o horário atual (**{agora_br.strftime('%H:%M:%S')}**) para **{opcao}**?")
-            
-            c1, c2 = st.columns(2)
-            if c1.button("Sim, Confirmar", key=f"sim_{opcao}", use_container_width=True):
-                dados_ponto = {
-                    "email": user_email,
-                    "nome_completo": user_name,
-                    "data": str(hoje),
-                    colunas_banco[opcao]: agora_br.isoformat()
-                }
-                executar_query_supabase("salvar_ponto", data_dict=dados_ponto)
-                st.session_state[f'confirmar_{opcao}'] = False
-                st.success(f"{opcao} salvo com sucesso!")
-                st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Centralização do Botão de Ponto
+        col_btn_1, col_btn_2, col_btn_3 = st.columns([1, 2, 1])
+        with col_btn_2:
+            if st.button(texto_botao, use_container_width=True, type="secondary" if horario_atual_ponto else "primary"):
+                st.session_state[f'confirmar_{opcao}'] = True
                 
-            if c2.button("Cancelar", key=f"nao_{opcao}", use_container_width=True):
-                st.session_state[f'confirmar_{opcao}'] = False
-                st.rerun()
+        # Container de Confirmação de Segurança
+        if st.session_state.get(f'confirmar_{opcao}', False):
+            st.write("")
+            with st.expander("⚠️ CONFIRMAÇÃO DE SEGURANÇA", expanded=True):
+                st.warning(f"Deseja gravar o horário atual (**{agora_br.strftime('%H:%M:%S')}**) na opção **{opcao}**?")
+                c1, c2 = st.columns(2)
+                if c1.button("Confirmar Marcação", key=f"sim_{opcao}", use_container_width=True, type="primary"):
+                    dados_ponto = {
+                        "email": user_email,
+                        "nome_completo": user_name,
+                        "data": str(hoje),
+                        colunas_banco[opcao]: agora_br.isoformat()
+                    }
+                    executar_query_supabase("salvar_ponto", data_dict=dados_ponto)
+                    st.session_state[f'confirmar_{opcao}'] = False
+                    st.success(f"Horário gravado com sucesso!")
+                    st.rerun()
+                    
+                if c2.button("Cancelar", key=f"nao_{opcao}", use_container_width=True):
+                    st.session_state[f'confirmar_{opcao}'] = False
+                    st.rerun()
 
-# --- OPÇÃO: LOG ORDENADO DO MAIS ANTIGO PARA O MAIS RECENTE ---
+# --- MENU: LOG (MURAL CRONOLÓGICO RENDERIZADO EM CARDS) ---
 elif opcao == "LOG":
-    st.subheader("📢 Mural de Atividades (Tempo Real)")
-    st.caption("Abaixo estão os registros recentes da equipe ordenados cronologicamente (do mais antigo ao mais recente).")
-    st.markdown("---")
+    st.title("📢 Mural de Atividades")
+    st.caption("Linha do tempo das batidas eletrônicas registradas pela equipe hoje (Ordem Cronológica).")
+    st.write("---")
     
     logs_banco = executar_query_supabase("buscar_logs")
     if not logs_banco:
-        st.info("Nenhum registro ativo no mural recente.")
+        st.info("Nenhuma atividade registrada no mural recente.")
     else:
         lista_eventos = []
-        
         labels_acoes = {
-            "horario_entrada": "entrada",
-            "saida_almoco": "saida almoço",
-            "retorno_almoco": "retorno almoço",
-            "horario_saida": "saida"
+            "horario_entrada": "🟢 realizou ENTRADA",
+            "saida_almoco": "🟡 saiu para o ALMOÇO",
+            "retorno_almoco": "🟠 RETORNOU do almoço",
+            "horario_saida": "🔵 realizou SAÍDA"
         }
         
         for item in logs_banco:
@@ -232,31 +278,41 @@ elif opcao == "LOG":
                         "nome": nome,
                         "data_str": dt_compara,
                         "acao": label,
-                        "hora_str": dt_objeto.strftime("%H:%M"),
+                        "hora_str": dt_objeto.strftime("%H:%M:%S"),
                         "objeto_tempo": dt_objeto 
                     })
         
         if not lista_eventos:
-            st.info("Nenhum evento registrado para exibir.")
+            st.info("Nenhum registro encontrado.")
         else:
-            # ALTERADO: reverse=False faz a ordenação começar na batida mais antiga (ex: 08:00) e caminhar para a mais nova (ex: 18:00)
             lista_eventos.sort(key=lambda x: x["objeto_tempo"], reverse=False)
             
-            for evento in lista_eventos:
-                st.write(f"**{evento['nome']}**: {evento['acao']} {evento['hora_str']} ({evento['data_str']})")
-                st.markdown("<div style='opacity:0.15; margin:2px 0;'>---</div>", unsafe_allow_html=True)
+            # Container do Mural de Atividades formatado em Listagem Limpa
+            with st.container():
+                for evento in lista_eventos:
+                    st.markdown(
+                        f'<div class="card-log">'
+                        f'⏱️ <b>{evento["hora_str"]}</b> - <b>{evento["nome"]}</b> {evento["acao"]} <span style="float: right; color: gray; font-size: 0.85em;">📅 {evento["data_str"]}</span>'
+                        f'</div>', 
+                        unsafe_allow_html=True
+                    )
 
-# --- OPÇÃO: RELATÓRIO ---
+# --- MENU: RELATÓRIO PESSAL FORMATADO ---
 elif opcao == "RELATÓRIO":
-    st.subheader(f"📊 Relatório Pessoal de Horas")
-    st.caption(f"Visualizando os registros de: {user_name}")
+    st.title("📊 Espelho de Ponto Pessoal")
+    st.caption(f"Filtro e exportação de folhas e históricos para o colaborador: **{user_name}**")
+    st.write("")
     
-    col1, col2 = st.columns(2)
-    with col1:
-        data_inicio = st.date_input("Data Inicial", hoje - timedelta(days=7))
-    with col2:
-        data_fim = st.date_input("Data Final", hoje)
+    # Card com filtros de busca
+    with st.container():
+        col1, col2 = st.columns(2)
+        with col1:
+            data_inicio = st.date_input("🗓️ Data Inicial", hoje - timedelta(days=7))
+        with col2:
+            data_fim = st.date_input("🗓️ Data Final", hoje)
         
+    st.write("---")
+    
     if data_inicio > data_fim:
         st.error("Erro: A data inicial não pode ser maior que a data final.")
     else:
@@ -268,7 +324,7 @@ elif opcao == "RELATÓRIO":
         )
         
         if not dados_relatorio:
-            st.info("Você não possui registros de ponto cadastrados nesse período.")
+            st.info("Você não possui registros de ponto cadastrados nesse período selecionado.")
         else:
             df = pd.DataFrame(dados_relatorio)
             df.columns = ["Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída"]
@@ -286,18 +342,21 @@ elif opcao == "RELATÓRIO":
             df["Retorno Almoço"] = df["Retorno Almoço"].apply(formata_hora)
             df["Saída"] = df["Saída"].apply(formata_hora)
             
+            # Tabela Estilizada Ocupando Tela Cheia
             st.dataframe(df, use_container_width=True)
             
-            # --- EXPORTAÇÃO PARA EXCEL (.XLSX) ---
+            # --- EXPORTAÇÃO EXCEL COM BOTÃO DESTACADO ---
             output = BytesIO()
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
                 df.to_excel(writer, index=False, sheet_name='Folha de Ponto')
             
             dados_excel = output.getvalue()
             
+            st.write("")
             st.download_button(
-                label="📥 Baixar Meu Relatório em Excel", 
+                label="📥 Baixar Planilha Oficial (.xlsx)", 
                 data=dados_excel, 
                 file_name=f"relatorio_ponto_{user_name.replace(' ', '_')}.xlsx", 
-                mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                use_container_width=True
             )
