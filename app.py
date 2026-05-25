@@ -44,9 +44,9 @@ auth = Authenticate(
     client_id=st.secrets["auth"]["client_id"],
     client_secret=st.secrets["auth"]["client_secret"],
     redirect_uri=st.secrets["auth"]["redirect_uri"],
-    cookie_name="ponto_google_auth",
-    cookie_key="1234567890123456",  # <-- MUDANÇA AQUI: Precisa ter EXATAMENTE 16 caracteres!
-    cookie_expiry_days=100
+    cookie_name="meu_ponto_customizado",       # <-- Personalizado por você
+    cookie_key="Chav3DeP0nt016Chr",            # <-- Personalizado por você (EXATAMENTE 16 caracteres)
+    cookie_expiry_days=30
 )
 
 auth.check_authentification()
