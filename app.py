@@ -3,17 +3,17 @@ import pandas as pd
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import hashlib
-from io import BytesIO  # <-- Nova importação para manipular o arquivo Excel na memória
+from io import BytesIO
 from supabase import create_client, Client
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(page_title="Sistema de Ponto Eletrônico - Mult Processing", page_icon="⏱️", layout="centered")
+st.set_page_config(page_title="Sistema de Ponto Mult Processing", page_icon="⏱️", layout="centered")
 
 # --- DEFINIÇÃO DO FUSO HORÁRIO DE BRASÍLIA ---
 fuso_br = ZoneInfo("America/Sao_Paulo")
 
 def obter_agora_br():
-    """Retorna o datetime actual com o fuso horário de Brasília."""
+    """Retorna o datetime atual com o fuso horário de Brasília."""
     return datetime.now(fuso_br)
 
 def obter_hoje_br():
@@ -32,25 +32,32 @@ def criptografar_senha(senha):
 # --- FUNÇÕES DO BANCO DE DADOS (SUPABASE) ---
 def executar_query_supabase(operacao, data_dict=None, email=None, data_filtro=None, data_fim=None):
     if operacao == "buscar_hoje":
-        res = supabase.table("registro_ponto").select("horario_entrada, horario_saida").eq("email", email).eq("data", data_filtro).execute()
+        res = supabase.table("registro_ponto").select("horario_entrada, saida_almoco, retorno_almoco, horario_saida").eq("email", email).eq("data", data_filtro).execute()
         return res.data
         
-    elif operacao == "salvar_entrada":
+    elif operacao == "salvar_ponto":
         supabase.table("registro_ponto").upsert(data_dict, on_conflict="email,data").execute()
-        
-    elif operacao == "salvar_saida":
-        supabase.table("registro_ponto").update({"horario_saida": data_dict["horario_saida"]}).eq("email", email).eq("data", data_filtro).execute()
         
     elif operacao == "limpar_log":
         supabase.table("registro_ponto").update({"exibir_no_log": False}).lt("data", str(data_filtro)).execute()
         
     elif operacao == "buscar_logs":
-        res = supabase.table("registro_ponto").select("nome_completo, horario_entrada, horario_saida, data").eq("exibir_no_log", True).order("data", desc=True).execute()
+        res = supabase.table("registro_ponto").select("nome_completo, horario_entrada, saida_almoco, retorno_almoco, horario_saida, data").eq("exibir_no_log", True).order("data", desc=True).execute()
         return res.data
         
     elif operacao == "buscar_relatorio":
-        res = supabase.table("registro_ponto").select("data, horario_entrada, horario_saida").eq("email", email).gte("data", str(data_filtro)).lte("data", str(data_fim)).order("data", desc=True).execute()
+        res = supabase.table("registro_ponto").select("data, horario_entrada, saida_almoco, retorno_almoco, horario_saida").eq("email", email).gte("data", str(data_filtro)).lte("data", str(data_fim)).order("data", desc=True).execute()
         return res.data
+
+# --- EXIBIÇÃO DO LOGOTIPO DA EMPRESA ---
+def exibir_logo():
+    logo_url = "http://panalpina.golservices.com.br/aplicacoes/imagens/mplogo.png"
+    st.markdown(
+        f'<div style="text-align: left; margin-bottom: 20px;">'
+        f'<img src="{logo_url}" style="max-width: 180px; height: auto;">'
+        f'</div>',
+        unsafe_allow_html=True
+    )
 
 # --- SISTEMA NATIVO DE LOGIN E CADASTRO ---
 def gerenciar_acesso():
@@ -58,6 +65,7 @@ def gerenciar_acesso():
         st.session_state["connected"] = False
 
     if not st.session_state["connected"]:
+        exibir_logo()
         st.title("⏱️ Sistema de Ponto Eletrônico")
         st.write("---")
         
@@ -119,103 +127,86 @@ agora_br = obter_agora_br()
 # --- LIMPEZA AUTOMÁTICA DO LOG (1 EM 1 MÊS) ---
 executar_query_supabase("limpar_log", data_filtro=hoje - timedelta(days=30))
 
+# --- EXIBIÇÃO DO LOGOTIPO NA ÁREA LOGADA ---
+exibir_logo()
+
 # --- INTERFACE / MENU LATERAL ---
 st.sidebar.write(f"Olá, **{user_name}**!")
 st.sidebar.caption(user_email)
 
-opcao = st.sidebar.radio("Menu de Navegação", ["ENTRADA", "SAÍDA", "LOG", "RELATÓRIO"])
+opcao = st.sidebar.radio("Menu de Navegação", ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA", "LOG", "RELATÓRIO"])
 
 st.sidebar.markdown("---")
 if st.sidebar.button("🚪 Sair / Desconectar"):
     st.session_state.clear()
     st.rerun()
 
-# --- BUSCA HISTÓRICO DE HOJE PARA MANIPULAR OS BOTÕES ---
+# --- BUSCA HISTÓRICO DE HOJE ---
 dados_hoje = executar_query_supabase("buscar_hoje", email=user_email, data_filtro=hoje)
-entrada_registrada = dados_hoje[0]["horario_entrada"] if dados_hoje else None
-saida_registrada = dados_hoje[0]["horario_saida"] if dados_hoje else None
 
-if entrada_registrada and isinstance(entrada_registrada, str):
-    entrada_registrada = datetime.fromisoformat(entrada_registrada).astimezone(fuso_br)
-if saida_registrada and isinstance(saida_registrada, str):
-    saida_registrada = datetime.fromisoformat(saida_registrada).astimezone(fuso_br)
+pontos = {
+    "ENTRADA": dados_hoje[0]["horario_entrada"] if dados_hoje else None,
+    "SAÍDA ALMOÇO": dados_hoje[0]["saida_almoco"] if dados_hoje else None,
+    "RETORNO ALMOÇO": dados_hoje[0]["retorno_almoco"] if dados_hoje else None,
+    "SAÍDA": dados_hoje[0]["horario_saida"] if dados_hoje else None
+}
 
-# --- OPÇÃO: ENTRADA ---
-if opcao == "ENTRADA":
-    st.subheader("📍 Registrar Entrada")
+# Tradução para persistência correta na coluna do banco
+colunas_banco = {
+    "ENTRADA": "horario_entrada",
+    "SAÍDA ALMOÇO": "saida_almoco",
+    "RETORNO ALMOÇO": "retorno_almoco",
+    "SAÍDA": "horario_saida"
+}
+
+# Converte strings de datas vindas do banco para datetime objetos com timezone
+for k, v in pontos.items():
+    if v and isinstance(v, str):
+        pontos[k] = datetime.fromisoformat(v).astimezone(fuso_br)
+
+# --- GERENCIAMENTO VISUAL DE MARCAÇÕES (ENTRADA, ALMOÇOS, SAÍDA) ---
+if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
+    st.subheader(f"📍 Registrar {opcao}")
     col1, col2, col3 = st.columns([1, 2, 1])
+    
     with col2:
         st.write(f"**Data de hoje (Brasília):** {hoje.strftime('%d/%m/%Y')}")
-        if entrada_registrada:
-            st.success(f"✅ Entrada registrada hoje às: **{entrada_registrada.strftime('%H:%M:%S')}**")
+        horario_atual_ponto = pontos[opcao]
+        
+        if horario_atual_ponto:
+            st.info(f"Seu ponto de **{opcao}** registrado hoje é às: **{horario_atual_ponto.strftime('%H:%M:%S')}**")
+            texto_botao = f"🔄 ALTERAR HORÁRIO DE {opcao}"
         else:
-            if st.button("🔴 REGISTRAR ENTRADA", use_container_width=True, type="primary"):
-                dados_ponto = {
-                    "email": user_email, 
-                    "nome_completo": user_name, 
-                    "data": str(hoje), 
-                    "horario_entrada": agora_br.isoformat() 
-                }
-                executar_query_supabase("salvar_entrada", data_dict=dados_ponto)
-                st.success("Entrada gravada com sucesso!")
-                st.rerun()
-
-# --- OPÇÃO: SAÍDA ---
-elif opcao == "SAÍDA":
-    st.subheader("📍 Registrar Saída")
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        if not entrada_registrada:
-            st.warning("⚠️ Você precisa registrar o ponto de ENTRADA antes de registrar a saída.")
-        else:
-            st.write(f"Horário da sua Entrada hoje: **{entrada_registrada.strftime('%H:%M:%S')}**")
+            texto_botao = f"🔴 REGISTRAR {opcao}"
             
-            if saida_registrada:
-                st.info(f"Sua saída registrada atualmente é: **{saida_registrada.strftime('%H:%M:%S')}**")
-                texto_botao = "🔄 ALTERAR HORÁRIO DE SAÍDA"
-            else:
-                texto_botao = "🔵 REGISTRAR SAÍDA"
-
-            if st.button(texto_botao, use_container_width=True, type="secondary" if saida_registrada else "primary"):
-                st.session_state['confirmar_saida'] = True
-
-            if st.session_state.get('confirmar_saida', False):
-                tempo_trabalhado = agora_br - entrada_registrada
-                total_segundos = int(tempo_trabalhado.total_seconds())
-                horas = total_segundos // 3600
-                minutos = (total_segundos % 3600) // 60
+        if st.button(texto_botao, use_container_width=True, type="secondary" if horario_atual_ponto else "primary"):
+            st.session_state[f'confirmar_{opcao}'] = True
+            
+        if st.session_state.get(f'confirmar_{opcao}', False):
+            st.markdown("---")
+            st.warning(f"⚠️ **Confirmação:** Deseja gravar o horário atual (**{agora_br.strftime('%H:%M:%S')}**) para **{opcao}**?")
+            
+            c1, c2 = st.columns(2)
+            if c1.button("Sim, Confirmar", key=f"sim_{opcao}", use_container_width=True):
+                dados_ponto = {
+                    "email": user_email,
+                    "nome_completo": user_name,
+                    "data": str(hoje),
+                    colunas_banco[opcao]: agora_br.isoformat()
+                }
+                executar_query_supabase("salvar_ponto", data_dict=dados_ponto)
+                st.session_state[f'confirmar_{opcao}'] = False
+                st.success(f"{opcao} salvo com sucesso!")
+                st.rerun()
                 
-                jornada_padrao = 9 * 3600
-                if total_segundos > jornada_padrao:
-                    segundos_extras = total_segundos - jornada_padrao
-                    horas_ext = segundos_extras // 3600
-                    minutos_ext = (segundos_extras % 3600) // 60
-                    msg_extra = f" e fez {horas_ext:02d} hours e {minutos_ext:02d} minutos de hora extra."
-                else:
-                    msg_extra = "."
-
-                st.markdown("---")
-                st.warning(f"⚠️ **Confirmação de Ponto:**\n\nSua jornada de hoje foi de: **{horas:02d} horas e {minutos:02d} minutos**{msg_extra}")
-                
-                c1, c2 = st.columns(2)
-                if c1.button("Sim, Confirmar", use_container_width=True):
-                    executar_query_supabase(
-                        "salvar_saida", 
-                        data_dict={"horario_saida": agora_br.isoformat()}, 
-                        email=user_email, 
-                        data_filtro=hoje
-                    )
-                    st.session_state['confirmar_saida'] = False
-                    st.success("Saída salva com sucesso!")
-                    st.rerun()
-                if c2.button("Cancelar", use_container_width=True):
-                    st.session_state['confirmar_saida'] = False
-                    st.rerun()
+            if c2.button("Cancelar", key=f"nao_{opcao}", use_container_width=True):
+                st.session_state[f'confirmar_{opcao}'] = False
+                st.rerun()
 
 # --- OPÇÃO: LOG ---
 elif opcao == "LOG":
     st.subheader("📢 Mural de Atividades (Tempo Real)")
-    st.caption("Abaixo estão as entradas e saídas recentes da equipe baseadas no horário de Brasília.")
+    st.caption("Abaixo estão os registros recentes da equipe baseados no horário de Brasília.")
     st.markdown("---")
     
     logs = executar_query_supabase("buscar_logs")
@@ -226,15 +217,27 @@ elif opcao == "LOG":
             nome = item["nome_completo"]
             dt_compara = datetime.strptime(item["data"], "%Y-%m-%d").strftime("%d/%m")
             
+            acoes = []
             if item["horario_entrada"]:
                 ent = datetime.fromisoformat(item["horario_entrada"]).astimezone(fuso_br).strftime("%H:%M")
-                st.write(f"🟢 **{nome}** entrou às {ent} ({dt_compara})")
+                acoes.append(f"🟢 Entrou às {ent}")
+            if item["saida_almoco"]:
+                salm = datetime.fromisoformat(item["saida_almoco"]).astimezone(fuso_br).strftime("%H:%M")
+                acoes.append(f"🟡 Almoço saiu às {salm}")
+            if item["retorno_almoco"]:
+                ralm = datetime.fromisoformat(item["retorno_almoco"]).astimezone(fuso_br).strftime("%H:%M")
+                acoes.append(f"🟠 Almoço retornou às {ralm}")
             if item["horario_saida"]:
                 sai = datetime.fromisoformat(item["horario_saida"]).astimezone(fuso_br).strftime("%H:%M")
-                st.write(f"🔵 **{nome}** saiu às {sai} ({dt_compara})")
-            st.markdown("<div style='opacity:0.3; margin:5px 0;'>---</div>", unsafe_allow_html=True)
+                acoes.append(f"🔵 Saiu às {sai}")
+                
+            if acoes:
+                st.write(f"**{nome}** ({dt_compara}):")
+                for acao in acoes:
+                    st.write(f"└ {acao}")
+                st.markdown("<div style='opacity:0.3; margin:5px 0;'>---</div>", unsafe_allow_html=True)
 
-# --- OPÇÃO: RELATÓRIO CORRIGIDA PARA EXCEL (.XLSX) ---
+# --- OPÇÃO: RELATÓRIO ---
 elif opcao == "RELATÓRIO":
     st.subheader(f"📊 Relatório Pessoal de Horas")
     st.caption(f"Visualizando os registros de: {user_name}")
@@ -259,21 +262,28 @@ elif opcao == "RELATÓRIO":
             st.info("Você não possui registros de ponto cadastrados nesse período.")
         else:
             df = pd.DataFrame(dados_relatorio)
-            df.columns = ["Data", "Horário Entrada", "Horário Saída"]
+            df.columns = ["Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída"]
             
+            def formata_hora(x):
+                if not x: return "-"
+                try:
+                    return datetime.fromisoformat(x).astimezone(fuso_br).strftime('%H:%M:%S')
+                except:
+                    return "-"
+
             df["Data"] = df["Data"].apply(lambda x: datetime.strptime(x, "%Y-%m-%d").strftime('%d/%m/%Y'))
-            df["Horário Entrada"] = df["Horário Entrada"].apply(lambda x: datetime.fromisoformat(x).astimezone(fuso_br).strftime('%H:%M:%S') if x else "-")
-            df["Horário Saída"] = df["Horário Saída"].apply(lambda x: datetime.fromisoformat(x).astimezone(fuso_br).strftime('%H:%M:%S') if x else "-")
+            df["Entrada"] = df["Entrada"].apply(formata_hora)
+            df["Saída Almoço"] = df["Saída Almoço"].apply(formata_hora)
+            df["Retorno Almoço"] = df["Retorno Almoço"].apply(formata_hora)
+            df["Saída"] = df["Saída"].apply(formata_hora)
             
             st.dataframe(df, use_container_width=True)
             
-            # --- LÓGICA DE EXPORTAÇÃO PARA EXCEL (.XLSX) ---
+            # --- EXPORTAÇÃO PARA EXCEL (.XLSX) ---
             output = BytesIO()
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                # Salva o DataFrame na planilha com o nome 'Folha de Ponto'
                 df.to_excel(writer, index=False, sheet_name='Folha de Ponto')
             
-            # Prepara os dados binários da planilha para o download
             dados_excel = output.getvalue()
             
             st.download_button(
