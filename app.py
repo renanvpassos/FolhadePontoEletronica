@@ -327,11 +327,19 @@ elif opcao == "RELATÓRIO":
     st.write("")
     
     with st.container():
-        col1, col2 = st.columns(2)
-        with col1:
-            data_inicio = st.date_input("🗓️ Data Inicial", hoje - timedelta(days=7))
-        with col2:
-            data_fim = st.date_input("🗓️ Data Final", hoje)
+    col1, col2 = st.columns(2)
+    with col1:
+        data_inicio = st.date_input(
+            "🗓️ Data Inicial", 
+            hoje - timedelta(days=7),
+            format="DD/MM/YYYY"  # Força o input a exibir no formato brasileiro
+        )
+    with col2:
+        data_fim = st.date_input(
+            "🗓️ Data Final", 
+            hoje,
+            format="DD/MM/YYYY"  # Força o input a exibir no formato brasileiro
+        )
         
     st.write("---")
     
