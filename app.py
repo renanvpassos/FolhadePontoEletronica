@@ -327,19 +327,19 @@ elif opcao == "RELATÓRIO":
     st.write("")
     
     with st.container():
-    col1, col2 = st.columns(2)
-    with col1:
-        data_inicio = st.date_input(
-            "🗓️ Data Inicial", 
-            hoje - timedelta(days=7),
-            format="DD/MM/YYYY"  # Força o input a exibir no formato brasileiro
-        )
-    with col2:
-        data_fim = st.date_input(
-            "🗓️ Data Final", 
-            hoje,
-            format="DD/MM/YYYY"  # Força o input a exibir no formato brasileiro
-        )
+        col1, col2 = st.columns(2)
+        with col1:
+            data_inicio = st.date_input(
+                "🗓️ Data Inicial", 
+                hoje - timedelta(days=7),
+                format="DD/MM/YYYY"  # Correção: Força o seletor a exibir no padrão brasileiro
+            )
+        with col2:
+            data_fim = st.date_input(
+                "🗓️ Data Final", 
+                hoje,
+                format="DD/MM/YYYY"  # Correção: Força o seletor a exibir no padrão brasileiro
+            )
         
     st.write("---")
     
@@ -366,25 +366,29 @@ elif opcao == "RELATÓRIO":
                 except:
                     return "-"
 
-            # CORREÇÃO: Transforma a coluna de data string em um tipo datetime legítimo do pandas para o Excel entender a formatação
-            df["Data"] = pd.to_datetime(df["Data"], format="%Y-%m-%d")
-            
+            # Aplica a formatação de horários nas colunas
             df["Entrada"] = df["Entrada"].apply(formata_hora)
             df["Saída Almoço"] = df["Saída Almoço"].apply(formata_hora)
             df["Retorno Almoço"] = df["Retorno Almoço"].apply(formata_hora)
             df["Saída"] = df["Saída"].apply(formata_hora)
             
-            # Formatação de exibição visual na tela do Streamlit (Cópia temporária para string formatada)
+            # Criamos uma cópia para renderizar na tela com a data convertida para String BR
             df_tela = df.copy()
-            df_tela["Data"] = df_tela["Data"].dt.strftime('%d/%m/%Y')
+            df_tela["Data"] = pd.to_datetime(df_tela["Data"]).dt.strftime('%d/%m/%Y')
             
+            # Exibe na tela com o formato DD/MM/AAAA garantido
             st.dataframe(df_tela, use_container_width=True)
             
             # --- EXPORTAÇÃO EXCEL PROCESSADA COM MÁSCARA PT-BR ---
             output = BytesIO()
-            # Adicionado datetime_format para forçar o mecanismo do Excel a escrever como DD/MM/AAAA por padrão
+            
+            # Para o Excel, convertemos a coluna original para um objeto Datetime legítimo,
+            # assim o ExcelWriter consegue aplicar a máscara de célula de data nativa 'dd/mm/yyyy'
+            df_excel = df.copy()
+            df_excel["Data"] = pd.to_datetime(df_excel["Data"])
+            
             with pd.ExcelWriter(output, engine='openpyxl', datetime_format='dd/mm/yyyy') as writer:
-                df.to_excel(writer, index=False, sheet_name='Folha de Ponto')
+                df_excel.to_excel(writer, index=False, sheet_name='Folha de Ponto')
             
             dados_excel = output.getvalue()
             
