@@ -43,10 +43,7 @@ auth = Authenticate(
     secret_key=st.secrets["auth"]["secret_key"],
     client_id=st.secrets["auth"]["client_id"],
     client_secret=st.secrets["auth"]["client_secret"],
-    redirect_uri=st.secrets["auth"]["redirect_uri"],
-    cookie_name="meu_ponto_customizado",       # <-- Personalizado por você
-    cookie_key="Chav3DeP0nt016Chr",            # <-- Personalizado por você (EXATAMENTE 16 caracteres)
-    cookie_expiry_days=30
+    redirect_uri=st.secrets["auth"]["redirect_uri"]
 )
 
 auth.check_authentification()
