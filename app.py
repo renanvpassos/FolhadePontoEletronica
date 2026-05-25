@@ -183,9 +183,9 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
     
     c_data, c_hora = st.columns(2)
     with c_data:
-        st.metric(label="🗓️ Data Oficial", value=hoje.strftime('%d/%m/%Y'))
+        st.metric(label="🗓️ Data", value=hoje.strftime('%d/%m/%Y'))
     with c_hora:
-        st.metric(label="⏱️ Horário do Servidor (Brasília)", value=agora_br.strftime('%H:%M'))
+        st.metric(label="⏱️ Horário", value=agora_br.strftime('%H:%M'))
         
     st.write("")
     
@@ -275,7 +275,7 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
 # --- MENU: LOG ---
 elif opcao == "LOG":
     st.title("📢 Mural de Atividades")
-    st.caption("Linha do tempo das batidas eletrônicas registradas pela equipe hoje (Ordem Cronológica).")
+    st.caption("Log de atividades da equipe.")
     st.write("---")
     
     logs_banco = executar_query_supabase("buscar_logs")
@@ -286,7 +286,7 @@ elif opcao == "LOG":
         labels_acoes = {
             "horario_entrada": "🟢 ENTROU",
             "saida_almoco": "🟡 saiu para o ALMOÇO",
-            "retorno_almoco": " 🔵retornou do almoço",
+            "retorno_almoco": " 🔵 retornou do almoço",
             "horario_saida": "🟠 SAIU"
         }
         
