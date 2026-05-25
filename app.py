@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import hashlib
+from io import BytesIO  # <-- Nova importação para manipular o arquivo Excel na memória
 from supabase import create_client, Client
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
@@ -12,7 +13,7 @@ st.set_page_config(page_title="Sistema de Ponto Eletrônico", page_icon="⏱️"
 fuso_br = ZoneInfo("America/Sao_Paulo")
 
 def obter_agora_br():
-    """Retorna o datetime atual com o fuso horário de Brasília."""
+    """Retorna o datetime actual com o fuso horário de Brasília."""
     return datetime.now(fuso_br)
 
 def obter_hoje_br():
@@ -107,7 +108,7 @@ def gerenciar_acesso():
 
 gerenciar_acesso()
 
-# --- CONFIGURAÇÃO DE USUÁRIO LOGADO CORRIGIDA ---
+# --- CONFIGURAÇÃO DE USUÁRIO LOGADO ---
 user_info = st.session_state.get("user_info", {})
 user_email = user_info.get("email")
 user_name = user_info.get("name", "Colaborador")
@@ -189,7 +190,7 @@ elif opcao == "SAÍDA":
                     segundos_extras = total_segundos - jornada_padrao
                     horas_ext = segundos_extras // 3600
                     minutos_ext = (segundos_extras % 3600) // 60
-                    msg_extra = f" e fez {horas_ext:02d} horas e {minutos_ext:02d} minutos de hora extra."
+                    msg_extra = f" e fez {horas_ext:02d} hours e {minutos_ext:02d} minutos de hora extra."
                 else:
                     msg_extra = "."
 
@@ -233,7 +234,7 @@ elif opcao == "LOG":
                 st.write(f"🔵 **{nome}** saiu às {sai} ({dt_compara})")
             st.markdown("<div style='opacity:0.3; margin:5px 0;'>---</div>", unsafe_allow_html=True)
 
-# --- OPÇÃO: RELATÓRIO ---
+# --- OPÇÃO: RELATÓRIO CORRIGIDA PARA EXCEL (.XLSX) ---
 elif opcao == "RELATÓRIO":
     st.subheader(f"📊 Relatório Pessoal de Horas")
     st.caption(f"Visualizando os registros de: {user_name}")
@@ -266,10 +267,18 @@ elif opcao == "RELATÓRIO":
             
             st.dataframe(df, use_container_width=True)
             
-            csv = df.to_csv(index=False).encode('utf-8')
+            # --- LÓGICA DE EXPORTAÇÃO PARA EXCEL (.XLSX) ---
+            output = BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                # Salva o DataFrame na planilha com o nome 'Folha de Ponto'
+                df.to_excel(writer, index=False, sheet_name='Folha de Ponto')
+            
+            # Prepara os dados binários da planilha para o download
+            dados_excel = output.getvalue()
+            
             st.download_button(
-                label="📥 Baixar Meu Relatório em CSV", 
-                data=csv, 
-                file_name=f"relatorio_ponto_{user_name.replace(' ', '_')}.csv", 
-                mime='text/csv'
+                label="📥 Baixar Meu Relatório em Excel", 
+                data=dados_excel, 
+                file_name=f"relatorio_ponto_{user_name.replace(' ', '_')}.xlsx", 
+                mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
             )
