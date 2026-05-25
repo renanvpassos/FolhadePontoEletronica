@@ -1,8 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta, date
-from google.oauth2 import id_token
-from google.auth.transport import requests
+import hashlib
 from supabase import create_client, Client
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
@@ -13,75 +12,96 @@ url: str = st.secrets["supabase"]["url"]
 key: str = st.secrets["supabase"]["key"]
 supabase: Client = create_client(url, key)
 
-# --- FUNÇÃO DE AJUSTE DE BANCO (SUPABASE) ---
+# --- FUNÇÃO PARA CRIPTOGRAFAR SENHAS ---
+def criptografar_senha(senha):
+    # Transforma a senha em texto mascarado (SHA-256) antes de salvar ou comparar no banco
+    return hashlib.sha256(senha.encode()).hexdigest()
+
+# --- FUNÇÕES DO BANCO DE DADOS (SUPABASE) ---
 def executar_query_supabase(operacao, data_dict=None, email=None, data_filtro=None, data_fim=None):
-    tabela = supabase.table("registro_ponto")
-    
     if operacao == "buscar_hoje":
-        res = tabela.select("horario_entrada, horario_saida").eq("email", email).eq("data", data_filtro).execute()
+        res = supabase.table("registro_ponto").select("horario_entrada, horario_saida").eq("email", email).eq("data", data_filtro).execute()
         return res.data
         
     elif operacao == "salvar_entrada":
-        tabela.upsert(data_dict, on_conflict="email,data").execute()
+        supabase.table("registro_ponto").upsert(data_dict, on_conflict="email,data").execute()
         
     elif operacao == "salvar_saida":
-        tabela.update({"horario_saida": data_dict["horario_saida"]}).eq("email", email).eq("data", data_filtro).execute()
+        supabase.table("registro_ponto").update({"horario_saida": data_dict["horario_saida"]}).eq("email", email).eq("data", data_filtro).execute()
         
     elif operacao == "limpar_log":
-        tabela.update({"exibir_no_log": False}).lt("data", str(data_filtro)).execute()
+        supabase.table("registro_ponto").update({"exibir_no_log": False}).lt("data", str(data_filtro)).execute()
         
     elif operacao == "buscar_logs":
-        res = tabela.select("nome_completo, horario_entrada, horario_saida, data").eq("exibir_no_log", True).order("data", desc=True).execute()
+        res = supabase.table("registro_ponto").select("nome_completo, horario_entrada, horario_saida, data").eq("exibir_no_log", True).order("data", desc=True).execute()
         return res.data
         
     elif operacao == "buscar_relatorio":
-        res = tabela.select("data, horario_entrada, horario_saida").eq("email", email).gte("data", str(data_filtro)).lte("data", str(data_fim)).order("data", desc=True).execute()
+        res = supabase.table("registro_ponto").select("data, horario_entrada, horario_saida").eq("email", email).gte("data", str(data_filtro)).lte("data", str(data_fim)).order("data", desc=True).execute()
         return res.data
 
-# --- AUTENTICAÇÃO GOOGLE (NATIVA OFICIAL) ---
-def verificar_login_google():
-    # Verifica se há um token de login vindo na URL do redirecionamento
-    query_params = st.query_params
-    if "id_token" in query_params:
-        try:
-            token = query_params["id_token"]
-            client_id = st.secrets["auth"]["client_id"]
-            idinfo = id_token.verify_oauth2_token(token, requests.Request(), client_id)
-            
-            # Salva o usuário logado na sessão
-            st.session_state["user_info"] = idinfo
-            st.session_state["connected"] = True
-            
-            # Limpa o token da URL para o visual ficar limpo
-            st.query_params.clear()
-            st.rerun()
-        except Exception:
-            st.error("Erro ao validar login do Google. Tente novamente.")
+# --- SISTEMA NATIVO DE LOGIN E CADASTRO ---
+def gerenciar_acesso():
+    if "connected" not in st.session_state:
+        st.session_state["connected"] = False
 
-    # Se não estiver conectado, mostra a tela de login
-    if not st.session_state.get("connected", False):
+    if not st.session_state["connected"]:
         st.title("⏱️ Sistema de Ponto Eletrônico")
         st.write("---")
-        st.info("Por favor, conecte-se com sua conta Google para registrar seu ponto.")
         
-        client_id = st.secrets["auth"]["client_id"]
-        redirect_uri = st.secrets["auth"]["redirect_uri"]
+        aba_login, aba_cadastro = st.tabs(["🔒 Acessar Sistema", "📝 Criar Cadastro"])
         
-        # URL de Autenticação do Google OpenID Connect (AJUSTADA PARA LOGIN INTERNO)
-        login_url = f"https://accounts.google.com/o/oauth2/v2/auth?client_id={client_id}&redirect_uri={redirect_uri}&response_type=id_token&scope=openid%20email%20profile&nonce=ponto_nonce&prompt=consent"
-        
-        # Botão personalizado estilizado do Google
-        st.markdown(
-            f'<a href="{login_url}" target="_self" style="text-decoration:none;">'
-            f'<button style="background-color:#4285F4;color:white;border:none;padding:12px 24px;'
-            f'border-radius:4px;cursor:pointer;font-weight:bold;font-size:16px;width:100%;">'
-            f'🔵 Entrar com a Conta Google</button></a>', 
-            unsafe_allow_html=True
-        )
+        # --- ABA DE LOGIN ---
+        with aba_login:
+            st.subheader("Login")
+            email_login = st.text_input("E-mail corporativo", key="login_email").strip().lower()
+            senha_login = st.text_input("Senha", type="password", key="login_senha")
+            
+            if st.button("Entrar", type="primary", use_container_width=True):
+                if email_login and senha_login:
+                    senha_hash = criptografar_senha(senha_login)
+                    # Busca o usuário na tabela 'usuarios_ponto' do Supabase
+                    res = supabase.table("usuarios_ponto").select("*").eq("email", email_login).eq("senha", senha_hash).execute()
+                    
+                    if res.data:
+                        st.session_state["user_info"] = {
+                            "email": res.data[0]["email"],
+                            "name": res.data[0]["nome"]
+                        }
+                        st.session_state["connected"] = True
+                        st.success("Login realizado com sucesso!")
+                        st.rerun()
+                    else:
+                        st.error("E-mail ou senha incorretos.")
+                else:
+                    st.warning("Por favor, preencha todos os campos.")
+                    
+        # --- ABA DE CADASTRO ---
+        with aba_cadastro:
+            st.subheader("Novo Colaborador")
+            nome_cad = st.text_input("Nome Completo", key="cad_nome")
+            email_cad = st.text_input("E-mail para cadastro", key="cad_email").strip().lower()
+            senha_cad = st.text_input("Crie uma Senha", type="password", key="cad_senha")
+            
+            if st.button("Cadastrar Novo Usuário", use_container_width=True):
+                if nome_cad and email_cad and senha_cad:
+                    # Verifica se o e-mail já existe cadastrado
+                    existe = supabase.table("usuarios_ponto").select("email").eq("email", email_cad).execute()
+                    if existe.data:
+                        st.error("Este e-mail já está cadastrado no sistema.")
+                    else:
+                        senha_segura = criptografar_senha(senha_cad)
+                        dados_usuario = {"email": email_cad, "nome": nome_cad, "senha": senha_segura}
+                        
+                        # Salva o novo usuário na tabela 'usuarios_ponto'
+                        supabase.table("usuarios_ponto").insert(dados_usuario).execute()
+                        st.success("Cadastro realizado! Agora você já pode fazer o login na aba ao lado.")
+                else:
+                    st.warning("Preencha todos os campos para realizar o cadastro.")
         st.stop()
 
-# Executa o controle de portaria/login
-verificar_login_google()
+# Executa a validação de tela
+gerenciar_acesso()
 
 # --- CONFIGURAÇÃO DE USUÁRIO LOGADO ---
 user_info = st.session_state.get("user_info", {})
@@ -90,12 +110,9 @@ user_name = user_info.get("name", "Colaborador")
 hoje = date.today()
 
 # --- LIMPEZA AUTOMÁTICA DO LOG (1 EM 1 MÊS) ---
-# Altera a flag para sumir do log geral, mas mantém guardado de forma segura para os relatórios
 executar_query_supabase("limpar_log", data_filtro=hoje - timedelta(days=30))
 
 # --- INTERFACE / MENU LATERAL ---
-if user_info.get("picture"):
-    st.sidebar.image(user_info.get("picture"), width=70)
 st.sidebar.write(f"Olá, **{user_name}**!")
 st.sidebar.caption(user_email)
 
@@ -111,7 +128,6 @@ dados_hoje = executar_query_supabase("buscar_hoje", email=user_email, data_filtr
 entrada_registrada = dados_hoje[0]["horario_entrada"] if dados_hoje else None
 saida_registrada = dados_hoje[0]["horario_saida"] if dados_hoje else None
 
-# Conversão de fuso horário UTC vindo do Supabase para datetime do Python
 if entrada_registrada and isinstance(entrada_registrada, str):
     entrada_registrada = datetime.fromisoformat(entrada_registrada.replace("Z", "+00:00"))
 if saida_registrada and isinstance(saida_registrada, str):
@@ -157,7 +173,6 @@ elif opcao == "SAÍDA":
             if st.button(texto_botao, use_container_width=True, type="secondary" if saida_registrada else "primary"):
                 st.session_state['confirmar_saida'] = True
 
-            # Modal de confirmação e cálculo de horas de jornada
             if st.session_state.get('confirmar_saida', False):
                 agora = datetime.now()
                 formato_entrada = entrada_registrada.replace(tzinfo=None)
@@ -167,7 +182,6 @@ elif opcao == "SAÍDA":
                 horas = total_segundos // 3600
                 minutos = (total_segundos % 3600) // 60
                 
-                # Regra de horas extras (Acima de 9 horas de expediente)
                 jornada_padrao = 9 * 3600
                 if total_segundos > jornada_padrao:
                     segundos_extras = total_segundos - jornada_padrao
@@ -241,18 +255,15 @@ elif opcao == "RELATÓRIO":
         if not dados_relatorio:
             st.info("Você não possui registros de ponto cadastrados nesse período.")
         else:
-            # Estrutura a tabela visual usando o Pandas DataFrame
             df = pd.DataFrame(dados_relatorio)
             df.columns = ["Data", "Horário Entrada", "Horário Saída"]
             
-            # Formatações amigáveis de datas e horas para exibição na tela
             df["Data"] = df["Data"].apply(lambda x: datetime.strptime(x, "%Y-%m-%d").strftime('%d/%m/%Y'))
             df["Horário Entrada"] = df["Horário Entrada"].apply(lambda x: datetime.fromisoformat(x.replace("Z", "+00:00")).strftime('%H:%M:%S') if x else "-")
             df["Horário Saída"] = df["Horário Saída"].apply(lambda x: datetime.fromisoformat(x.replace("Z", "+00:00")).strftime('%H:%M:%S') if x else "-")
             
             st.dataframe(df, use_container_width=True)
             
-            # Geração do arquivo estruturado para download em planilhas (CSV)
             csv = df.to_csv(index=False).encode('utf-8')
             st.download_button(
                 label="📥 Baixar Meu Relatório em CSV", 
