@@ -71,7 +71,7 @@ def executar_query_supabase(operacao, data_dict=None, email=None, data_filtro=No
         return res.data
         
     elif operacao == "buscar_relatorio":
-        res = supabase.table("registro_ponto").select("data, horario_entrada, saida_almoco, retorno_almoco, horario_saida").eq("email", email).gte("data", str(data_filtro)).lte("data", str(data_fim)).order("data", desc=True).execute()
+        res = supabase.table("registro_ponto").select("data, horario_entrada, saida_almoco, retorno_almoco, horario_saida, justificativa_entrada, justificativa_saida").eq("email", email).gte("data", str(data_filtro)).lte("data", str(data_fim)).order("data", desc=True).execute()
         return res.data
 
 # --- SISTEMA NATIVO DE LOGIN E CADASTRO ---
@@ -375,33 +375,24 @@ elif opcao == "LOG":
 elif opcao == "RELATÓRIO":
     st.title("📊 Espelho de Ponto Pessoal")
     
-    # 1. Definição dos e-mails administrativos que possuem acesso total
     admins_permitidos = [
         "renan.veloso@multprocessing.com.br",
         "marcello@multprocessing.com.br"
     ]
     
-    # 2. Inicializa as variáveis de escopo da busca
     email_busca = user_email
     nome_busca = user_name
     
-    # 3. Se o usuário logado for admin, liberamos o container de seleção de funcionários
     if user_email in admins_permitidos:
         st.markdown("### 🔑 Painel de Gestão (Administrador)")
-        
-        # Buscamos a lista de todos os usuários cadastrados no banco para alimentar o menu suspenso
         try:
             usuarios_banco = supabase.table("usuarios_ponto").select("email, nome").execute()
             if usuarios_banco.data:
-                # Criamos um dicionário amigável para o selectbox: "Nome Completo (email@...)"
                 opcoes_usuarios = {f"{u['nome']} ({u['email']})": u for u in usuarios_banco.data}
-                
                 usuario_selecionado_str = st.selectbox(
                     "Selecione o colaborador que deseja consultar:",
                     options=list(opcoes_usuarios.keys())
                 )
-                
-                # Sobrescrevemos as variáveis de busca com o funcionário escolhido no menu suspenso
                 colaborador_escolhido = opcoes_usuarios[usuario_selecionado_str]
                 email_busca = colaborador_escolhido["email"]
                 nome_busca = colaborador_escolhido["nome"]
@@ -411,28 +402,18 @@ elif opcao == "RELATÓRIO":
     st.caption(f"Filtro e exportação de folhas e históricos para: **{nome_busca}**")
     st.write("")
     
-    # Container de filtros por Data
     with st.container():
         col1, col2 = st.columns(2)
         with col1:
-            data_inicio = st.date_input(
-                "🗓️ Data Inicial", 
-                hoje - timedelta(days=7),
-                format="DD/MM/YYYY"
-            )
+            data_inicio = st.date_input("🗓️ Data Inicial", hoje - timedelta(days=7), format="DD/MM/YYYY")
         with col2:
-            data_fim = st.date_input(
-                "🗓️ Data Final", 
-                hoje,
-                format="DD/MM/YYYY"
-            )
+            data_fim = st.date_input("🗓️ Data Final", hoje, format="DD/MM/YYYY")
         
     st.write("---")
     
     if data_inicio > data_fim:
         st.error("Erro: A data inicial não pode ser maior que a data final.")
     else:
-        # A query agora utiliza a variável dinâmica 'email_busca'
         dados_relatorio = executar_query_supabase(
             "buscar_relatorio", 
             email=email_busca, 
@@ -444,7 +425,9 @@ elif opcao == "RELATÓRIO":
             st.info(f"Não foram encontrados registros de ponto para {nome_busca} no período selecionado.")
         else:
             df = pd.DataFrame(dados_relatorio)
-            df.columns = ["Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída"]
+            
+            # Ajuste de colunas mapeando os novos campos vindos do banco
+            df.columns = ["Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", "Justificativa Entrada", "Justificativa Saída"]
             
             def formata_hora(x):
                 if not x: return "-"
@@ -453,17 +436,21 @@ elif opcao == "RELATÓRIO":
                 except:
                     return "-"
 
-            # Aplica a formatação de horários nas colunas
+            # Aplica a formatação de horários nas colunas de marcação
             df["Entrada"] = df["Entrada"].apply(formata_hora)
             df["Saída Almoço"] = df["Saída Almoço"].apply(formata_hora)
             df["Retorno Almoço"] = df["Retorno Almoço"].apply(formata_hora)
             df["Saída"] = df["Saída"].apply(formata_hora)
             
+            # Trata valores nulos das justificativas para exibir um traço limpo
+            df["Justificativa Entrada"] = df["Justificativa Entrada"].fillna("-").replace("", "-")
+            df["Justificativa Saída"] = df["Justificativa Saída"].fillna("-").replace("", "-")
+            
             # Criamos uma cópia para renderizar na tela com a data convertida para String BR
             df_tela = df.copy()
             df_tela["Data"] = pd.to_datetime(df_tela["Data"]).dt.strftime('%d/%m/%Y')
             
-            # Exibe na tela com o formato DD/MM/AAAA garantido
+            # Exibe na tela com o formato DD/MM/AAAA e as novas colunas
             st.dataframe(df_tela, use_container_width=True)
             
             # --- EXPORTAÇÃO EXCEL PROCESSADA ---
