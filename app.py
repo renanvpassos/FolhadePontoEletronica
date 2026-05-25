@@ -375,24 +375,35 @@ elif opcao == "LOG":
 elif opcao == "RELATÓRIO":
     st.title("📊 Espelho de Ponto Pessoal")
     
-    admins_permitidos = [
-        "renan.veloso@multprocessing.com.br",
-        "marcello@multprocessing.com.br"
-    ]
-    
+    # Inicializa as variáveis padrão de escopo da busca (o próprio usuário)
     email_busca = user_email
     nome_busca = user_name
     
-    if user_email in admins_permitidos:
-        st.markdown("### 🔑 Painel de Gestão (Administrador)")
+    # 1. Busca dinâmica no banco para verificar o cargo do usuário logado em tempo real
+    cargo_usuario = "Colaborador"
+    try:
+        dados_usuario_logado = supabase.table("usuarios_ponto").select("cargo").eq("email", user_email).execute()
+        if dados_usuario_logado.data:
+            cargo_usuario = dados_usuario_logado.data[0].get("cargo", "Colaborador")
+    except Exception as e:
+        st.error("Erro ao verificar nível de acesso do usuário.")
+
+    # 2. Se o cargo for 'Supervisor', liberamos o painel de gestão e o menu de seleção
+    if cargo_usuario == "Supervisor":
+        st.markdown("### 🔑 Painel de Gestão (Supervisor)")
         try:
+            # Busca todos os colaboradores cadastrados para listar no menu suspenso
             usuarios_banco = supabase.table("usuarios_ponto").select("email, nome").execute()
             if usuarios_banco.data:
+                # Monta o dicionário amigável "Nome Completo (email)"
                 opcoes_usuarios = {f"{u['nome']} ({u['email']})": u for u in usuarios_banco.data}
+                
                 usuario_selecionado_str = st.selectbox(
                     "Selecione o colaborador que deseja consultar:",
                     options=list(opcoes_usuarios.keys())
                 )
+                
+                # Redefine os parâmetros de busca para olhar os dados do funcionário selecionado
                 colaborador_escolhido = opcoes_usuarios[usuario_selecionado_str]
                 email_busca = colaborador_escolhido["email"]
                 nome_busca = colaborador_escolhido["nome"]
@@ -402,6 +413,7 @@ elif opcao == "RELATÓRIO":
     st.caption(f"Filtro e exportação de folhas e históricos para: **{nome_busca}**")
     st.write("")
     
+    # Filtros de data na interface
     with st.container():
         col1, col2 = st.columns(2)
         with col1:
@@ -414,6 +426,7 @@ elif opcao == "RELATÓRIO":
     if data_inicio > data_fim:
         st.error("Erro: A data inicial não pode ser maior que a data final.")
     else:
+        # Realiza a busca utilizando a variável dinâmica definida pela validação acima
         dados_relatorio = executar_query_supabase(
             "buscar_relatorio", 
             email=email_busca, 
@@ -426,7 +439,7 @@ elif opcao == "RELATÓRIO":
         else:
             df = pd.DataFrame(dados_relatorio)
             
-            # Ajuste de colunas mapeando os novos campos vindos do banco
+            # Mapeamento e renomeação exata das colunas retornadas pelo banco
             df.columns = ["Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", "Justificativa Entrada", "Justificativa Saída"]
             
             def formata_hora(x):
@@ -436,21 +449,20 @@ elif opcao == "RELATÓRIO":
                 except:
                     return "-"
 
-            # Aplica a formatação de horários nas colunas de marcação
+            # Formata os horários de batida
             df["Entrada"] = df["Entrada"].apply(formata_hora)
             df["Saída Almoço"] = df["Saída Almoço"].apply(formata_hora)
             df["Retorno Almoço"] = df["Retorno Almoço"].apply(formata_hora)
             df["Saída"] = df["Saída"].apply(formata_hora)
             
-            # Trata valores nulos das justificativas para exibir um traço limpo
+            # Limpa campos de justificativas vazias ou nulas
             df["Justificativa Entrada"] = df["Justificativa Entrada"].fillna("-").replace("", "-")
             df["Justificativa Saída"] = df["Justificativa Saída"].fillna("-").replace("", "-")
             
-            # Criamos uma cópia para renderizar na tela com a data convertida para String BR
+            # Renderização visual na tela com formato brasileiro String
             df_tela = df.copy()
             df_tela["Data"] = pd.to_datetime(df_tela["Data"]).dt.strftime('%d/%m/%Y')
             
-            # Exibe na tela com o formato DD/MM/AAAA e as novas colunas
             st.dataframe(df_tela, use_container_width=True)
             
             # --- EXPORTAÇÃO EXCEL PROCESSADA ---
