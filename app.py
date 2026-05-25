@@ -1,11 +1,23 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 import hashlib
 from supabase import create_client, Client
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Sistema de Ponto Eletrônico", page_icon="⏱️", layout="centered")
+
+# --- DEFINIÇÃO DO FUSO HORÁRIO DE BRASÍLIA ---
+fuso_br = ZoneInfo("America/Sao_Paulo")
+
+def obter_agora_br():
+    """Retorna o datetime atual com o fuso horário de Brasília."""
+    return datetime.now(fuso_br)
+
+def obter_hoje_br():
+    """Retorna a data atual com base no fuso horário de Brasília."""
+    return obter_agora_br().date()
 
 # --- CONEXÃO COM O SUPABASE ---
 url: str = st.secrets["supabase"]["url"]
@@ -14,11 +26,10 @@ supabase: Client = create_client(url, key)
 
 # --- FUNÇÃO PARA CRIPTOGRAFAR SENHAS ---
 def criptografar_senha(senha):
-    # Transforma a senha em texto mascarado (SHA-256) antes de salvar ou comparar no banco
     return hashlib.sha256(senha.encode()).hexdigest()
 
 # --- FUNÇÕES DO BANCO DE DADOS (SUPABASE) ---
-def executar_query_supabase(operacao, data_dict=None, email=None, data_filtro=None, data_fim=None):
+def ejecutar_query_supabase(operacao, data_dict=None, email=None, data_filtro=None, data_fim=None):
     if operacao == "buscar_hoje":
         res = supabase.table("registro_ponto").select("horario_entrada, horario_saida").eq("email", email).eq("data", data_filtro).execute()
         return res.data
@@ -51,7 +62,6 @@ def gerenciar_acesso():
         
         aba_login, aba_cadastro = st.tabs(["🔒 Acessar Sistema", "📝 Criar Cadastro"])
         
-        # --- ABA DE LOGIN ---
         with aba_login:
             st.subheader("Login")
             email_login = st.text_input("E-mail corporativo", key="login_email").strip().lower()
@@ -60,7 +70,6 @@ def gerenciar_acesso():
             if st.button("Entrar", type="primary", use_container_width=True):
                 if email_login and senha_login:
                     senha_hash = criptografar_senha(senha_login)
-                    # Busca o usuário na tabela 'usuarios_ponto' do Supabase
                     res = supabase.table("usuarios_ponto").select("*").eq("email", email_login).eq("senha", senha_hash).execute()
                     
                     if res.data:
@@ -76,7 +85,6 @@ def gerenciar_acesso():
                 else:
                     st.warning("Por favor, preencha todos os campos.")
                     
-        # --- ABA DE CADASTRO ---
         with aba_cadastro:
             st.subheader("Novo Colaborador")
             nome_cad = st.text_input("Nome Completo", key="cad_nome")
@@ -85,29 +93,27 @@ def gerenciar_acesso():
             
             if st.button("Cadastrar Novo Usuário", use_container_width=True):
                 if nome_cad and email_cad and senha_cad:
-                    # Verifica se o e-mail já existe cadastrado
                     existe = supabase.table("usuarios_ponto").select("email").eq("email", email_cad).execute()
                     if existe.data:
                         st.error("Este e-mail já está cadastrado no sistema.")
                     else:
                         senha_segura = criptografar_senha(senha_cad)
                         dados_usuario = {"email": email_cad, "nome": nome_cad, "senha": senha_segura}
-                        
-                        # Salva o novo usuário na tabela 'usuarios_ponto'
                         supabase.table("usuarios_ponto").insert(dados_usuario).execute()
-                        st.success("Cadastro realizado! Agora você já pode fazer o login na aba ao lado.")
+                        st.success("Cadastro realizado! Agora faça o login na aba ao lado.")
                 else:
                     st.warning("Preencha todos os campos para realizar o cadastro.")
         st.stop()
 
-# Executa a validação de tela
 gerenciar_acesso()
 
-# --- CONFIGURAÇÃO DE USUÁRIO LOGADO ---
+# --- CONFIGURAÇÃO DE USUÁRIO LOGADO CORRIGIDA ---
 user_info = st.session_state.get("user_info", {})
 user_email = user_info.get("email")
 user_name = user_info.get("name", "Colaborador")
-hoje = date.today()
+
+hoje = obter_hoje_br() # <-- Garante data correta do Brasil
+agora_br = obter_agora_br() # <-- Garante hora correta do Brasil
 
 # --- LIMPEZA AUTOMÁTICA DO LOG (1 EM 1 MÊS) ---
 executar_query_supabase("limpar_log", data_filtro=hoje - timedelta(days=30))
@@ -124,33 +130,33 @@ if st.sidebar.button("🚪 Sair / Desconectar"):
     st.rerun()
 
 # --- BUSCA HISTÓRICO DE HOJE PARA MANIPULAR OS BOTÕES ---
-dados_hoje = executar_query_supabase("buscar_hoje", email=user_email, data_filtro=hoje)
+dados_hoje = ejecutar_query_supabase("buscar_hoje", email=user_email, data_filtro=hoje)
 entrada_registrada = dados_hoje[0]["horario_entrada"] if dados_hoje else None
 saida_registrada = dados_hoje[0]["horario_saida"] if dados_hoje else None
 
+# Garante conversão e leitura no fuso de Brasília
 if entrada_registrada and isinstance(entrada_registrada, str):
-    entrada_registrada = datetime.fromisoformat(entrada_registrada.replace("Z", "+00:00"))
+    entrada_registrada = datetime.fromisoformat(entrada_registrada).astimezone(fuso_br)
 if saida_registrada and isinstance(saida_registrada, str):
-    saida_registrada = datetime.fromisoformat(saida_registrada.replace("Z", "+00:00"))
+    saida_registrada = datetime.fromisoformat(saida_registrada).astimezone(fuso_br)
 
 # --- OPÇÃO: ENTRADA ---
 if opcao == "ENTRADA":
     st.subheader("📍 Registrar Entrada")
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        st.write(f"**Data de hoje:** {hoje.strftime('%d/%m/%Y')}")
+        st.write(f"**Data de hoje (Brasília):** {hoje.strftime('%d/%m/%Y')}")
         if entrada_registrada:
             st.success(f"✅ Entrada registrada hoje às: **{entrada_registrada.strftime('%H:%M:%S')}**")
         else:
             if st.button("🔴 REGISTRAR ENTRADA", use_container_width=True, type="primary"):
-                agora = datetime.now().isoformat()
                 dados_ponto = {
                     "email": user_email, 
                     "nome_completo": user_name, 
                     "data": str(hoje), 
-                    "horario_entrada": agora
+                    "horario_entrada": agora_br.isoformat() # Salva com marcador de timezone
                 }
-                executar_query_supabase("salvar_entrada", data_dict=dados_ponto)
+                ejecutar_query_supabase("salvar_entrada", data_dict=dados_ponto)
                 st.success("Entrada gravada com sucesso!")
                 st.rerun()
 
@@ -174,10 +180,7 @@ elif opcao == "SAÍDA":
                 st.session_state['confirmar_saida'] = True
 
             if st.session_state.get('confirmar_saida', False):
-                agora = datetime.now()
-                formato_entrada = entrada_registrada.replace(tzinfo=None)
-                
-                tempo_trabalhado = agora - formato_entrada
+                tempo_trabalhado = agora_br - entrada_registrada
                 total_segundos = int(tempo_trabalhado.total_seconds())
                 horas = total_segundos // 3600
                 minutos = (total_segundos % 3600) // 60
@@ -196,9 +199,9 @@ elif opcao == "SAÍDA":
                 
                 c1, c2 = st.columns(2)
                 if c1.button("Sim, Confirmar", use_container_width=True):
-                    executar_query_supabase(
+                    ejecutar_query_supabase(
                         "salvar_saida", 
-                        data_dict={"horario_saida": agora.isoformat()}, 
+                        data_dict={"horario_saida": agora_br.isoformat()}, 
                         email=user_email, 
                         data_filtro=hoje
                     )
@@ -212,10 +215,10 @@ elif opcao == "SAÍDA":
 # --- OPÇÃO: LOG ---
 elif opcao == "LOG":
     st.subheader("📢 Mural de Atividades (Tempo Real)")
-    st.caption("Abaixo estão as entradas e saídas recentes da equipe.")
+    st.caption("Abaixo estão as entradas e saídas recentes da equipe baseadas no horário de Brasília.")
     st.markdown("---")
     
-    logs = executar_query_supabase("buscar_logs")
+    logs = ejecutar_query_supabase("buscar_logs")
     if not logs:
         st.info("Nenhum registro ativo no mural recente.")
     else:
@@ -224,10 +227,10 @@ elif opcao == "LOG":
             dt_compara = datetime.strptime(item["data"], "%Y-%m-%d").strftime("%d/%m")
             
             if item["horario_entrada"]:
-                ent = datetime.fromisoformat(item["horario_entrada"].replace("Z", "+00:00")).strftime("%H:%M")
+                ent = datetime.fromisoformat(item["horario_entrada"]).astimezone(fuso_br).strftime("%H:%M")
                 st.write(f"🟢 **{nome}** entrou às {ent} ({dt_compara})")
             if item["horario_saida"]:
-                sai = datetime.fromisoformat(item["horario_saida"].replace("Z", "+00:00")).strftime("%H:%M")
+                sai = datetime.fromisoformat(item["horario_saida"]).astimezone(fuso_br).strftime("%H:%M")
                 st.write(f"🔵 **{nome}** saiu às {sai} ({dt_compara})")
             st.markdown("<div style='opacity:0.3; margin:5px 0;'>---</div>", unsafe_allow_html=True)
 
@@ -245,7 +248,7 @@ elif opcao == "RELATÓRIO":
     if data_inicio > data_fim:
         st.error("Erro: A data inicial não pode ser maior que a data final.")
     else:
-        dados_relatorio = executar_query_supabase(
+        dados_relatorio = ejecutar_query_supabase(
             "buscar_relatorio", 
             email=user_email, 
             data_filtro=data_inicio, 
@@ -259,8 +262,8 @@ elif opcao == "RELATÓRIO":
             df.columns = ["Data", "Horário Entrada", "Horário Saída"]
             
             df["Data"] = df["Data"].apply(lambda x: datetime.strptime(x, "%Y-%m-%d").strftime('%d/%m/%Y'))
-            df["Horário Entrada"] = df["Horário Entrada"].apply(lambda x: datetime.fromisoformat(x.replace("Z", "+00:00")).strftime('%H:%M:%S') if x else "-")
-            df["Horário Saída"] = df["Horário Saída"].apply(lambda x: datetime.fromisoformat(x.replace("Z", "+00:00")).strftime('%H:%M:%S') if x else "-")
+            df["Horário Entrada"] = df["Horário Entrada"].apply(lambda x: datetime.fromisoformat(x).astimezone(fuso_br).strftime('%H:%M:%S') if x else "-")
+            df["Horário Saída"] = df["Horário Saída"].apply(lambda x: datetime.fromisoformat(x).astimezone(fuso_br).strftime('%H:%M:%S') if x else "-")
             
             st.dataframe(df, use_container_width=True)
             
