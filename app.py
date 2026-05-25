@@ -67,7 +67,7 @@ def executar_query_supabase(operacao, data_dict=None, email=None, data_filtro=No
         supabase.table("registro_ponto").update({"exibir_no_log": False}).lt("data", str(data_filtro)).execute()
         
     elif operacao == "buscar_logs":
-        res = supabase.table("registro_ponto").select("nome_completo, horario_entrada, saida_almoco, retorno_almoco, horario_saida, data").eq("exibir_no_log", True).order("data", desc=True).execute()
+        res = supabase.table("registro_ponto").select("nome_completo, horario_entrada, saida_almoco, retorno_almoco, horario_saida, data, justificativa_entrada, justificativa_saida").eq("exibir_no_log", True).order("data", desc=True).execute()
         return res.data
         
     elif operacao == "buscar_relatorio":
