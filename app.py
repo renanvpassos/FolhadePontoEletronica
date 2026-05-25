@@ -201,10 +201,10 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                 st.session_state[f'confirmar_{opcao}'] = False
                 st.rerun()
 
-# --- OPÇÃO: LOG MODIFICADA PARA LINHAS SIMPLES CRONOLÓGICAS ---
+# --- OPÇÃO: LOG ORDENADO DO MAIS ANTIGO PARA O MAIS RECENTE ---
 elif opcao == "LOG":
     st.subheader("📢 Mural de Atividades (Tempo Real)")
-    st.caption("Abaixo estão os registros recentes da equipe ordenados do mais recente ao mais antigo.")
+    st.caption("Abaixo estão os registros recentes da equipe ordenados cronologicamente (do mais antigo ao mais recente).")
     st.markdown("---")
     
     logs_banco = executar_query_supabase("buscar_logs")
@@ -213,7 +213,6 @@ elif opcao == "LOG":
     else:
         lista_eventos = []
         
-        # Mapeamento estético para os textos das ações
         labels_acoes = {
             "horario_entrada": "entrada",
             "saida_almoco": "saida almoço",
@@ -221,7 +220,6 @@ elif opcao == "LOG":
             "horario_saida": "saida"
         }
         
-        # Desmembra cada linha agrupada do banco em batidas individuais
         for item in logs_banco:
             nome = item["nome_completo"]
             dt_compara = datetime.strptime(item["data"], "%Y-%m-%d").strftime("%d/%m")
@@ -229,23 +227,21 @@ elif opcao == "LOG":
             for coluna, label in labels_acoes.items():
                 valor_hora = item.get(coluna)
                 if valor_hora:
-                    # Converte a string ISO para objeto datetime com timezone de Brasília
                     dt_objeto = datetime.fromisoformat(valor_hora).astimezone(fuso_br)
                     lista_eventos.append({
                         "nome": nome,
                         "data_str": dt_compara,
                         "acao": label,
                         "hora_str": dt_objeto.strftime("%H:%M"),
-                        "objeto_tempo": dt_objeto # Usado como critério de ordenação real
+                        "objeto_tempo": dt_objeto 
                     })
         
         if not lista_eventos:
             st.info("Nenhum evento registrado para exibir.")
         else:
-            # Ordena todos os eventos misturados pelo horário real da batida (decrescente = mais recentes no topo)
-            lista_eventos.sort(key=lambda x: x["objeto_tempo"], reverse=True)
+            # ALTERADO: reverse=False faz a ordenação começar na batida mais antiga (ex: 08:00) e caminhar para a mais nova (ex: 18:00)
+            lista_eventos.sort(key=lambda x: x["objeto_tempo"], reverse=False)
             
-            # Renderiza as linhas simplificadas na tela
             for evento in lista_eventos:
                 st.write(f"**{evento['nome']}**: {evento['acao']} {evento['hora_str']} ({evento['data_str']})")
                 st.markdown("<div style='opacity:0.15; margin:2px 0;'>---</div>", unsafe_allow_html=True)
