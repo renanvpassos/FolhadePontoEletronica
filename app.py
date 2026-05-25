@@ -2,27 +2,21 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta, date
 from streamlit_google_auth import Authenticate
-import psycopg2  # Para conectar ao banco de dados
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(page_title="Sistema de Ponto Eletrônico Mult Processing", page_icon="⏱️", layout="centered")
+st.set_page_config(page_title="Sistema de Ponto Eletrônico", page_icon="⏱️", layout="centered")
 
-
-# --- CONEXÃO COM O BANCO DE DADOS ---
-# Configurado via secrets do Streamlit (Secrets Management no Dashboard do Streamlit Cloud)
-def init_connection():
-    return psycopg2.connect(**st.secrets["postgres"])
-
-
-conn = init_connection()
-
+# --- NOVA CONEXÃO NATIVA DO STREAMLIT ---
+# Ela lê automaticamente o bloco [postgres] das suas secrets sem precisar do psycopg2!
+conn = st.connection("postgres", type="sql")
 
 def executar_query(query, params=(), fetch=False):
-    with conn.cursor() as cur:
-        cur.execute(query, params)
+    # O Streamlit gerencia a abertura e fechamento das conexões automaticamente aqui
+    with conn.session as session:
+        result = session.execute(query, params)
         if fetch:
-            return cur.fetchall()
-        conn.commit()
+            return result.fetchall()
+        session.commit()
 
 
 # --- AUTENTICAÇÃO GOOGLE ---
