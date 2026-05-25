@@ -389,11 +389,10 @@ elif opcao == "LOG":
                     
                     st.markdown(html_log, unsafe_allow_html=True)
 
-# --- MENU: RELATÓRIO CORRIGIDO PARA FORMATO BRASILEIRO NATIVO (TELA + EXCEL) ---
 elif opcao == "RELATÓRIO":
     st.title("📊 Espelho de Ponto Pessoal")
     
-    # Inicializa as variáveis padrão de escopo da busca (o próprio usuário)
+    # Inicializa as variáveis padrão de escopo da busca
     email_busca = user_email
     nome_busca = user_name
     
@@ -408,7 +407,7 @@ elif opcao == "RELATÓRIO":
 
     lista_todos_usuarios = []
     
-    # 2. Se for 'Supervisor', liberamos o painel e guardamos a lista completa para o relatório geral
+    # 2. Se for 'Supervisor', liberamos o painel e o menu de seleção
     if cargo_usuario == "Supervisor":
         st.markdown("### 🔑 Painel de Gestão (Supervisor)")
         try:
@@ -477,7 +476,79 @@ elif opcao == "RELATÓRIO":
             # Cópia formatada para exibição em tela (Data em formato BR String)
             df_tela = df.copy()
             df_tela["Data"] = pd.to_datetime(df_tela["Data"]).dt.strftime('%d/%m/%Y')
-            st.dataframe(df_tela, use_container_width=True)
+            
+            # --- SELEÇÃO DE COMPONENTE DE ACORDO COM O CARGO ---
+            if cargo_usuario == "Supervisor":
+                st.markdown("📝 **Modo Edição Ativado:** Dê um duplo clique em qualquer célula para alterar horários (HH:MM:SS) ou justificativas.")
+                
+                # O st.data_editor permite edição em tempo real na tela do Streamlit
+                df_editado = st.data_editor(
+                    df_tela, 
+                    use_container_width=True,
+                    disabled=["Data"], # Impede o supervisor de alterar a data da linha
+                    key="editor_pontos_supervisor"
+                )
+                
+                # Botão para salvar alterações na tabela
+                if st.button("💾 Confirmar Alterações e Salvar no Banco de Dados", use_container_width=True, type="primary"):
+                    # Mapeamento reverso para cruzar as colunas da tela com os campos originais do banco
+                    colunas_reversas = {
+                        "Entrada": "horario_entrada",
+                        "Saída Almoço": "saida_almoco",
+                        "Retorno Almoço": "retorno_almoco",
+                        "Saída": "horario_saida",
+                        "Justificativa Entrada": "justificativa_entrada",
+                        "Justificativa Saída": "justificativa_saida"
+                    }
+                    
+                    sucesso_updates = 0
+                    with st.spinner("Salvando alterações no banco..."):
+                        # Varre o dataframe editado linha por linha comparando o que mudou
+                        for idx, row in df_editado.iterrows():
+                            # Captura a data original correspondente àquela linha (voltando pro padrão do banco YYYY-MM-DD)
+                            data_original = dados_relatorio[idx]["data"]
+                            
+                            dados_update = {
+                                "email": email_busca,
+                                "nome_completo": nome_busca,
+                                "data": data_original
+                            }
+                            
+                            # Processa cada coluna editada
+                            for col_tela, col_banco in colunas_reversas.items():
+                                valor_celula = str(row[col_tela]).strip()
+                                
+                                if col_banco in ["justificativa_entrada", "justificativa_saida"]:
+                                    dados_update[col_banco] = None if valor_celula == "-" else valor_celula
+                                else:
+                                    # Se a célula de horário foi limpa ou alterada para "-"
+                                    if valor_celula == "-":
+                                        dados_update[col_banco] = None
+                                    else:
+                                        try:
+                                            # Se o supervisor digitou apenas HH:MM, adicionamos os segundos zerados
+                                            if len(valor_celula) == 5:
+                                                valor_celula += ":00"
+                                                
+                                            # Reconstrói o timestamp ISO combinando a data da linha com a hora alterada
+                                            h_partes = list(map(int, valor_celula.split(":")))
+                                            h_objeto = datetime.time(h_partes[0], h_partes[1], h_partes[2])
+                                            dt_combinado = datetime.combine(datetime.strptime(data_original, "%Y-%m-%d").date(), h_objeto).replace(tzinfo=fuso_br)
+                                            dados_update[col_banco] = dt_combinado.isoformat()
+                                        except Exception as e:
+                                            st.error(f"Erro ao processar o horário '{valor_celula}' na linha do dia {data_original}. Certifique-se de usar o formato HH:MM:SS.")
+                                            st.stop()
+                                            
+                            # Envia as alterações daquela linha via upsert para o Supabase
+                            executar_query_supabase("salvar_ponto", data_dict=dados_update)
+                            sucesso_updates += 1
+                    
+                    if sucesso_updates > 0:
+                        st.success(f"Sucesso! Todas as alterações do espelho de ponto de {nome_busca} foram integradas ao banco.")
+                        st.rerun()
+            else:
+                # Se for colaborador comum, apenas exibe a tabela estática padrão
+                st.dataframe(df_tela, use_container_width=True)
             
             # --- EXPORTAÇÃO INDIVIDUAL (Padrão para todos) ---
             output_ind = BytesIO()
@@ -501,26 +572,22 @@ elif opcao == "RELATÓRIO":
             st.write("---")
             st.markdown("##### 🗂️ Exportação Avançada")
             
-            if st.button("📊 Gerar Relatório Consolidado de Todos os Funcionários", use_container_width=True, type="primary"):
+            if st.button("📊 Gerar Relatório Consolidado de Todos os Funcionários", use_container_width=True, type="secondary"):
                 with st.spinner("Compilando registros e gerando abas..."):
                     output_geral = BytesIO()
                     
-                    # Abre o escritor do pandas para criar um único arquivo com múltiplas planilhas
                     with pd.ExcelWriter(output_geral, engine='openpyxl') as writer:
                         for colaborador in lista_todos_usuarios:
                             e_lista = colaborador["email"]
                             n_lista = colaborador["nome"]
                             
-                            # Busca os dados de cada um no banco
                             dados_c = executar_query_supabase("buscar_relatorio", email=e_lista, data_filtro=data_inicio, data_fim=data_fim)
                             df_c = processar_dados_ponto(dados_c)
                             df_c["Data"] = pd.to_datetime(df_c["Data"]).dt.strftime('%d/%m/%Y')
                             
-                            # Limita o nome da aba ao limite de 31 caracteres do Excel para evitar erros
                             nome_aba = n_lista.split(" ")[0] + " " + (n_lista.split(" ")[-1] if len(n_lista.split(" ")) > 1 else "")
                             nome_aba = nome_aba[:30]
                             
-                            # Salva os dados do funcionário atual em sua própria aba
                             df_c.to_excel(writer, index=False, sheet_name=nome_aba)
                     
                     st.success("Planilha consolidada gerada com sucesso! Clique no botão abaixo para baixar.")
