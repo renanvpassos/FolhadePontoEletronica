@@ -264,12 +264,10 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                     # --- REGRAS DE OBRIGATORIEDADE E TRAVAS ATUALIZADAS ---
                     if not erro_validacao:
                         if opcao == "ENTRADA":
-                            # Obrigatório se a entrada digitada for ANTES do horário atual do servidor
                             if horario_final_gravacao < agora_br_sem_segundos:
                                 justificativa_obrigatoria = True
                                 
                         elif opcao == "RETORNO ALMOÇO":
-                            # Nova Trava: Obriga justificativa se o intervalo de almoço exceder 1h e 10min (70 minutos)
                             if pontos["SAÍDA ALMOÇO"]:
                                 t_saida_alm = pontos["SAÍDA ALMOÇO"]
                                 tempo_almoco_segundos = int((horario_final_gravacao - t_saida_alm).total_seconds())
@@ -279,18 +277,15 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                                     justificativa_obrigatoria = True
                                     
                         elif opcao == "SAÍDA":
-                            # CRÍTICO: Bloqueia se o usuário tentar colocar um horário no futuro
                             if horario_final_gravacao > agora_br_sem_segundos:
                                 st.error(f"🛑 Horário inválido! Você não pode registrar uma Saída maior do que o horário atual ({agora_br_sem_segundos.strftime('%H:%M')}).")
                                 erro_validacao = True
                             
-                            # Se não for futuro, aplica a regra de tolerância de jornada (Mínimo 9h, Máximo 9h10min59s)
                             elif pontos["ENTRADA"]:
                                 t_entrada = pontos["ENTRADA"]
                                 t_saida_atual = horario_final_gravacao
                                 
                                 tempo_total_segundos = int((t_saida_atual - t_entrada).total_seconds())
-                                
                                 limite_inferior = 9 * 3600
                                 limite_superior = (9 * 3600) + (10 * 60) + 59
                                 
@@ -359,7 +354,6 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                 
                 # --- TRAVA DE VALIDAÇÃO VISUAL ---
                 bloquear_confirmacao = erro_validacao
-                # Valida se é obrigatório E se cumpre o requisito de 3 caracteres mínimos
                 atende_tamanho_minimo = len(justificativa_limpa) >= 3
                 
                 if justificativa_obrigatoria and not atende_tamanho_minimo:
@@ -372,7 +366,6 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                 # --- BOTÃO DE CONFIRMAÇÃO COM DUPLA TRAVA ---
                 if c1.button("Confirmar Marcação", key=f"sim_{opcao}", use_container_width=True, type="primary", disabled=bloquear_confirmacao):
                     
-                    # Checagem final de segurança rigorosa contra cliques rápidos ou nulos
                     if justificativa_obrigatoria and (not justificativa_limpa or len(justificativa_limpa) < 3):
                         st.error("🛑 Erro: Gravação impedida! Preencha a justificativa com no mínimo 3 caracteres.")
                         st.session_state[f'confirmar_{opcao}'] = True 
@@ -389,15 +382,17 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                             colunas_banco[opcao]: horario_final_gravacao.isoformat()
                         }
                         
-                        # Aloca a justificativa na coluna correta que você acabou de criar no Supabase
-                        if opcao == "ENTRADA":
+                        # --- SOLUÇÃO AQUI: Aloca a justificativa para todas as 4 colunas possíveis no banco ---
+                        if justificativa_limpa:
+                            if opcao == "ENTRADA":
                                 dados_ponto["justificativa_entrada"] = justificativa_limpa
                             elif opcao == "SAÍDA ALMOÇO":
-                                dados_ponto["justificativa_saida_almoco"] = justificativa_limpa # Adicionado
+                                dados_ponto["justificativa_saida_almoco"] = justificativa_limpa
                             elif opcao == "RETORNO ALMOÇO":
-                                dados_ponto["justificativa_retorno_almoco"] = justificativa_limpa # Adicionado
+                                dados_ponto["justificativa_retorno_almoco"] = justificativa_limpa
                             elif opcao == "SAÍDA":
                                 dados_ponto["justificativa_saida"] = justificativa_limpa
+                        
                         # Executa a gravação no Supabase
                         executar_query_supabase("salvar_ponto", data_dict=dados_ponto)
                         st.session_state[f'confirmar_{opcao}'] = False
