@@ -460,6 +460,9 @@ elif opcao == "LOG":
     if not logs_banco:
         st.info("Nenhuma atividade registrada no mural recente.")
     else:
+        # Pega a data de hoje no fuso correto e formata como 'YYYY-MM-DD'
+        hoje_str = datetime.now(fuso_br).strftime("%Y-%m-%d")
+        
         lista_eventos = []
         labels_acoes = {
             "horario_entrada": "🟢 Entrou",
@@ -469,6 +472,10 @@ elif opcao == "LOG":
         }
         
         for item in logs_banco:
+            # Filtro: Se a data do log não for igual à data de hoje, pula para o próximo item
+            if item.get("data") != hoje_str:
+                continue
+                
             nome = item["nome_completo"]
             dt_compara = datetime.strptime(item["data"], "%Y-%m-%d").strftime("%d/%m")
             
@@ -497,7 +504,7 @@ elif opcao == "LOG":
                     })
         
         if not lista_eventos:
-            st.info("Nenhum registro encontrado.")
+            st.info("Nenhum registro encontrado para o dia de hoje.")
         else:
             lista_eventos.sort(key=lambda x: x["objeto_tempo"], reverse=False)
             
