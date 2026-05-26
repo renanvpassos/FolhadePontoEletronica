@@ -268,6 +268,16 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                             if horario_final_gravacao < agora_br_sem_segundos:
                                 justificativa_obrigatoria = True
                                 
+                        elif opcao == "RETORNO ALMOÇO":
+                            # Nova Trava: Obriga justificativa se o intervalo de almoço exceder 1h e 10min (70 minutos)
+                            if pontos["SAÍDA ALMOÇO"]:
+                                t_saida_alm = pontos["SAÍDA ALMOÇO"]
+                                tempo_almoco_segundos = int((horario_final_gravacao - t_saida_alm).total_seconds())
+                                limite_almoco = (1 * 3600) + (10 * 60) # 1h e 10min em segundos
+                                
+                                if tempo_almoco_segundos > limite_almoco:
+                                    justificativa_obrigatoria = True
+                                    
                         elif opcao == "SAÍDA":
                             # CRÍTICO: Bloqueia se o usuário tentar colocar um horário no futuro
                             if horario_final_gravacao > agora_br_sem_segundos:
@@ -385,6 +395,8 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                                 dados_ponto["justificativa_entrada"] = justificativa_limpa
                             elif opcao == "SAÍDA":
                                 dados_ponto["justificativa_saida"] = justificativa_limpa
+                            elif opcao == "RETORNO ALMOÇO":
+                                dados_ponto["justificativa_retorno_almoco"] = justificativa_limpa # Adicionado dinamicamente caso sua tabela possua este campo
                         
                         # Executa a gravação no Supabase
                         executar_query_supabase("salvar_ponto", data_dict=dados_ponto)
