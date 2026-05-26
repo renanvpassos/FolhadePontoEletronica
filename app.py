@@ -606,7 +606,7 @@ elif opcao == "RELATÓRIO":
                         "Saída": "horario_saida",
                         "Justificativa Entrada": "justificativa_entrada",
                         "Justificativa Saída Almoço": "justificativa_saida_almoco",
-                        "Justificativa Retorno Almoço": "justificativa_retorno_almoco"
+                        "Justificativa Retorno Almoço": "justificativa_retorno_almoco",
                         "Justificativa Saída": "justificativa_saida",
                     }
                     
