@@ -335,10 +335,10 @@ elif opcao == "LOG":
     else:
         lista_eventos = []
         labels_acoes = {
-            "horario_entrada": "🟢 realizou ENTRADA",
-            "saida_almoco": "🟡 saiu para o ALMOÇO",
-            "retorno_almoco": "🟠 RETORNOU do almoço",
-            "horario_saida": "🔵 realizou SAÍDA"
+            "horario_entrada": "🟢 Entrou",
+            "saida_almoco": "🟡 saiu para o almoço",
+            "retorno_almoco": "🔵 retornou do almoço",
+            "horario_saida": "🟠 Saiu"
         }
         
         for item in logs_banco:
@@ -409,23 +409,27 @@ elif opcao == "RELATÓRIO":
     
     # 2. Se for 'Supervisor', liberamos o painel e o menu de seleção
     if cargo_usuario == "Supervisor":
-        st.markdown("### 🔑 Painel de Gestão (Supervisor)")
-        try:
-            usuarios_banco = supabase.table("usuarios_ponto").select("email, nome").execute()
-            if usuarios_banco.data:
-                lista_todos_usuarios = usuarios_banco.data
-                opcoes_usuarios = {f"{u['nome']} ({u['email']})": u for u in usuarios_banco.data}
-                
-                usuario_selecionado_str = st.selectbox(
-                    "Selecione o colaborador que deseja consultar na tela:",
-                    options=list(opcoes_usuarios.keys())
-                )
-                
-                colaborador_escolhido = opcoes_usuarios[usuario_selecionado_str]
-                email_busca = colaborador_escolhido["email"]
-                nome_busca = colaborador_escolhido["nome"]
-        except Exception as e:
-            st.error("Erro ao carregar a lista de funcionários.")
+    st.markdown("### 🔑 Painel de Gestão (Supervisor)")
+    try:
+        usuarios_banco = supabase.table("usuarios_ponto").select("email, nome").execute()
+        if usuarios_banco.data:
+            # Ordena a lista de dicionários pelo campo 'nome' em ordem alfabética
+            lista_todos_usuarios = sorted(usuarios_banco.data, key=lambda x: x['nome'].lower())
+            
+            # Cria o dicionário de opções já com a lista ordenada
+            opcoes_usuarios = {f"{u['nome']} ({u['email']})": u for u in lista_todos_usuarios}
+            
+            usuario_selecionado_str = st.selectbox(
+                "Selecione o colaborador que deseja consultar na tela:",
+                options=list(opcoes_usuarios.keys())
+            )
+            
+            colaborador_escolhido = opcoes_usuarios[usuario_selecionado_str]
+            email_busca = colaborador_escolhido["email"]
+            nome_busca = colaborador_escolhido["nome"]
+            
+    except Exception as e:
+        st.error("Erro ao carregar a lista de funcionários.")
             
     st.caption(f"Filtro e exportação de folhas e históricos para: **{nome_busca}**")
     st.write("")
