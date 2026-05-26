@@ -307,29 +307,35 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                 
                 c1, c2 = st.columns(2)
                 
-                # Bloqueio do botão de envio apenas se cair na regra de obrigatoriedade
+                # Regras para desabilitar o botão visualmente
                 bloquear_confirmacao = erro_validacao
                 if justificativa_obrigatoria and not justificativa:
                     bloquear_confirmacao = True
                     st.error("🛑 Atenção: A justificativa é obrigatória para este ajuste de horário.")
                 
+                # --- BOTÃO DE CONFIRMAÇÃO COM VALIDAÇÃO INTERNA CRÍTICA ---
                 if c1.button("Confirmar Marcação", key=f"sim_{opcao}", use_container_width=True, type="primary", disabled=bloquear_confirmacao):
-                    dados_ponto = {
-                        "email": user_email,
-                        "nome_completo": user_name,
-                        "data": str(hoje),
-                        colunas_banco[opcao]: horario_final_gravacao.isoformat()
-                    }
                     
-                    # Salva a justificativa no banco caso o usuário tenha preenchido
-                    if justificativa:
-                        sufixo_coluna = opcao.lower().replace(" ", "_")
-                        dados_ponto[f"justificativa_{sufixo_coluna}"] = justificativa
+                    # Dupla checagem de segurança (Garante que mesmo se o botão for clicado, ele não salva sem justificativa)
+                    if justificativa_obrigatoria and not justificativa:
+                        st.error("🛑 Erro crítico: Você precisa preencher a justificativa antes de salvar!")
+                    else:
+                        dados_ponto = {
+                            "email": user_email,
+                            "nome_completo": user_name,
+                            "data": str(hoje),
+                            colunas_banco[opcao]: horario_final_gravacao.isoformat()
+                        }
                         
-                    executar_query_supabase("salvar_ponto", data_dict=dados_ponto)
-                    st.session_state[f'confirmar_{opcao}'] = False
-                    st.success(f"Horário gravado com sucesso!")
-                    st.rerun()
+                        # Salva a justificativa no banco caso o usuário tenha preenchido
+                        if justificativa:
+                            sufixo_coluna = opcao.lower().replace(" ", "_")
+                            dados_ponto[f"justificativa_{sufixo_coluna}"] = justificativa
+                            
+                        executar_query_supabase("salvar_ponto", data_dict=dados_ponto)
+                        st.session_state[f'confirmar_{opcao}'] = False
+                        st.success(f"Horário gravado com sucesso!")
+                        st.rerun()
                     
                 if c2.button("Cancelar", key=f"nao_{opcao}", use_container_width=True):
                     st.session_state[f'confirmar_{opcao}'] = False
