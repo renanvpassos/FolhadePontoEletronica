@@ -409,6 +409,7 @@ elif opcao == "RELATÓRIO":
     
     # 2. Se for 'Supervisor', liberamos o painel e o menu de seleção
     if cargo_usuario == "Supervisor":
+        
     st.markdown("### 🔑 Painel de Gestão (Supervisor)")
     try:
         usuarios_banco = supabase.table("usuarios_ponto").select("email, nome").execute()
