@@ -10,8 +10,8 @@ from supabase import create_client, Client
 # ==============================================================================
 st.set_page_config(page_title="Sistema de Ponto Eletrônico", page_icon="⏱️", layout="wide")
 
-SUPABASE_URL = "SUA_URL_DO_SUPABASE"
-SUPABASE_KEY = "SUA_ANON_KEY_DO_SUPABASE"
+SUPABASE_URL = "https://cgulxnvzoclmyckqxguj.supabase.co"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNndWx4bnZ6b2NsbXlja3F4Z3VqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk3MTIwMDQsImV4cCI6MjA5NTI4ODAwNH0.2Atv74ROlRkYpb_yQXkvD0zlsB5MqhfX10YTvWeNMOE"
 
 @st.cache_resource
 def conectar_supabase() -> Client:
