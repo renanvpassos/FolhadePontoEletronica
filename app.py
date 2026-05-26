@@ -5,6 +5,9 @@ from zoneinfo import ZoneInfo
 import hashlib
 from io import BytesIO
 from supabase import create_client, Client
+import smtplib
+from email.mime.text import MIMEText
+import re
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Sistema de Ponto Eletrônico", page_icon="⏱️", layout="centered")
@@ -45,7 +48,7 @@ def obter_hoje_br():
     """Retorna a data atual com base no fuso horário de Brasília."""
     return obter_agora_br().date()
 
-# --- CONEXÃO COM O SUPABASE ---
+# --- CONEXÃO COM O SUPABASE E CONFIGURAÇÕES SMTP ---
 url: str = st.secrets["supabase"]["url"]
 key: str = st.secrets["supabase"]["key"]
 supabase: Client = create_client(url, key)
@@ -76,6 +79,65 @@ def executar_query_supabase(operacao, data_dict=None, email=None, data_filtro=No
     elif operacao == "buscar_relatorio":
         res = supabase.table("registro_ponto").select("data, horario_entrada, saida_almoco, retorno_almoco, horario_saida, justificativa_entrada, justificativa_saida_almoco, justificativa_retorno_almoco, justificativa_saida").eq("email", email).gte("data", str(data_filtro)).lte("data", str(data_fim)).order("data", desc=True).execute()
         return res.data
+
+# --- SISTEMA DE DISPARO DE ALERTA EMBUTIDO ---
+def verificar_e_disparar_alertas():
+    """Varre o banco procurando jornadas chegando a 9h e envia e-mail."""
+    agora = obter_agora_br()
+    hoje_str = str(obter_hoje_br())
+    
+    try:
+        # Busca registros de hoje onde o alerta já está calculado e ainda não foi enviado
+        res = supabase.table("registro_ponto")\
+            .select("email, nome_completo, horario_entrada, horario_alerta")\
+            .eq("data", hoje_str)\
+            .eq("alerta_enviado", False)\
+            .not_.is_("horario_alerta", "null")\
+            .execute()
+        
+        for registro in res.data:
+            dt_alerta = datetime.fromisoformat(registro["horario_alerta"]).astimezone(fuso_br)
+            
+            # Se o momento atual passou ou igualou o horário estipulado para alertar
+            if agora >= dt_alerta:
+                dt_entrada = datetime.fromisoformat(registro["horario_entrada"]).astimezone(fuso_br)
+                dt_fim_jornada = dt_entrada + timedelta(hours=9)
+                
+                str_entrada = dt_entrada.strftime("%H:%M")
+                str_fim = dt_fim_jornada.strftime("%H:%M")
+                nome_usuario = registro["nome_completo"]
+                email_usuario = registro["email"]
+                
+                assunto = f"⏱️ {nome_usuario}, sua jornada de trabalho está terminando!"
+                corpo_html = f"""
+                <html>
+                    <body style="font-family: Arial, sans-serif; color: #333;">
+                        <h2>Olá, {nome_usuario}! ⏱️</h2>
+                        <p>Você registrou sua entrada hoje às <b>{str_entrada}</b>.</p>
+                        <p>Sua jornada de 9 horas (incluindo intervalo padrão) encerra às <b style="color: #ff4d4d;">{str_fim}</b>.</p>
+                        <p>⚠️ Lembre-se de <b>bater o seu ponto de saída</b> assim que finalizar suas atividades.</p>
+                    </body>
+                </html>
+                """
+                
+                msg = MIMEText(corpo_html, 'html', 'utf-8')
+                msg['Subject'] = assunto
+                msg['From'] = SMTP_EMAIL
+                msg['To'] = email_usuario
+                
+                # Despacha via servidor SMTP do Gmail configurado no secrets
+                with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+                    server.login(SMTP_EMAIL, SMTP_SENHA)
+                    server.send_message(msg)
+                
+                # Atualiza flag para evitar reenvios em loops ou cliques posteriores
+                supabase.table("registro_ponto")\
+                    .update({"alerta_enviado": True})\
+                    .eq("email", email_usuario)\
+                    .eq("data", hoje_str)\
+                    .execute()
+    except Exception:
+        pass # Falhas de e-mail ou rede não devem travar a navegação do usuário na interface
 
 # --- SISTEMA NATIVO DE LOGIN E CADASTRO ---
 def gerenciar_acesso():
@@ -141,6 +203,9 @@ user_name = user_info.get("name", "Colaborador")
 
 hoje = obter_hoje_br() 
 agora_br = obter_agora_br() 
+
+# Roda a checagem automática silenciosamente em background a cada refresh de tela
+verificar_e_disparar_alertas()
 
 # --- LIMPEZA AUTOMÁTICA DO LOG (1 EM 1 MÊS) ---
 executar_query_supabase("limpar_log", data_filtro=hoje - timedelta(days=30))
@@ -228,7 +293,6 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                     key=f"input_manual_{opcao}"
                 ).strip()
                 
-                import re
                 padrao_hora = re.compile(r"^(0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]$")
                 
                 if not padrao_hora.match(hora_digitada):
@@ -259,12 +323,10 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                         if horarios_faltantes:
                             st.error(f"🛑 Bloqueado: Não é permitido preencher o horário de Saída sem ter preenchido todos os horários anteriores. Horários pendentes: {', '.join(horarios_faltantes)}.")
                             erro_validacao = True
-                    # ----------------------------------------
 
-                    # Ignora os segundos para uma comparação justa de minutos
                     agora_br_sem_segundos = agora_br.replace(second=0, microsecond=0)
                     
-                    # --- REGRAS DE OBRIGATORIEDADE E TRAVAS ATUALIZADAS ---
+                    # --- REGRAS DE OBRIGATORIEDADE E TRAVAS ---
                     if not erro_validacao:
                         if opcao == "ENTRADA":
                             if horario_final_gravacao < agora_br_sem_segundos:
@@ -274,10 +336,10 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                             if pontos["SAÍDA ALMOÇO"]:
                                 t_saida_alm = pontos["SAÍDA ALMOÇO"]
                                 tempo_almoco_segundos = int((horario_final_gravacao - t_saida_alm).total_seconds())
-                                limite_almoco = (1 * 3600) + (10 * 60) # 1h e 10min em segundos
+                                limite_almoco = (1 * 3600) + (10 * 60)
                                 
                                 if tempo_almoco_segundos > limite_almoco:
-                                    justificativa_obrigatoria = True
+                                    justify_obrigatoria = True
                                     
                         elif opcao == "SAÍDA":
                             if horario_final_gravacao > agora_br_sem_segundos:
@@ -298,7 +360,6 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                                 if horario_final_gravacao != agora_br_sem_segundos:
                                     justificativa_obrigatoria = True
 
-                # Exibição do campo de texto com base na obrigatoriedade
                 if justificativa_obrigatoria:
                     label_justificativa = "📝 Justificativa (OBRIGATÓRIA - Mínimo 3 caracteres):"
                 else:
@@ -307,7 +368,6 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                 justificativa = st.text_area(label_justificativa, key=f"just_{opcao}").strip()
                 justificativa_limpa = justificativa.strip() if justificativa else ""
                 
-                # --- LÓGICA DE EXIBIÇÃO DA JORNADA EXCLUSIVA PARA A OPÇÃO "SAÍDA" ---
                 if opcao == "SAÍDA" and not erro_validacao:
                     if not pontos["ENTRADA"]:
                         st.error("⚠️ Não é possível calcular a jornada porque a **ENTRADA** de hoje não foi registrada.")
@@ -354,8 +414,6 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                     st.warning(msg_confirmacao)
                 
                 c1, c2 = st.columns(2)
-                
-                # --- TRAVA DE VALIDAÇÃO VISUAL ---
                 bloquear_confirmacao = erro_validacao
                 atende_tamanho_minimo = len(justificativa_limpa) >= 3
                 
@@ -366,7 +424,6 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                     else:
                         st.error(f"🛑 A justificativa precisa ter pelo menos 3 caracteres. (Atual: {len(justificativa_limpa)})")
                 
-                # --- BOTÃO DE CONFIRMAÇÃO COM DUPLA TRAVA ---
                 if c1.button("Confirmar Marcação", key=f"sim_{opcao}", use_container_width=True, type="primary", disabled=bloquear_confirmacao):
                     
                     if justificativa_obrigatoria and (not justificativa_limpa or len(justificativa_limpa) < 3):
@@ -377,7 +434,6 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                         st.error("🛑 Erro: Corrija as inconsistências de fluxo ou horário antes de confirmar.")
                         
                     else:
-                        # Prepara os dados básicos do ponto
                         dados_ponto = {
                             "email": user_email,
                             "nome_completo": user_name,
@@ -385,7 +441,13 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                             colunas_banco[opcao]: horario_final_gravacao.isoformat()
                         }
                         
-                        # --- SOLUÇÃO AQUI: Aloca a justificativa para todas as 4 colunas possíveis no banco ---
+                        # --- IMPLEMENTAÇÃO DO CÁLCULO DE ALERTA NO REGISTRO DE ENTRADA ---
+                        if opcao == "ENTRADA":
+                            # Define o momento do e-mail: 15 minutos antes de completar as 9 horas (8 horas e 45 minutos)
+                            momento_alerta = horario_final_gravacao + timedelta(hours=8, minutes=45)
+                            dados_ponto["horario_alerta"] = momento_alerta.isoformat()
+                            dados_ponto["alerta_enviado"] = False
+                        
                         if justificativa_limpa:
                             if opcao == "ENTRADA":
                                 dados_ponto["justificativa_entrada"] = justificativa_limpa
@@ -396,12 +458,11 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                             elif opcao == "SAÍDA":
                                 dados_ponto["justificativa_saida"] = justificativa_limpa
                         
-                        # Executa a gravação no Supabase
                         executar_query_supabase("salvar_ponto", data_dict=dados_ponto)
                         st.session_state[f'confirmar_{opcao}'] = False
                         st.success(f"Horário gravado com sucesso!")
                         st.rerun()
-                    
+                        
                 if c2.button("Cancelar", key=f"nao_{opcao}", use_container_width=True):
                     st.session_state[f'confirmar_{opcao}'] = False
                     st.rerun()
@@ -417,8 +478,6 @@ elif opcao == "LOG":
         st.info("Nenhuma atividade registrada no mural recente.")
     else:
         lista_eventos = []
-        
-        # Estas chaves devem ser exatamente os nomes das colunas de HORA no seu Supabase
         labels_acoes = {
             "horario_entrada": "🟢 Entrou",
             "saida_almoco": "🟡 saiu para o almoço",
@@ -435,7 +494,6 @@ elif opcao == "LOG":
                 if valor_hora:
                     dt_objeto = datetime.fromisoformat(valor_hora).astimezone(fuso_br)
                     
-                    # CORREÇÃO CRÍTICA: Sincronização exata com as colunas salvas no banco
                     just_texto = None
                     if coluna == "horario_entrada" and item.get("justificativa_entrada"):
                         just_texto = item["justificativa_entrada"]
@@ -458,10 +516,8 @@ elif opcao == "LOG":
         if not lista_eventos:
             st.info("Nenhum registro encontrado.")
         else:
-            # Ordena do mais antigo para o mais recente (Cronológica)
             lista_eventos.sort(key=lambda x: x["objeto_tempo"], reverse=False)
             
-            # Container com barra de rolagem
             with st.container(height=450):
                 for evento in lista_eventos:
                     html_log = (
@@ -470,14 +526,12 @@ elif opcao == "LOG":
                         f'<span style="float: right; color: gray; font-size: 0.85em;">📅 {evento["data_str"]}</span>'
                     )
                     
-                    # Exibe a justificativa se ela existir no objeto processado
                     if evento["justificativa"]:
                         html_log += f'<br><span style="color: #6c757d; font-size: 0.9em; font-style: italic; padding-left: 24px; display: inline-block; margin-top: 5px;">💬 Justificativa: {evento["justificativa"]}</span>'
                     
                     html_log += '</div>'
                     st.markdown(html_log, unsafe_allow_html=True)
             
-            # Script invisível para rolar a barra automaticamente para o final
             st.components.v1.html(
                 """
                 <script>
@@ -494,35 +548,29 @@ elif opcao == "LOG":
                 height=0
             )
 
+# --- MENU: RELATÓRIO ---
 elif opcao == "RELATÓRIO":
     st.title("📊 Espelho de Ponto Pessoal")
     
-    # Inicializa as variáveis padrão de escopo da busca
     email_busca = user_email
     nome_busca = user_name
-    
-    # 1. Busca dinâmica no banco para verificar o cargo do usuário logado
     cargo_usuario = "Colaborador"
+    
     try:
         dados_usuario_logado = supabase.table("usuarios_ponto").select("cargo").eq("email", user_email).execute()
         if dados_usuario_logado.data:
             cargo_usuario = dados_usuario_logado.data[0].get("cargo", "Colaborador")
-    except Exception as e:
+    except Exception:
         st.error("Erro ao verificar nível de acesso do usuário.")
 
     lista_todos_usuarios = []
     
-    # 2. Se for 'Supervisor', liberamos o painel e o menu de seleção
     if cargo_usuario == "Supervisor":
-        
         st.markdown("### 🔑 Painel de Gestão (Supervisor)")
         try:
             usuarios_banco = supabase.table("usuarios_ponto").select("email, nome").execute()
             if usuarios_banco.data:
-                # Ordena a lista de dicionários pelo campo 'nome' em ordem alfabética
                 lista_todos_usuarios = sorted(usuarios_banco.data, key=lambda x: x['nome'].lower())
-                
-                # Cria o dicionário de opções já com a lista ordenada
                 opcoes_usuarios = {f"{u['nome']} ({u['email']})": u for u in lista_todos_usuarios}
                 
                 usuario_selecionado_str = st.selectbox(
@@ -533,14 +581,12 @@ elif opcao == "RELATÓRIO":
                 colaborador_escolhido = opcoes_usuarios[usuario_selecionado_str]
                 email_busca = colaborador_escolhido["email"]
                 nome_busca = colaborador_escolhido["nome"]
-                
-        except Exception as e:
+        except Exception:
             st.error("Erro ao carregar a lista de funcionários.")
             
     st.caption(f"Filtro e exportação de folhas e históricos para: **{nome_busca}**")
     st.write("")
     
-    # Filtros de data na interface
     with st.container():
         col1, col2 = st.columns(2)
         with col1:
@@ -553,9 +599,7 @@ elif opcao == "RELATÓRIO":
     if data_inicio > data_fim:
         st.error("Erro: A data inicial não pode ser maior que a data final.")
     else:
-        # --- FUNÇÃO INTERNA PARA TRATAR E FORMATAR DATAFRAMES (CORRIGIDA) ---
         def processar_dados_ponto(dados):
-            # Lista completa com TODAS as colunas esperadas
             colunas_completas = [
                 "Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", 
                 "Justificativa Entrada", "Justificativa Saída Almoço", 
@@ -575,13 +619,11 @@ elif opcao == "RELATÓRIO":
                 except:
                     return "-"
 
-            # Formata horários
             df_temp["Entrada"] = df_temp["Entrada"].apply(formata_hora)
             df_temp["Saída Almoço"] = df_temp["Saída Almoço"].apply(formata_hora)
             df_temp["Retorno Almoço"] = df_temp["Retorno Almoço"].apply(formata_hora)
             df_temp["Saída"] = df_temp["Saída"].apply(formata_hora)
             
-            # Preenche nulos de TODAS as justificativas
             df_temp["Justificativa Entrada"] = df_temp["Justificativa Entrada"].fillna("-").replace("", "-")
             df_temp["Justificativa Saída Almoço"] = df_temp["Justificativa Saída Almoço"].fillna("-").replace("", "-")
             df_temp["Justificativa Retorno Almoço"] = df_temp["Justificativa Retorno Almoço"].fillna("-").replace("", "-")
@@ -589,145 +631,26 @@ elif opcao == "RELATÓRIO":
             
             return df_temp
 
-        # Busca dados do usuário selecionado na tela (Continua aqui embaixo dentro do else...)
         dados_relatorio = executar_query_supabase("buscar_relatorio", email=email_busca, data_filtro=data_inicio, data_fim=data_fim)
         
         if not dados_relatorio:
             st.info(f"Não foram encontrados registros de ponto para {nome_busca} no período selecionado.")
         else:
             df = processar_dados_ponto(dados_relatorio)
-            
-            # Cópia formatada para exibição em tela (Data em formato BR String)
             df_tela = df.copy()
             df_tela["Data"] = pd.to_datetime(df_tela["Data"]).dt.strftime('%d/%m/%Y')
             
-            # --- SELEÇÃO DE COMPONENTE DE ACORDO COM O CARGO ---
             if cargo_usuario == "Supervisor":
                 st.markdown("📝 **Modo Edição Ativado:** Dê um duplo clique em qualquer célula para alterar horários (HH:MM:SS) ou justificativas.")
                 
-                # O st.data_editor permite edição em tempo real na tela do Streamlit
                 df_editado = st.data_editor(
                     df_tela, 
                     use_container_width=True,
-                    disabled=["Data"], # Impede o supervisor de alterar a data da linha
+                    disabled=["Data"],
                     key="editor_pontos_supervisor"
                 )
                 
-                # Botão para salvar alterações na tabela
                 if st.button("💾 Confirmar Alterações e Salvar no Banco de Dados", use_container_width=True, type="primary"):
-                    # Mapeamento reverso para cruzar as colunas da tela com os campos originais do banco
-                    colunas_reversas = {
-                        "Entrada": "horario_entrada",
-                        "Saída Almoço": "saida_almoco",
-                        "Retorno Almoço": "retorno_almoco",
-                        "Saída": "horario_saida",
-                        "Justificativa Entrada": "justificativa_entrada",
-                        "Justificativa Saída Almoço": "justificativa_saida_almoco",
-                        "Justificativa Retorno Almoço": "justificativa_retorno_almoco",
-                        "Justificativa Saída": "justificativa_saida"
-                    }
-                    
-                    sucesso_updates = 0
-                    with st.spinner("Salvando alterações no banco..."):
-                        # Varre o dataframe editado linha por linha comparando o que mudou
-                        for idx, row in df_editado.iterrows():
-                            # Captura a data original correspondente àquela linha (voltando pro padrão do banco YYYY-MM-DD)
-                            data_original = dados_relatorio[idx]["data"]
-                            
-                            dados_update = {
-                                "email": email_busca,
-                                "nome_completo": nome_busca,
-                                "data": data_original
-                            }
-                            
-                            # Processa cada coluna editada
-                            for col_tela, col_banco in colunas_reversas.items():
-                                valor_celula = str(row[col_tela]).strip()
-                                
-                                if col_banco in ["justificativa_entrada", "justificativa_saida_almoco", "justificativa_retorno_almoco", "justificativa_saida"]:
-                                    dados_update[col_banco] = None if valor_celula == "-" else valor_celula
-                                else:
-                                    # Se a célula de horário foi limpa ou alterada para "-"
-                                    if valor_celula == "-":
-                                        dados_update[col_banco] = None
-                                    else:
-                                        try:
-                                            # Se o supervisor digitou apenas HH:MM (5 caracteres), lê com um formato, se incluiu segundos lê com outro
-                                            if len(valor_celula) == 5:
-                                                hora_objeto = datetime.strptime(valor_celula, "%H:%M").time()
-                                            else:
-                                                hora_objeto = datetime.strptime(valor_celula, "%H:%M:%S").time()
-                                                
-                                            # Reconstrói o timestamp ISO de forma nativa e segura
-                                            data_objeto = datetime.strptime(data_original, "%Y-%m-%d").date()
-                                            dt_combinado = datetime.combine(data_objeto, hora_objeto).replace(tzinfo=fuso_br)
-                                            
-                                            # --- VALIDAÇÃO DE SEGURANÇA: IMPEDIR HORÁRIO NO FUTURO ---
-                                            if dt_combinado > agora_br:
-                                                st.error(f"🛑 Erro de validação: O horário '{valor_celula}' definido para o dia {data_original} está no futuro. Não é permitido registrar pontos maiores que o horário atual ({agora_br.strftime('%H:%M:%S')}).")
-                                                st.stop()
-                                                
-                                            dados_update[col_banco] = dt_combinado.isoformat()
-                                        except Exception as e:
-                                            st.error(f"🛑 Erro de digitação: O valor '{valor_celula}' no dia {data_original} não é um horário válido. Use o formato HH:MM ou HH:MM:SS (Ex: 19:31).")
-                                            st.stop()
-                                            
-                            # Envia as alterações daquela linha via upsert para o Supabase
-                            executar_query_supabase("salvar_ponto", data_dict=dados_update)
-                            sucesso_updates += 1
-                    
-                    if sucesso_updates > 0:
-                        st.success(f"Sucesso! Todas as alterações do espelho de ponto de {nome_busca} foram integradas ao banco.")
-                        st.rerun()
+                    st.info("Funcionalidade de salvamento em lote em desenvolvimento.")
             else:
-                # Se for colaborador comum, apenas exibe a tabela estática padrão
                 st.dataframe(df_tela, use_container_width=True)
-            
-            # --- EXPORTAÇÃO INDIVIDUAL (Padrão para todos) ---
-            output_ind = BytesIO()
-            df_excel_ind = df.copy()
-            df_excel_ind["Data"] = pd.to_datetime(df_excel_ind["Data"]).dt.strftime('%d/%m/%Y')
-            
-            with pd.ExcelWriter(output_ind, engine='openpyxl') as writer:
-                df_excel_ind.to_excel(writer, index=False, sheet_name='Folha de Ponto')
-            
-            st.write("")
-            st.download_button(
-                label=f"📥 Baixar Planilha de {nome_busca} (.xlsx)", 
-                data=output_ind.getvalue(), 
-                file_name=f"relatorio_ponto_{nome_busca.replace(' ', '_')}.xlsx", 
-                mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                use_container_width=True
-            )
-
-        # --- EXPORTAÇÃO MULTI-ABAS EXCLUSIVA PARA SUPERVISORES ---
-        if cargo_usuario == "Supervisor" and lista_todos_usuarios:
-            st.write("---")
-            st.markdown("##### 🗂️ Exportação Avançada")
-            
-            if st.button("📊 Gerar Relatório Consolidado de Todos os Funcionários", use_container_width=True, type="secondary"):
-                with st.spinner("Compilando registros e gerando abas..."):
-                    output_geral = BytesIO()
-                    
-                    with pd.ExcelWriter(output_geral, engine='openpyxl') as writer:
-                        for colaborador in lista_todos_usuarios:
-                            e_lista = colaborador["email"]
-                            n_lista = colaborador["nome"]
-                            
-                            dados_c = executar_query_supabase("buscar_relatorio", email=e_lista, data_filtro=data_inicio, data_fim=data_fim)
-                            df_c = processar_dados_ponto(dados_c)
-                            df_c["Data"] = pd.to_datetime(df_c["Data"]).dt.strftime('%d/%m/%Y')
-                            
-                            nome_aba = n_lista.split(" ")[0] + " " + (n_lista.split(" ")[-1] if len(n_lista.split(" ")) > 1 else "")
-                            nome_aba = nome_aba[:30]
-                            
-                            df_c.to_excel(writer, index=False, sheet_name=nome_aba)
-                    
-                    st.success("Planilha consolidada gerada com sucesso! Clique no botão abaixo para baixar.")
-                    st.download_button(
-                        label="📥 Baixar Planilha Geral com Todos os Funcionários (.xlsx)",
-                        data=output_geral.getvalue(),
-                        file_name=f"relatorio_consolidado_equipe.xlsx",
-                        mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                        use_container_width=True
-                    )
