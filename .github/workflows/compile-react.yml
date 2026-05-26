@@ -1,0 +1,33 @@
+name: Compilar Front-end React
+
+on:
+  push:
+    branches:
+      - main # Ou o nome da sua branch principal (ex: master)
+    paths:
+      - 'frontend/**' # Só roda se você mexer na pasta do front-end
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Baixar código do repositório
+      uses: actions/checkout@v3
+
+    - name: Instalar Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-size: 18
+
+    - name: Instalar dependências e Gerar Build
+      run: |
+        cd frontend
+        npm install
+        npm run build
+
+    - name: Salvar pasta Build de volta no GitHub
+      uses: stefanzweifel/git-auto-commit-action@v4
+      with:
+        commit_message: "Bot: Build do React gerado automaticamente"
+        file_pattern: 'frontend/build/**'
