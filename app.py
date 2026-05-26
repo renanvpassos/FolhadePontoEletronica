@@ -605,9 +605,9 @@ elif opcao == "RELATÓRIO":
                         "Retorno Almoço": "retorno_almoco",
                         "Saída": "horario_saida",
                         "Justificativa Entrada": "justificativa_entrada",
-                        "Justificativa Saída": "justificativa_saida",
                         "Justificativa Saída Almoço": "justificativa_saida_almoco",
                         "Justificativa Retorno Almoço": "justificativa_retorno_almoco"
+                        "Justificativa Saída": "justificativa_saida",
                     }
                     
                     sucesso_updates = 0
@@ -627,7 +627,7 @@ elif opcao == "RELATÓRIO":
                             for col_tela, col_banco in colunas_reversas.items():
                                 valor_celula = str(row[col_tela]).strip()
                                 
-                                if col_banco in ["justificativa_entrada", "justificativa_saida", ""justificativa_saida_almoco", "justificativa_retorno_almoco"]:
+                                if col_banco in ["justificativa_entrada", "justificativa_saida_almoco", "justificativa_retorno_almoco", "justificativa_saida"]:
                                     dados_update[col_banco] = None if valor_celula == "-" else valor_celula
                                 else:
                                     # Se a célula de horário foi limpa ou alterada para "-"
