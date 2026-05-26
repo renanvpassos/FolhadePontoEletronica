@@ -607,7 +607,7 @@ elif opcao == "RELATÓRIO":
                         "Justificativa Entrada": "justificativa_entrada",
                         "Justificativa Saída Almoço": "justificativa_saida_almoco",
                         "Justificativa Retorno Almoço": "justificativa_retorno_almoco",
-                        "Justificativa Saída": "justificativa_saida",
+                        "Justificativa Saída": "justificativa_saida"
                     }
                     
                     sucesso_updates = 0
