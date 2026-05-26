@@ -307,19 +307,29 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                 
                 c1, c2 = st.columns(2)
                 
-                # Regras para desabilitar o botão visualmente
+                # Garante que a justificativa seja avaliada corretamente (remove espaços extras)
+                justificativa_limpa = justificativa.strip() if justificativa else ""
+                
+                # Define se o botão deve ser bloqueado na tela
                 bloquear_confirmacao = erro_validacao
-                if justificativa_obrigatoria and not justificativa:
+                if justificativa_obrigatoria and not justificativa_limpa:
                     bloquear_confirmacao = True
                     st.error("🛑 Atenção: A justificativa é obrigatória para este ajuste de horário.")
                 
-                # --- BOTÃO DE CONFIRMAÇÃO COM VALIDAÇÃO INTERNA CRÍTICA ---
+                # --- BOTÃO DE CONFIRMAÇÃO COM TRAVA ANTI-NULO ---
                 if c1.button("Confirmar Marcação", key=f"sim_{opcao}", use_container_width=True, type="primary", disabled=bloquear_confirmacao):
                     
-                    # Dupla checagem de segurança (Garante que mesmo se o botão for clicado, ele não salva sem justificativa)
-                    if justificativa_obrigatoria and not justificativa:
-                        st.error("🛑 Erro crítico: Você precisa preencher a justificativa antes de salvar!")
+                    # CHECAGEM CRÍTICA DE SEGURANÇA: Bloqueia o salvamento se for obrigatório e estiver nulo/vazio
+                    if justificativa_obrigatoria and (not justificativa_limpa or justificativa_limpa == ""):
+                        st.error("🛑 Erro: A observação não pode ser nula ou vazia para esta operação!")
+                        # Remove o estado de confirmação para forçar o usuário a interagir novamente com o campo
+                        st.session_state[f'confirmar_{opcao}'] = True 
+                    
+                    elif erro_validacao:
+                        st.error("🛑 Erro: Corrija o formato do horário antes de confirmar.")
+                    
                     else:
+                        # Se passou em todas as validações, prepara o dicionário para o banco
                         dados_ponto = {
                             "email": user_email,
                             "nome_completo": user_name,
@@ -327,12 +337,15 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                             colunas_banco[opcao]: horario_final_gravacao.isoformat()
                         }
                         
-                        # Salva a justificativa no banco caso o usuário tenha preenchido
-                        if justificativa:
+                        # Inclui a justificativa no payload apenas se ela existir
+                        if justificativa_limpa:
                             sufixo_coluna = opcao.lower().replace(" ", "_")
-                            dados_ponto[f"justificativa_{sufixo_coluna}"] = justificativa
+                            dados_ponto[f"justificativa_{sufixo_coluna}"] = justificativa_limpa
                             
+                        # Executa a gravação no Supabase
                         executar_query_supabase("salvar_ponto", data_dict=dados_ponto)
+                        
+                        # Limpa o estado e atualiza a tela com sucesso
                         st.session_state[f'confirmar_{opcao}'] = False
                         st.success(f"Horário gravado com sucesso!")
                         st.rerun()
