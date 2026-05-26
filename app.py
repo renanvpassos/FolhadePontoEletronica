@@ -460,8 +460,11 @@ elif opcao == "LOG":
     if not logs_banco:
         st.info("Nenhuma atividade registrada no mural recente.")
     else:
-        # Pega a data de hoje (objeto date) no fuso correto
-        hoje_local = datetime.now(fuso_br).date()
+        # Pega o dia, mês e ano de hoje estritamente no fuso BR
+        hoje = datetime.now(fuso_br)
+        hoje_ano = hoje.year
+        hoje_mes = hoje.month
+        hoje_dia = hoje.day
         
         lista_eventos = []
         labels_acoes = {
@@ -477,12 +480,13 @@ elif opcao == "LOG":
             for coluna, label in labels_acoes.items():
                 valor_hora = item.get(coluna)
                 if valor_hora:
-                    # Converte para o fuso brasileiro correto
+                    # Converte a string do Supabase (ex: "2026-05-26 07:00:00-03") para objeto datetime
+                    #fromisoformat entende perfeitamente o sulfixo -03 ou -03:00
                     dt_objeto = datetime.fromisoformat(valor_hora).astimezone(fuso_br)
                     
-                    # FILTRO CRÍTICO: Se a data do evento não for HOJE, ignora e vai para o próximo
-                    if dt_objeto.date() != hoje_local:
-                        continue
+                    # TRAVA DEFINITIVA: Compara ano, mês e dia estritamente isolados
+                    if not (dt_objeto.year == hoje_ano and dt_objeto.month == hoje_mes and dt_objeto.day == hoje_dia):
+                        continue # Se não for EXATAMENTE o dia de hoje, descarta.
                     
                     dt_compara = dt_objeto.strftime("%d/%m")
                     just_texto = None
