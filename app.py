@@ -331,7 +331,7 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                 if justificativa_obrigatoria and not atende_tamanho_minimo:
                     bloquear_confirmacao = True
                     if not justificativa_limpa:
-                        st.error("🛑 Atenção: A justificativa é obrigatória para este horário de saída.")
+                        st.error("🛑 Atenção: A justificativa é obrigatória para este horário.")
                     else:
                         st.error(f"🛑 A justificativa precisa ter pelo menos 3 caracteres. (Atual: {len(justificativa_limpa)})")
                 
