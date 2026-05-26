@@ -409,11 +409,13 @@ elif opcao == "LOG":
     st.caption("Linha do tempo das batidas eletrônicas registradas pela equipe hoje (Ordem Cronológica).")
     st.write("---")
     
-    logs_banco = executar_query_supabase("buscar_logs")
+    logs_banco = ejecutar_query_supabase("buscar_logs")
     if not logs_banco:
         st.info("Nenhuma atividade registrada no mural recente.")
     else:
         lista_eventos = []
+        
+        # Estas chaves devem ser exatamente os nomes das colunas de HORA no seu Supabase
         labels_acoes = {
             "horario_entrada": "🟢 Entrou",
             "saida_almoco": "🟡 saiu para o almoço",
@@ -430,7 +432,7 @@ elif opcao == "LOG":
                 if valor_hora:
                     dt_objeto = datetime.fromisoformat(valor_hora).astimezone(fuso_br)
                     
-                    # Captura a justificativa certa dependendo de qual coluna estamos lendo
+                    # CORREÇÃO CRÍTICA: Sincronização exata com as colunas salvas no banco
                     just_texto = None
                     if coluna == "horario_entrada" and item.get("justificativa_entrada"):
                         just_texto = item["justificativa_entrada"]
@@ -456,26 +458,23 @@ elif opcao == "LOG":
             # Ordena do mais antigo para o mais recente (Cronológica)
             lista_eventos.sort(key=lambda x: x["objeto_tempo"], reverse=False)
             
-            # 1. Criamos o container com altura fixa para ativar a barra de rolagem nativa do Streamlit
-            # Altere o valor de height (em pixels) para o tamanho que preferir para a sua tela
+            # Container com barra de rolagem
             with st.container(height=450):
                 for evento in lista_eventos:
-                    # Monta o HTML básico da linha do log
                     html_log = (
                         f'<div class="card-log">'
                         f'⏱️ <b>{evento["hora_str"]}</b> - <b>{evento["nome"]}</b> {evento["acao"]} '
                         f'<span style="float: right; color: gray; font-size: 0.85em;">📅 {evento["data_str"]}</span>'
                     )
                     
-                    # Se houver justificativa gravada, insere uma quebra de linha interna e formata o texto
+                    # Exibe a justificativa se ela existir no objeto processado
                     if evento["justificativa"]:
                         html_log += f'<br><span style="color: #6c757d; font-size: 0.9em; font-style: italic; padding-left: 24px; display: inline-block; margin-top: 5px;">💬 Justificativa: {evento["justificativa"]}</span>'
                     
                     html_log += '</div>'
-                    
                     st.markdown(html_log, unsafe_allow_html=True)
             
-            # 2. Injeta um script JS invisível para forçar o scroll do container do Streamlit para o final
+            # Script invisível para rolar a barra automaticamente para o final
             st.components.v1.html(
                 """
                 <script>
