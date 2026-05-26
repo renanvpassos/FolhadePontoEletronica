@@ -87,7 +87,6 @@ def verificar_e_disparar_alertas():
     hoje_str = str(obter_hoje_br())
     
     try:
-        # Busca registros de hoje onde o alerta já está calculado e ainda não foi enviado
         res = supabase.table("registro_ponto")\
             .select("email, nome_completo, horario_entrada, horario_alerta")\
             .eq("data", hoje_str)\
@@ -98,7 +97,6 @@ def verificar_e_disparar_alertas():
         for registro in res.data:
             dt_alerta = datetime.fromisoformat(registro["horario_alerta"]).astimezone(fuso_br)
             
-            # Se o momento atual passou ou igualou o horário estipulado para alertar
             if agora >= dt_alerta:
                 dt_entrada = datetime.fromisoformat(registro["horario_entrada"]).astimezone(fuso_br)
                 dt_fim_jornada = dt_entrada + timedelta(hours=9)
@@ -114,7 +112,7 @@ def verificar_e_disparar_alertas():
                     <body style="font-family: Arial, sans-serif; color: #333;">
                         <h2>Olá, {nome_usuario}! ⏱️</h2>
                         <p>Você registrou sua entrada hoje às <b>{str_entrada}</b>.</p>
-                        <p>Sua jornada de 9 horas (incluindo intervalo padrão) encerra às <b style="color: #ff4d4d;">{str_fim}</b>.</p>
+                        <p>Sua jornada bruta de 9 horas encerra às <b style="color: #ff4d4d;">{str_fim}</b>.</p>
                         <p>⚠️ Lembre-se de <b>bater o seu ponto de saída</b> assim que finalizar suas atividades.</p>
                     </body>
                 </html>
@@ -125,19 +123,17 @@ def verificar_e_disparar_alertas():
                 msg['From'] = SMTP_EMAIL
                 msg['To'] = email_usuario
                 
-                # Despacha via servidor SMTP do Gmail configurado no secrets
                 with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
                     server.login(SMTP_EMAIL, SMTP_SENHA)
                     server.send_message(msg)
                 
-                # Atualiza flag para evitar reenvios em loops ou cliques posteriores
                 supabase.table("registro_ponto")\
                     .update({"alerta_enviado": True})\
                     .eq("email", email_usuario)\
                     .eq("data", hoje_str)\
                     .execute()
     except Exception:
-        pass # Falhas de e-mail ou rede não devem travar a navegação do usuário na interface
+        pass
 
 # --- SISTEMA NATIVO DE LOGIN E CADASTRO ---
 def gerenciar_acesso():
@@ -204,10 +200,7 @@ user_name = user_info.get("name", "Colaborador")
 hoje = obter_hoje_br() 
 agora_br = obter_agora_br() 
 
-# Roda a checagem automática silenciosamente em background a cada refresh de tela
 verificar_e_disparar_alertas()
-
-# --- LIMPEZA AUTOMÁTICA DO LOG (1 EM 1 MÊS) ---
 executar_query_supabase("limpar_log", data_filtro=hoje - timedelta(days=30))
 
 # --- INTERFACE / MENU LATERAL ---
@@ -339,7 +332,7 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                                 limite_almoco = (1 * 3600) + (10 * 60)
                                 
                                 if tempo_almoco_segundos > limite_almoco:
-                                    justify_obrigatoria = True
+                                    justificativa_obrigatoria = True
                                     
                         elif opcao == "SAÍDA":
                             if horario_final_gravacao > agora_br_sem_segundos:
@@ -350,6 +343,7 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                                 t_entrada = pontos["ENTRADA"]
                                 t_saida_atual = horario_final_gravacao
                                 
+                                # AJUSTADO: Validação direta considerando apenas Entrada e Saída
                                 tempo_total_segundos = int((t_saida_atual - t_entrada).total_seconds())
                                 limite_inferior = 9 * 3600
                                 limite_superior = (9 * 3600) + (10 * 60) + 59
@@ -374,26 +368,17 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                         msg_confirmacao = f"Deseja gravar a Saída mesmo sem o ponto de Entrada?"
                     else:
                         t_entrada = pontos["ENTRADA"]
-                        t_saida_alm = pontos["SAÍDA ALMOÇO"]
-                        t_retorno_alm = pontos["RETORNO ALMOÇO"]
                         t_saida_atual = horario_final_gravacao
                         
-                        tempo_total = t_saida_atual - t_entrada
-                        total_segundos = int(tempo_total.total_seconds())
-                        
-                        segundos_almoco = 0
-                        if t_saida_alm and t_retorno_alm:
-                            if t_retorno_alm > t_saida_alm:
-                                segundos_almoco = int((t_retorno_alm - t_saida_alm).total_seconds())
-                        
-                        segundos_trabalhados = total_segundos - segundos_almoco
+                        # AJUSTADO: Calculo desconsidera o intervalo do almoço completamente
+                        segundos_trabalhados = int((t_saida_atual - t_entrada).total_seconds())
                         if segundos_trabalhados < 0:
                             segundos_trabalhados = 0
                             
                         horas_trab = segundos_trabalhados // 3600
                         minutos_trab = (segundos_trabalhados % 3600) // 60
                         
-                        jornada_padrao_segundos = 8 * 3600 
+                        jornada_padrao_segundos = 9 * 3600  # Modificado para a jornada base de 9 horas direta
                         
                         msg_extra = "Não houve hora extra."
                         if segundos_trabalhados > jornada_padrao_segundos:
@@ -402,7 +387,7 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                             minutos_ext = (segundos_extras % 3600) // 60
                             msg_extra = f"🔥 **{horas_ext:02d}h {minutos_ext:02d}min** de hora extra."
                             
-                        st.info(f"📊 **Resumo da Jornada Calculada:**\n\n"
+                        st.info(f"📊 **Resumo da Jornada Calculada (Entrada ➔ Saída):**\n\n"
                                 f"⏱️ Tempo Líquido Trabalhado: **{horas_trab:02d}h {minutos_trab:02d}min**\n\n"
                                 f"🚀 Banco de Horas: {msg_extra}")
                                 
@@ -441,9 +426,7 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                             colunas_banco[opcao]: horario_final_gravacao.isoformat()
                         }
                         
-                        # --- IMPLEMENTAÇÃO DO CÁLCULO DE ALERTA NO REGISTRO DE ENTRADA ---
                         if opcao == "ENTRADA":
-                            # Define o momento do e-mail: 15 minutos antes de completar as 9 horas (8 horas e 45 minutos)
                             momento_alerta = horario_final_gravacao + timedelta(hours=8, minutes=45)
                             dados_ponto["horario_alerta"] = momento_alerta.isoformat()
                             dados_ponto["alerta_enviado"] = False
@@ -641,16 +624,7 @@ elif opcao == "RELATÓRIO":
             df_tela["Data"] = pd.to_datetime(df_tela["Data"]).dt.strftime('%d/%m/%Y')
             
             if cargo_usuario == "Supervisor":
-                st.markdown("📝 **Modo Edição Ativado:** Dê um duplo clique em qualquer célula para alterar horários (HH:MM:SS) ou justificativas.")
-                
-                df_editado = st.data_editor(
-                    df_tela, 
-                    use_container_width=True,
-                    disabled=["Data"],
-                    key="editor_pontos_supervisor"
-                )
-                
-                if st.button("💾 Confirmar Alterações e Salvar no Banco de Dados", use_container_width=True, type="primary"):
-                    st.info("Funcionalidade de salvamento em lote em desenvolvimento.")
+                st.markdown("### 📝 Modo Edição")
+                st.dataframe(df_tela)
             else:
-                st.dataframe(df_tela, use_container_width=True)
+                st.dataframe(df_tela)
