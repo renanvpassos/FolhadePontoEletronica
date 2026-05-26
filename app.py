@@ -235,36 +235,60 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                     hora_manual_objeto = datetime.strptime(hora_digitada, "%H:%M").time()
                     horario_final_gravacao = datetime.combine(hoje, hora_manual_objeto).replace(tzinfo=fuso_br)
                     
+                    # --- TRAVAS DE FLUXO DE PREENCHIMENTO ---
+                    if opcao != "ENTRADA" and not pontos["ENTRADA"]:
+                        st.error("🛑 Bloqueado: Não é permitido preencher nenhum horário antes de registrar o horário de ENTRADA.")
+                        erro_validacao = True
+                        
+                    elif opcao == "RETORNO ALMOÇO" and not pontos["SAÍDA ALMOÇO"]:
+                        st.error("🛑 Bloqueado: Não é permitido preencher o horário de Retorno de Almoço sem ter preenchido o horário de Saída Almoço.")
+                        erro_validacao = True
+                        
+                    elif opcao == "SAÍDA":
+                        horarios_faltantes = []
+                        if not pontos["ENTRADA"]:
+                            horarios_faltantes.append("**ENTRADA**")
+                        if not pontos["SAÍDA ALMOÇO"]:
+                            horarios_faltantes.append("**SAÍDA ALMOÇO**")
+                        if not pontos["RETORNO ALMOÇO"]:
+                            horarios_faltantes.append("**RETORNO ALMOÇO**")
+                        
+                        if horarios_faltantes:
+                            st.error(f"🛑 Bloqueado: Não é permitido preencher o horário de Saída sem ter preenchido todos os horários anteriores. Horários pendentes: {', '.join(horarios_faltantes)}.")
+                            erro_validacao = True
+                    # ----------------------------------------
+
                     # Ignora os segundos para uma comparação justa de minutos
                     agora_br_sem_segundos = agora_br.replace(second=0, microsecond=0)
                     
                     # --- REGRAS DE OBRIGATORIEDADE E TRAVAS ATUALIZADAS ---
-                    if opcao == "ENTRADA":
-                        # Obrigatório se a entrada digitada for ANTES do horário atual do servidor
-                        if horario_final_gravacao < agora_br_sem_segundos:
-                            justificativa_obrigatoria = True
-                            
-                    elif opcao == "SAÍDA":
-                        # CRÍTICO: Bloqueia se o usuário tentar colocar um horário no futuro
-                        if horario_final_gravacao > agora_br_sem_segundos:
-                            st.error(f"🛑 Horário inválido! Você não pode registrar uma Saída maior do que o horário atual ({agora_br_sem_segundos.strftime('%H:%M')}).")
-                            erro_validacao = True
-                        
-                        # Se não for futuro, aplica a regra de tolerância de jornada (Mínimo 9h, Máximo 9h10min59s)
-                        elif pontos["ENTRADA"]:
-                            t_entrada = pontos["ENTRADA"]
-                            t_saida_atual = horario_final_gravacao
-                            
-                            tempo_total_segundos = int((t_saida_atual - t_entrada).total_seconds())
-                            
-                            limite_inferior = 9 * 3600
-                            limite_superior = (9 * 3600) + (10 * 60) + 59
-                            
-                            if tempo_total_segundos < limite_inferior or tempo_total_segundos > limite_superior:
+                    if not erro_validacao:
+                        if opcao == "ENTRADA":
+                            # Obrigatório se a entrada digitada for ANTES do horário atual do servidor
+                            if horario_final_gravacao < agora_br_sem_segundos:
                                 justificativa_obrigatoria = True
-                        else:
-                            if horario_final_gravacao != agora_br_sem_segundos:
-                                justificativa_obrigatoria = True
+                                
+                        elif opcao == "SAÍDA":
+                            # CRÍTICO: Bloqueia se o usuário tentar colocar um horário no futuro
+                            if horario_final_gravacao > agora_br_sem_segundos:
+                                st.error(f"🛑 Horário inválido! Você não pode registrar uma Saída maior do que o horário atual ({agora_br_sem_segundos.strftime('%H:%M')}).")
+                                erro_validacao = True
+                            
+                            # Se não for futuro, aplica a regra de tolerância de jornada (Mínimo 9h, Máximo 9h10min59s)
+                            elif pontos["ENTRADA"]:
+                                t_entrada = pontos["ENTRADA"]
+                                t_saida_atual = horario_final_gravacao
+                                
+                                tempo_total_segundos = int((t_saida_atual - t_entrada).total_seconds())
+                                
+                                limite_inferior = 9 * 3600
+                                limite_superior = (9 * 3600) + (10 * 60) + 59
+                                
+                                if tempo_total_segundos < limite_inferior or tempo_total_segundos > limite_superior:
+                                    justificativa_obrigatoria = True
+                            else:
+                                if horario_final_gravacao != agora_br_sem_segundos:
+                                    justificativa_obrigatoria = True
 
                 # Exibição do campo de texto com base na obrigatoriedade
                 if justificativa_obrigatoria:
@@ -336,7 +360,6 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                         st.error(f"🛑 A justificativa precisa ter pelo menos 3 caracteres. (Atual: {len(justificativa_limpa)})")
                 
                 # --- BOTÃO DE CONFIRMAÇÃO COM DUPLA TRAVA ---
-                # --- BOTÃO DE CONFIRMAÇÃO COM DUPLA TRAVA ---
                 if c1.button("Confirmar Marcação", key=f"sim_{opcao}", use_container_width=True, type="primary", disabled=bloquear_confirmacao):
                     
                     # Checagem final de segurança rigorosa contra cliques rápidos ou nulos
@@ -345,7 +368,7 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                         st.session_state[f'confirmar_{opcao}'] = True 
                     
                     elif erro_validacao:
-                        st.error("🛑 Erro: Corrija o formato do horário antes de confirmar.")
+                        st.error("🛑 Erro: Corrija as inconsistências de fluxo ou horário antes de confirmar.")
                         
                     else:
                         # Prepara os dados básicos do ponto
@@ -362,7 +385,7 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                                 dados_ponto["justificativa_entrada"] = justificativa_limpa
                             elif opcao == "SAÍDA":
                                 dados_ponto["justificativa_saida"] = justificativa_limpa
-                            
+                        
                         # Executa a gravação no Supabase
                         executar_query_supabase("salvar_ponto", data_dict=dados_ponto)
                         st.session_state[f'confirmar_{opcao}'] = False
