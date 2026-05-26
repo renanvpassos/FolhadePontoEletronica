@@ -67,11 +67,11 @@ def executar_query_supabase(operacao, data_dict=None, email=None, data_filtro=No
         supabase.table("registro_ponto").update({"exibir_no_log": False}).lt("data", str(data_filtro)).execute()
         
     elif operacao == "buscar_logs":
-        res = supabase.table("registro_ponto").select("nome_completo, horario_entrada, saida_almoco, retorno_almoco, horario_saida, data, justificativa_entrada, justificativa_saida, justificativa_saida_almoco, justificativa_retorno_almoco").eq("exibir_no_log", True).order("data", desc=True).execute()
+        res = supabase.table("registro_ponto").select("nome_completo, horario_entrada, saida_almoco, retorno_almoco, horario_saida, data, justificativa_entrada, justificativa_saida").eq("exibir_no_log", True).order("data", desc=True).execute()
         return res.data
         
     elif operacao == "buscar_relatorio":
-        res = supabase.table("registro_ponto").select("data, horario_entrada, saida_almoco, retorno_almoco, horario_saida, justificativa_entrada, justificativa_saida, justificativa_saida_almoco, justificativa_retorno_almoco").eq("email", email).gte("data", str(data_filtro)).lte("data", str(data_fim)).order("data", desc=True).execute()
+        res = supabase.table("registro_ponto").select("data, horario_entrada, saida_almoco, retorno_almoco, horario_saida, justificativa_entrada, justificativa_saida").eq("email", email).gte("data", str(data_filtro)).lte("data", str(data_fim)).order("data", desc=True).execute()
         return res.data
 
 # --- SISTEMA NATIVO DE LOGIN E CADASTRO ---
