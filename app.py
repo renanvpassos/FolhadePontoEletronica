@@ -480,13 +480,12 @@ elif opcao == "LOG":
             for coluna, label in labels_acoes.items():
                 valor_hora = item.get(coluna)
                 if valor_hora:
-                    # Converte a string do Supabase (ex: "2026-05-26 07:00:00-03") para objeto datetime
-                    #fromisoformat entende perfeitamente o sulfixo -03 ou -03:00
+                    # Converte a string do Supabase para objeto datetime com fuso
                     dt_objeto = datetime.fromisoformat(valor_hora).astimezone(fuso_br)
                     
-                    # TRAVA DEFINITIVA: Compara ano, mês e dia estritamente isolados
+                    # FILTRO ESSENCIAL: Ignora o horário se ele não pertencer ao dia de hoje
                     if not (dt_objeto.year == hoje_ano and dt_objeto.month == hoje_mes and dt_objeto.day == hoje_dia):
-                        continue # Se não for EXATAMENTE o dia de hoje, descarta.
+                        continue
                     
                     dt_compara = dt_objeto.strftime("%d/%m")
                     just_texto = None
@@ -511,6 +510,7 @@ elif opcao == "LOG":
         if not lista_eventos:
             st.info("Nenhum registro encontrado para o dia de hoje.")
         else:
+            # Ordena os eventos do dia do mais antigo para o mais recente
             lista_eventos.sort(key=lambda x: x["objeto_tempo"], reverse=False)
             
             with st.container(height=450):
