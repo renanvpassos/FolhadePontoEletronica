@@ -390,14 +390,14 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                         }
                         
                         # Aloca a justificativa na coluna correta que você acabou de criar no Supabase
-                        if justificativa_limpa:
-                            if opcao == "ENTRADA":
+                        if opcao == "ENTRADA":
                                 dados_ponto["justificativa_entrada"] = justificativa_limpa
+                            elif opcao == "SAÍDA ALMOÇO":
+                                dados_ponto["justificativa_saida_almoco"] = justificativa_limpa # Adicionado
+                            elif opcao == "RETORNO ALMOÇO":
+                                dados_ponto["justificativa_retorno_almoco"] = justificativa_limpa # Adicionado
                             elif opcao == "SAÍDA":
                                 dados_ponto["justificativa_saida"] = justificativa_limpa
-                            elif opcao == "RETORNO ALMOÇO":
-                                dados_ponto["justificativa_retorno_almoco"] = justificativa_limpa # Adicionado dinamicamente caso sua tabela possua este campo
-                        
                         # Executa a gravação no Supabase
                         executar_query_supabase("salvar_ponto", data_dict=dados_ponto)
                         st.session_state[f'confirmar_{opcao}'] = False
