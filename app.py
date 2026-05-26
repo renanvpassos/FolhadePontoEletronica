@@ -336,6 +336,7 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                         st.error(f"🛑 A justificativa precisa ter pelo menos 3 caracteres. (Atual: {len(justificativa_limpa)})")
                 
                 # --- BOTÃO DE CONFIRMAÇÃO COM DUPLA TRAVA ---
+                # --- BOTÃO DE CONFIRMAÇÃO COM DUPLA TRAVA ---
                 if c1.button("Confirmar Marcação", key=f"sim_{opcao}", use_container_width=True, type="primary", disabled=bloquear_confirmacao):
                     
                     # Checagem final de segurança rigorosa contra cliques rápidos ou nulos
@@ -347,6 +348,7 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                         st.error("🛑 Erro: Corrija o formato do horário antes de confirmar.")
                         
                     else:
+                        # Prepara os dados básicos do ponto
                         dados_ponto = {
                             "email": user_email,
                             "nome_completo": user_name,
@@ -354,10 +356,14 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                             colunas_banco[opcao]: horario_final_gravacao.isoformat()
                         }
                         
+                        # Aloca a justificativa na coluna correta que você acabou de criar no Supabase
                         if justificativa_limpa:
-                            sufixo_coluna = opcao.lower().replace(" ", "_")
-                            dados_ponto[f"justificativa_{sufixo_coluna}"] = justificativa_limpa
+                            if opcao == "ENTRADA":
+                                dados_ponto["justificativa_entrada"] = justificativa_limpa
+                            elif opcao == "SAÍDA":
+                                dados_ponto["justificativa_saida"] = justificativa_limpa
                             
+                        # Executa a gravação no Supabase
                         executar_query_supabase("salvar_ponto", data_dict=dados_ponto)
                         st.session_state[f'confirmar_{opcao}'] = False
                         st.success(f"Horário gravado com sucesso!")
