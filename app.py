@@ -409,7 +409,7 @@ elif opcao == "LOG":
     st.caption("Linha do tempo das batidas eletrônicas registradas pela equipe hoje (Ordem Cronológica).")
     st.write("---")
     
-    logs_banco = ejecutar_query_supabase("buscar_logs")
+    logs_banco = executar_query_supabase("buscar_logs")
     if not logs_banco:
         st.info("Nenhuma atividade registrada no mural recente.")
     else:
