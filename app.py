@@ -553,9 +553,9 @@ elif opcao == "RELATÓRIO":
         # --- FUNÇÃO INTERNA PARA TRATAR E FORMATAR DATAFRAMES ---
         def processar_dados_ponto(dados):
             if not dados:
-                return pd.DataFrame(columns=["Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", "Justificativa Entrada", "Justificativa Saída"])
+                return pd.DataFrame(columns=["Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", "Justificativa Entrada", "Justificativa Saida Almoço", "Justificativa Retorno Almoço", "Justificativa Saída"])
             df_temp = pd.DataFrame(dados)
-            df_temp.columns = ["Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", "Justificativa Entrada", "Justificativa Saída"]
+            df_temp.columns = ["Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", "Justificativa Entrada", "Justificativa Saida Almoço", "Justificativa Retorno Almoço", "Justificativa Saída"]
             
             def formata_hora(x):
                 if not x: return "-"
