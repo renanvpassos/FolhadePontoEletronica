@@ -108,6 +108,25 @@ def gerenciar_acesso():
                         st.error("E-mail ou senha incorretos.")
                 else:
                     st.warning("Por favor, preencha todos os campos.")
+
+            # --- ADICIONADO: ESQUECI MINHA SENHA ---
+            st.write("") 
+            with st.expander("Esqueci minha senha"):
+                st.caption("Insira seu e-mail cadastrado para receber as instruções de redefinição.")
+                email_recuperacao = st.text_input("E-mail de Recuperação", key="email_recup")
+                botao_recuperar = st.button("Enviar E-mail de Redefinição", use_container_width=True)
+                
+                if botao_recuperar:
+                    if not email_recuperacao.strip():
+                        st.warning("Por favor, digite o seu e-mail.")
+                    else:
+                        with st.spinner("Enviando link de recuperação..."):
+                            try:
+                                # Função nativa do Supabase para disparar o e-mail
+                                supabase.auth.reset_password_for_email(email_recuperacao.strip())
+                                st.success("🎯 Link enviado! Verifique sua caixa de entrada (e a pasta de Spam).")
+                            except Exception as e:
+                                st.error("Erro ao solicitar redefinição. Verifique se o e-mail está cadastrado.")
                     
         with aba_cadastro:
             st.subheader("Novo Colaborador")
