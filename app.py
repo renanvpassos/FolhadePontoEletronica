@@ -141,19 +141,36 @@ if not st.session_state["connected"]:
                     st.error("A senha deve conter no mínimo 6 caracteres.")
                 else:
                     with st.spinner("Registrando credenciais seguras..."):
-                        try:
-                            res_auth = supabase.auth.sign_up({
-                                "email": email_cadastro,
-                                "password": senha_cadastro,
-                                "options": {"data": {"nome": nome_cadastro}}
-                            })
-                            dados_perfil = {"email": email_cadastro, "nome": nome_cadastro, "cargo": "Colaborador"}
-                            supabase.table("usuarios_ponto").insert(dados_perfil).execute()
-                            st.success("🎉 Conta criada com sucesso! Verifique seu e-mail para confirmar o cadastro.")
-                        except Exception:
-                            st.error("Erro ao cadastrar: Verifique se este e-mail já não está em uso.")
-            else:
-                st.warning("Por favor, preencha todos os campos.")
+                            try:
+                                # 1. Cria o usuário dentro do módulo Supabase Auth de forma criptografada
+                                res_auth = supabase.auth.sign_up({
+                                    "email": email_cadastro,
+                                    "password": senha_cadastro,
+                                    "options": {"data": {"nome": nome_cadastro}}
+                                })
+                                
+                                # 2. Vincula o perfil na sua tabela auxiliar para controle de cargos/relatórios
+                                dados_perfil = {
+                                    "email": email_cadastro,
+                                    "nome": nome_cadastro,
+                                    "cargo": "Colaborador"
+                                }
+                                supabase.table("usuarios_ponto").insert(dados_perfil).execute()
+                                
+                                st.success("🎉 Conta criada com sucesso! Verifique a caixa de entrada do seu e-mail para confirmar o cadastro.")
+                                
+                            except Exception as e:
+                                # Captura a string exata do erro gerado pelo banco
+                                erro_msg = str(e)
+                                
+                                # Trata os cenários conhecidos com base na resposta do Supabase
+                                if "already exists" in erro_msg or "registered" in erro_msg:
+                                    st.error("🛑 Este e-mail já está em uso por outro colaborador.")
+                                elif "Database error" in erro_msg or "column" in erro_msg:
+                                    st.error(f"🛑 Erro na estrutura da tabela 'usuarios_ponto'. Verifique se as colunas se chamam exatamente 'email', 'nome' e 'cargo'.")
+                                else:
+                                    # Se for qualquer outro erro, ele joga o log técnico na tela para você saber o que é
+                                    st.error(f"🛑 Falha no cadastro. Detalhe técnico: {erro_msg}")
     st.stop()
 
 # ==============================================================================
