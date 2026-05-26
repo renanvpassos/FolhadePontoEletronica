@@ -551,26 +551,44 @@ elif opcao == "RELATÓRIO":
         st.error("Erro: A data inicial não pode ser maior que a data final.")
     else:
         # --- FUNÇÃO INTERNA PARA TRATAR E FORMATAR DATAFRAMES ---
-        def processar_dados_ponto(dados):
-            if not dados:
-                return pd.DataFrame(columns=["Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", "Justificativa Entrada", "Justificativa Saida Almoço", "Justificativa Retorno Almoço", "Justificativa Saída"])
-            df_temp = pd.DataFrame(dados)
-            df_temp.columns = ["Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", "Justificativa Entrada", "Justificativa Saida Almoço", "Justificativa Retorno Almoço", "Justificativa Saída"]
-            
-            def formata_hora(x):
-                if not x: return "-"
-                try:
-                    return datetime.fromisoformat(x).astimezone(fuso_br).strftime('%H:%M:%S')
-                except:
-                    return "-"
+        # --- FUNÇÃO INTERNA PARA TRATAR E FORMATAR DATAFRAMES (CORRIGIDA) ---
+def processar_dados_ponto(dados):
+    # Lista completa com TODAS as 11 colunas esperadas pela tela/salvamento
+    colunas_completas = [
+        "Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", 
+        "Justificativa Entrada", "Justificativa Saída Almoço", 
+        "Justificativa Retorno Almoço", "Justificativa Saída"
+    ]
+    
+    if not dados:
+        return pd.DataFrame(columns=colunas_completas)
+        
+    df_temp = pd.DataFrame(dados)
+    
+    # IMPORTANTE: Garanta que a query do Supabase traga os dados na mesma ordem 
+    # ou mapeie as colunas do dicionário vindo do banco antes de renomear assim.
+    df_temp.columns = colunas_completas
+    
+    def formata_hora(x):
+        if not x: return "-"
+        try:
+            return datetime.fromisoformat(x).astimezone(fuso_br).strftime('%H:%M:%S')
+        except:
+            return "-"
 
-            df_temp["Entrada"] = df_temp["Entrada"].apply(formata_hora)
-            df_temp["Saída Almoço"] = df_temp["Saída Almoço"].apply(formata_hora)
-            df_temp["Retorno Almoço"] = df_temp["Retorno Almoço"].apply(formata_hora)
-            df_temp["Saída"] = df_temp["Saída"].apply(formata_hora)
-            df_temp["Justificativa Entrada"] = df_temp["Justificativa Entrada"].fillna("-").replace("", "-")
-            df_temp["Justificativa Saída"] = df_temp["Justificativa Saída"].fillna("-").replace("", "-")
-            return df_temp
+    # Formata horários
+    df_temp["Entrada"] = df_temp["Entrada"].apply(formata_hora)
+    df_temp["Saída Almoço"] = df_temp["Saída Almoço"].apply(formata_hora)
+    df_temp["Retorno Almoço"] = df_temp["Retorno Almoço"].apply(formata_hora)
+    df_temp["Saída"] = df_temp["Saída"].apply(formata_hora)
+    
+    # Preenche nulos de TODAS as justificativas (Evita bugs visualização/edição)
+    df_temp["Justificativa Entrada"] = df_temp["Justificativa Entrada"].fillna("-").replace("", "-")
+    df_temp["Justificativa Saída Almoço"] = df_temp["Justificativa Saída Almoço"].fillna("-").replace("", "-")
+    df_temp["Justificativa Retorno Almoço"] = df_temp["Justificativa Retorno Almoço"].fillna("-").replace("", "-")
+    df_temp["Justificativa Saída"] = df_temp["Justificativa Saída"].fillna("-").replace("", "-")
+    
+    return df_temp
 
         # Busca dados do usuário selecionado na tela
         dados_relatorio = executar_query_supabase("buscar_relatorio", email=email_busca, data_filtro=data_inicio, data_fim=data_fim)
