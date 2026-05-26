@@ -50,6 +50,9 @@ url: str = st.secrets["supabase"]["url"]
 key: str = st.secrets["supabase"]["key"]
 supabase: Client = create_client(url, key)
 
+SMTP_EMAIL = st.secrets["gmail_smtp"]["usuario"]
+SMTP_SENHA = st.secrets["gmail_smtp"]["senha"]
+
 # --- FUNÇÃO PARA CRIPTOGRAFAR SENHAS ---
 def criptografar_senha(senha):
     return hashlib.sha256(senha.encode()).hexdigest()
