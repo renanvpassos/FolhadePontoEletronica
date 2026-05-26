@@ -235,34 +235,34 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                     hora_manual_objeto = datetime.strptime(hora_digitada, "%H:%M").time()
                     horario_final_gravacao = datetime.combine(hoje, hora_manual_objeto).replace(tzinfo=fuso_br)
                     
-                    # Ignora os segundos para evitar falsos bloqueios na Entrada
+                    # Ignora os segundos para uma comparação justa de minutos
                     agora_br_sem_segundos = agora_br.replace(second=0, microsecond=0)
                     
-                    # --- REGRAS DE OBRIGATORIEDADE ATUALIZADAS ---
+                    # --- REGRAS DE OBRIGATORIEDADE E TRAVAS ATUALIZADAS ---
                     if opcao == "ENTRADA":
                         # Obrigatório se a entrada digitada for ANTES do horário atual do servidor
                         if horario_final_gravacao < agora_br_sem_segundos:
                             justificativa_obrigatoria = True
                             
                     elif opcao == "SAÍDA":
-                        # Só valida as regras de tempo trabalhado se a Entrada de hoje existir
-                        if pontos["ENTRADA"]:
+                        # CRÍTICO: Bloqueia se o usuário tentar colocar um horário no futuro
+                        if horario_final_gravacao > agora_br_sem_segundos:
+                            st.error(f"🛑 Horário inválido! Você não pode registrar uma Saída maior do que o horário atual ({agora_br_sem_segundos.strftime('%H:%M')}).")
+                            erro_validacao = True
+                        
+                        # Se não for futuro, aplica a regra de tolerância de jornada (Mínimo 9h, Máximo 9h10min59s)
+                        elif pontos["ENTRADA"]:
                             t_entrada = pontos["ENTRADA"]
                             t_saida_atual = horario_final_gravacao
                             
-                            # Calcula o tempo total bruto (Saída - Entrada) em segundos
                             tempo_total_segundos = int((t_saida_atual - t_entrada).total_seconds())
                             
-                            # 9 horas exatas = 9 * 3600 = 32400 segundos
-                            # 9 horas, 10 minutos e 59 segundos = 32400 + 600 + 59 = 33059 segundos
                             limite_inferior = 9 * 3600
                             limite_superior = (9 * 3600) + (10 * 60) + 59
                             
-                            # Se o tempo trabalhado for MENOR que 9h OU MAIOR/IGUAL a 9h11min
                             if tempo_total_segundos < limite_inferior or tempo_total_segundos > limite_superior:
                                 justificativa_obrigatoria = True
                         else:
-                            # Se não tem entrada, por segurança, exige justificativa caso mude o horário do servidor
                             if horario_final_gravacao != agora_br_sem_segundos:
                                 justificativa_obrigatoria = True
 
