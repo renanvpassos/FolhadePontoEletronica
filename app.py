@@ -178,7 +178,6 @@ for k, v in pontos.items():
         pontos[k] = datetime.fromisoformat(v).astimezone(fuso_br)
 
 # --- MENU: REGISTRO DE HORÁRIOS ---
-# --- MENU: REGISTRO DE HORÁRIOS (DIGITAÇÃO MANUAL E JUSTIFICATIVA) ---
 if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
     st.title(f"📍 Registro de {opcao.title()}")
     
@@ -215,36 +214,50 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                 horario_final_gravacao = agora_br
                 justificativa = None
                 erro_validacao = False
+                justificativa_obrigatoria = False
                 
-                if opcao in ["ENTRADA", "SAÍDA"]:
-                    st.markdown("##### 📝 Ajuste Manual do Registro")
+                st.markdown("##### 📝 Ajuste Manual do Registro")
+                
+                hora_digitada = st.text_input(
+                    "Digite o horário do ponto (Formato obrigatório HH:mm):", 
+                    value=agora_br.strftime('%H:%M'),
+                    max_chars=5,
+                    key=f"input_manual_{opcao}"
+                ).strip()
+                
+                import re
+                padrao_hora = re.compile(r"^(0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]$")
+                
+                if not padrao_hora.match(hora_digitada):
+                    st.error("🛑 Formato de horário inválido! Digite um horário real entre 00:00 e 23:59 (Exemplo: 08:30).")
+                    erro_validacao = True
+                else:
+                    hora_manual_objeto = datetime.strptime(hora_digitada, "%H:%M").time()
+                    horario_final_gravacao = datetime.combine(hoje, hora_manual_objeto).replace(tzinfo=fuso_br)
                     
-                    # Campo de texto obrigando a digitação manual no formato HH:mm
-                    hora_digitada = st.text_input(
-                        "Digite o horário do ponto (Formato obrigatório HH:mm):", 
-                        value=agora_br.strftime('%H:%M'),
-                        max_chars=5,
-                        key=f"input_manual_{opcao}"
-                    ).strip()
+                    # Ignora os segundos para evitar falsos bloqueios
+                    agora_br_sem_segundos = agora_br.replace(second=0, microsecond=0)
                     
-                    # Validação estrita do formato HH:mm (Horas de 00 a 23, Minutos de 00 a 59)
-                    import re
-                    padrao_hora = re.compile(r"^(0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]$")
+                    # --- REGRAS DE OBRIGATORIEDADE AJUSTADAS ---
+                    if opcao == "ENTRADA":
+                        # Obrigatório APENAS se a entrada digitada for ANTES do horário atual do servidor
+                        if horario_final_gravacao < agora_br_sem_segundos:
+                            justificativa_obrigatoria = True
+                            
+                    elif opcao == "SAÍDA":
+                        # Obrigatório se a saída for ANTES ou DEPOIS do horário atual do servidor
+                        if horario_final_gravacao != agora_br_sem_segundos:
+                            justificativa_obrigatoria = True
+                            
+                    # "SAÍDA ALMOÇO" e "RETORNO ALMOÇO" não entram aqui, logo justificativa_obrigatoria continua False
+
+                # Exibição do campo de texto com base na obrigatoriedade
+                if justificativa_obrigatoria:
+                    label_justificativa = "📝 Justificativa (OBRIGATÓRIA para a alteração realizada):"
+                else:
+                    label_justificativa = "📝 Justificativa da marcação (Opcional):"
                     
-                    if not padrao_hora.match(hora_digitada):
-                        st.error("🛑 Formato de horário inválido! Digite um horário real entre 00:00 e 23:59 utilizando duas partes separadas por dois pontos (Exemplo: 08:30).")
-                        erro_validacao = True
-                    else:
-                        # Se o formato estiver válido, converte a string para um objeto datetime válido
-                        h_partes = list(map(int, hora_digitada.split(":")))
-                        hora_manual_objeto = datetime.strptime(hora_digitada, "%H:%M").time()
-                        horario_final_gravacao = datetime.combine(hoje, hora_manual_objeto).replace(tzinfo=fuso_br)
-                    
-                    # Verifica se o horário digitado é diferente do horário atual do servidor (ignora segundos)
-                    foi_alterado = hora_digitada != agora_br.strftime('%H:%M')
-                    
-                    label_justificativa = "Justificativa da marcação:" if not foi_alterado else "Justificativa (OBRIGATÓRIA para horários alterados manualmente):"
-                    justificativa = st.text_area(label_justificativa, key=f"just_{opcao}").strip()
+                justificativa = st.text_area(label_justificativa, key=f"just_{opcao}").strip()
                 
                 # --- LÓGICA DE EXIBIÇÃO DA JORNADA EXCLUSIVA PARA A OPÇÃO "SAÍDA" ---
                 if opcao == "SAÍDA" and not erro_validacao:
@@ -294,12 +307,11 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                 
                 c1, c2 = st.columns(2)
                 
-                # Regras para bloquear o botão de envio
+                # Bloqueio do botão de envio apenas se cair na regra de obrigatoriedade
                 bloquear_confirmacao = erro_validacao
-                if opcao in ["ENTRADA", "SAÍDA"] and not erro_validacao:
-                    if foi_alterado and not justificativa:
-                        bloquear_confirmacao = True
-                        st.error("🛑 Você alterou o horário manualmente. Digite uma justificativa para poder confirmar.")
+                if justificativa_obrigatoria and not justificativa:
+                    bloquear_confirmacao = True
+                    st.error("🛑 Atenção: A justificativa é obrigatória para este ajuste de horário.")
                 
                 if c1.button("Confirmar Marcação", key=f"sim_{opcao}", use_container_width=True, type="primary", disabled=bloquear_confirmacao):
                     dados_ponto = {
@@ -309,10 +321,10 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                         colunas_banco[opcao]: horario_final_gravacao.isoformat()
                     }
                     
-                    if opcao == "ENTRADA" and justificativa:
-                        dados_ponto["justificativa_entrada"] = justificativa
-                    elif opcao == "SAÍDA" and justificativa:
-                        dados_ponto["justificativa_saida"] = justificativa
+                    # Salva a justificativa no banco caso o usuário tenha preenchido
+                    if justificativa:
+                        sufixo_coluna = opcao.lower().replace(" ", "_")
+                        dados_ponto[f"justificativa_{sufixo_coluna}"] = justificativa
                         
                     executar_query_supabase("salvar_ponto", data_dict=dados_ponto)
                     st.session_state[f'confirmar_{opcao}'] = False
