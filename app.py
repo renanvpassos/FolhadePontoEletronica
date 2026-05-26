@@ -439,6 +439,10 @@ elif opcao == "LOG":
                     just_texto = None
                     if coluna == "horario_entrada" and item.get("justificativa_entrada"):
                         just_texto = item["justificativa_entrada"]
+                    elif coluna == "saida_almoco" and item.get("justificativa_saida_almoco"):
+                        just_texto = item["justificativa_saida_almoco"]
+                    elif coluna == "retorno_almoco" and item.get("justificativa_retorno_almoco"):
+                        just_texto = item["justificativa_retorno_almoco"]
                     elif coluna == "horario_saida" and item.get("justificativa_saida"):
                         just_texto = item["justificativa_saida"]
                     
@@ -457,7 +461,9 @@ elif opcao == "LOG":
             # Ordena do mais antigo para o mais recente (Cronológica)
             lista_eventos.sort(key=lambda x: x["objeto_tempo"], reverse=False)
             
-            with st.container():
+            # 1. Criamos o container com altura fixa para ativar a barra de rolagem nativa do Streamlit
+            # Altere o valor de height (em pixels) para o tamanho que preferir para a sua tela
+            with st.container(height=450):
                 for evento in lista_eventos:
                     # Monta o HTML básico da linha do log
                     html_log = (
@@ -473,6 +479,23 @@ elif opcao == "LOG":
                     html_log += '</div>'
                     
                     st.markdown(html_log, unsafe_allow_html=True)
+            
+            # 2. Injeta um script JS invisível para forçar o scroll do container do Streamlit para o final
+            st.components.v1.html(
+                """
+                <script>
+                    setTimeout(function() {
+                        var containers = window.parent.document.querySelectorAll('[data-testid="stDocstring"] + div, [data-testid="stVerticalBlockBorderWrapper"]');
+                        containers.forEach(function(el) {
+                            if (el.scrollHeight > el.clientHeight) {
+                                el.scrollTop = el.scrollHeight;
+                            }
+                        });
+                    }, 300);
+                </script>
+                """,
+                height=0
+            )
 
 elif opcao == "RELATÓRIO":
     st.title("📊 Espelho de Ponto Pessoal")
