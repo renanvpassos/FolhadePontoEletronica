@@ -235,29 +235,45 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                     hora_manual_objeto = datetime.strptime(hora_digitada, "%H:%M").time()
                     horario_final_gravacao = datetime.combine(hoje, hora_manual_objeto).replace(tzinfo=fuso_br)
                     
-                    # Ignora os segundos para evitar falsos bloqueios
+                    # Ignora os segundos para evitar falsos bloqueios na Entrada
                     agora_br_sem_segundos = agora_br.replace(second=0, microsecond=0)
                     
-                    # --- REGRAS DE OBRIGATORIEDADE AJUSTADAS ---
+                    # --- REGRAS DE OBRIGATORIEDADE ATUALIZADAS ---
                     if opcao == "ENTRADA":
-                        # Obrigatório APENAS se a entrada digitada for ANTES do horário atual do servidor
+                        # Obrigatório se a entrada digitada for ANTES do horário atual do servidor
                         if horario_final_gravacao < agora_br_sem_segundos:
                             justificativa_obrigatoria = True
                             
                     elif opcao == "SAÍDA":
-                        # Obrigatório se a saída for ANTES ou DEPOIS do horário atual do servidor
-                        if horario_final_gravacao != agora_br_sem_segundos:
-                            justificativa_obrigatoria = True
+                        # Só valida as regras de tempo trabalhado se a Entrada de hoje existir
+                        if pontos["ENTRADA"]:
+                            t_entrada = pontos["ENTRADA"]
+                            t_saida_atual = horario_final_gravacao
                             
-                    # "SAÍDA ALMOÇO" e "RETORNO ALMOÇO" não entram aqui, logo justificativa_obrigatoria continua False
+                            # Calcula o tempo total bruto (Saída - Entrada) em segundos
+                            tempo_total_segundos = int((t_saida_atual - t_entrada).total_seconds())
+                            
+                            # 9 horas exatas = 9 * 3600 = 32400 segundos
+                            # 9 horas, 10 minutos e 59 segundos = 32400 + 600 + 59 = 33059 segundos
+                            limite_inferior = 9 * 3600
+                            limite_superior = (9 * 3600) + (10 * 60) + 59
+                            
+                            # Se o tempo trabalhado for MENOR que 9h OU MAIOR/IGUAL a 9h11min
+                            if tempo_total_segundos < limite_inferior or tempo_total_segundos > limite_superior:
+                                justificativa_obrigatoria = True
+                        else:
+                            # Se não tem entrada, por segurança, exige justificativa caso mude o horário do servidor
+                            if horario_final_gravacao != agora_br_sem_segundos:
+                                justificativa_obrigatoria = True
 
                 # Exibição do campo de texto com base na obrigatoriedade
                 if justificativa_obrigatoria:
-                    label_justificativa = "📝 Justificativa (OBRIGATÓRIA para a alteração realizada):"
+                    label_justificativa = "📝 Justificativa (OBRIGATÓRIA - Mínimo 3 caracteres):"
                 else:
                     label_justificativa = "📝 Justificativa da marcação (Opcional):"
                     
                 justificativa = st.text_area(label_justificativa, key=f"just_{opcao}").strip()
+                justificativa_limpa = justificativa.strip() if justificativa else ""
                 
                 # --- LÓGICA DE EXIBIÇÃO DA JORNADA EXCLUSIVA PARA A OPÇÃO "SAÍDA" ---
                 if opcao == "SAÍDA" and not erro_validacao:
@@ -307,29 +323,30 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                 
                 c1, c2 = st.columns(2)
                 
-                # Garante que a justificativa seja avaliada corretamente (remove espaços extras)
-                justificativa_limpa = justificativa.strip() if justificativa else ""
-                
-                # Define se o botão deve ser bloqueado na tela
+                # --- TRAVA DE VALIDAÇÃO VISUAL ---
                 bloquear_confirmacao = erro_validacao
-                if justificativa_obrigatoria and not justificativa_limpa:
-                    bloquear_confirmacao = True
-                    st.error("🛑 Atenção: A justificativa é obrigatória para este ajuste de horário.")
+                # Valida se é obrigatório E se cumpre o requisito de 3 caracteres mínimos
+                atende_tamanho_minimo = len(justificativa_limpa) >= 3
                 
-                # --- BOTÃO DE CONFIRMAÇÃO COM TRAVA ANTI-NULO ---
+                if justificativa_obrigatoria and not atende_tamanho_minimo:
+                    bloquear_confirmacao = True
+                    if not justificativa_limpa:
+                        st.error("🛑 Atenção: A justificativa é obrigatória para este horário de saída.")
+                    else:
+                        st.error(f"🛑 A justificativa precisa ter pelo menos 3 caracteres. (Atual: {len(justificativa_limpa)})")
+                
+                # --- BOTÃO DE CONFIRMAÇÃO COM DUPLA TRAVA ---
                 if c1.button("Confirmar Marcação", key=f"sim_{opcao}", use_container_width=True, type="primary", disabled=bloquear_confirmacao):
                     
-                    # CHECAGEM CRÍTICA DE SEGURANÇA: Bloqueia o salvamento se for obrigatório e estiver nulo/vazio
-                    if justificativa_obrigatoria and (not justificativa_limpa or justificativa_limpa == ""):
-                        st.error("🛑 Erro: A observação não pode ser nula ou vazia para esta operação!")
-                        # Remove o estado de confirmação para forçar o usuário a interagir novamente com o campo
+                    # Checagem final de segurança rigorosa contra cliques rápidos ou nulos
+                    if justificativa_obrigatoria and (not justificativa_limpa or len(justificativa_limpa) < 3):
+                        st.error("🛑 Erro: Gravação impedida! Preencha a justificativa com no mínimo 3 caracteres.")
                         st.session_state[f'confirmar_{opcao}'] = True 
                     
                     elif erro_validacao:
                         st.error("🛑 Erro: Corrija o formato do horário antes de confirmar.")
-                    
+                        
                     else:
-                        # Se passou em todas as validações, prepara o dicionário para o banco
                         dados_ponto = {
                             "email": user_email,
                             "nome_completo": user_name,
@@ -337,15 +354,11 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                             colunas_banco[opcao]: horario_final_gravacao.isoformat()
                         }
                         
-                        # Inclui a justificativa no payload apenas se ela existir
                         if justificativa_limpa:
                             sufixo_coluna = opcao.lower().replace(" ", "_")
                             dados_ponto[f"justificativa_{sufixo_coluna}"] = justificativa_limpa
                             
-                        # Executa a gravação no Supabase
                         executar_query_supabase("salvar_ponto", data_dict=dados_ponto)
-                        
-                        # Limpa o estado e atualiza a tela com sucesso
                         st.session_state[f'confirmar_{opcao}'] = False
                         st.success(f"Horário gravado com sucesso!")
                         st.rerun()
