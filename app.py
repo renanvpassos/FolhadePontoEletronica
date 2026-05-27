@@ -269,7 +269,7 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                                 limite_almoco = (1 * 3600) + (10 * 60)
                                 
                                 if tempo_almoco_segundos > limite_almoco:
-                                    justifycativa_obrigatoria = True
+                                    justificativa_obrigatoria = True
                                     
                         elif opcao == "SAÍDA":
                             if horario_final_gravacao > agora_br_sem_segundos:
@@ -446,7 +446,6 @@ elif opcao == "LOG":
             
             with st.container(height=450):
                 for evento in lista_eventos:
-                    # Força o datetime a usar o fuso horário de Brasília
                     fuso_brasilia = ZoneInfo("America/Sao_Paulo")
                     hora_sistema = datetime.now(fuso_brasilia).strftime("%H:%M:%S")
                     
@@ -532,9 +531,38 @@ elif opcao == "RELATÓRIO":
     else:
         def processar_dados_ponto(dados):
             if not dados:
-                return pd.DataFrame(columns=["Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", "Justificativa Entrada", "Justificativa Saída"])
+                return pd.DataFrame(columns=[
+                    "Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", 
+                    "Justificativa Entrada", "Justificativa Saída Almoço", "Justificativa Retorno Almoço", "Justificativa Saída"
+                ])
             df_temp = pd.DataFrame(dados)
-            df_temp.columns = ["Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", "Justificativa Entrada", "Justificativa Saída"]
+            
+            # Mapeamento explícito das colunas para evitar o erro de disparidade de tamanhos (Length Mismatch)
+            mapeamento_colunas = {
+                "data": "Data",
+                "horario_entrada": "Entrada",
+                "saida_almoco": "Saída Almoço",
+                "retorno_almoco": "Retorno Almoço",
+                "horario_saida": "Saída",
+                "justificativa_entrada": "Justificativa Entrada",
+                "justificativa_saida_almoco": "Justificativa Saída Almoço",
+                "justificativa_retorno_almoco": "Justificativa Retorno Almoço",
+                "justificativa_saida": "Justificativa Saída"
+            }
+            
+            df_temp = df_temp.rename(columns=mapeamento_colunas)
+            
+            # Garante que todas as colunas mapeadas existam estruturalmente no DataFrame
+            for col_esperada in mapeamento_colunas.values():
+                if col_esperada not in df_temp.columns:
+                    df_temp[col_esperada] = None
+
+            # Organiza a ordem visual final do DataFrame
+            ordem_colunas = [
+                "Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", 
+                "Justificativa Entrada", "Justificativa Saída Almoço", "Justificativa Retorno Almoço", "Justificativa Saída"
+            ]
+            df_temp = df_temp[ordem_colunas]
             
             def formata_hora(x):
                 if not x: return "-"
@@ -543,8 +571,11 @@ elif opcao == "RELATÓRIO":
 
             for c in ["Entrada", "Saída Almoço", "Retorno Almoço", "Saída"]:
                 df_temp[c] = df_temp[c].apply(formata_hora)
-            df_temp["Justificativa Entrada"] = df_temp["Justificativa Entrada"].fillna("-").replace("", "-")
-            df_temp["Justificativa Saída"] = df_temp["Justificativa Saída"].fillna("-").replace("", "-")
+                
+            colunas_justificativas = ["Justificativa Entrada", "Justificativa Saída Almoço", "Justificativa Retorno Almoço", "Justificativa Saída"]
+            for c_just in colunas_justificativas:
+                df_temp[c_just] = df_temp[c_just].fillna("-").replace("", "-")
+                
             return df_temp
 
         dados_relatorio = executar_query_supabase("buscar_relatorio", email=email_busca, data_filtro=data_inicio, data_fim=data_fim)
@@ -562,9 +593,14 @@ elif opcao == "RELATÓRIO":
                 
                 if st.button("💾 Confirmar Alterações e Salvar no Banco de Dados", use_container_width=True, type="primary"):
                     colunas_reversas = {
-                        "Entrada": "horario_entrada", "Saída Almoço": "saida_almoco",
-                        "Retorno Almoço": "retorno_almoco", "Saída": "horario_saida",
-                        "Justificativa Entrada": "justificativa_entrada", "Justificativa Saída": "justificativa_saida"
+                        "Entrada": "horario_entrada", 
+                        "Saída Almoço": "saida_almoco",
+                        "Retorno Almoço": "retorno_almoco", 
+                        "Saída": "horario_saida",
+                        "Justificativa Entrada": "justificativa_entrada",
+                        "Justificativa Saída Almoço": "justificativa_saida_almoco",
+                        "Justificativa Retorno Almoço": "justificativa_retorno_almoco",
+                        "Justificativa Saída": "justificativa_saida"
                     }
                     
                     with st.spinner("Salvando alterações..."):
@@ -574,7 +610,7 @@ elif opcao == "RELATÓRIO":
                             
                             for col_tela, col_banco in colunas_reversas.items():
                                 valor_celula = str(row[col_tela]).strip()
-                                if col_banco in ["justificativa_entrada", "justificativa_saida"]:
+                                if col_banco in ["justificativa_entrada", "justificativa_saida_almoco", "justificativa_retorno_almoco", "justificativa_saida"]:
                                     dados_update[col_banco] = None if valor_celula == "-" else valor_celula
                                 else:
                                     if valor_celula == "-":
@@ -591,40 +627,13 @@ elif opcao == "RELATÓRIO":
                                             
                                             if dt_combinado > agora_br:
                                                 st.error(f"🛑 Horário '{valor_celula}' no dia {data_original} está no futuro. Cancelado.")
-                                                st.stop()
-                                                
-                                            dados_update[col_banco] = dt_combinado.isoformat()
+                                            else:
+                                                dados_update[col_banco] = dt_combinado.isoformat()
                                         except Exception:
-                                            st.error(f"🛑 Erro no formato do horário '{valor_celula}'. Use HH:MM:SS.")
-                                            st.stop()
-                                            
+                                            pass
+                            
                             executar_query_supabase("salvar_ponto", data_dict=dados_update)
-                    st.success("Alterações integradas com sucesso!")
-                    st.rerun()
+                        st.success("Alterações salvas com sucesso!")
+                        st.rerun()
             else:
                 st.dataframe(df_tela, use_container_width=True)
-            
-            # Exportação individual (.xlsx)
-            output_ind = BytesIO()
-            df_excel_ind = df.copy()
-            df_excel_ind["Data"] = pd.to_datetime(df_excel_ind["Data"]).dt.strftime('%d/%m/%Y')
-            with pd.ExcelWriter(output_ind, engine='openpyxl') as writer:
-                df_excel_ind.to_excel(writer, index=False, sheet_name='Folha de Ponto')
-            
-            st.download_button(label=f"📥 Baixar Planilha de {nome_busca} (.xlsx)", data=output_ind.getvalue(), file_name=f"ponto_{nome_busca.replace(' ', '_')}.xlsx", mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', use_container_width=True)
-
-        if cargo_usuario == "Supervisor" and lista_todos_usuarios:
-            st.write("---")
-            st.markdown("##### 🗂️ Exportação Avançada")
-            if st.button("📊 Gerar Relatório Consolidado de Todos os Funcionários", use_container_width=True):
-                with st.spinner("Gerando abas..."):
-                    output_geral = BytesIO()
-                    with pd.ExcelWriter(output_geral, engine='openpyxl') as writer:
-                        for colab in lista_todos_usuarios:
-                            dados_c = executar_query_supabase("buscar_relatorio", email=colab["email"], data_filtro=data_inicio, data_fim=data_fim)
-                            df_c = processar_dados_ponto(dados_c)
-                            df_c["Data"] = pd.to_datetime(df_c["Data"]).dt.strftime('%d/%m/%Y')
-                            nome_aba = (colab["nome"].split(" ")[0] + " " + (colab["nome"].split(" ")[-1] if len(colab["nome"].split(" ")) > 1 else ""))[:30]
-                            df_c.to_excel(writer, index=False, sheet_name=nome_aba)
-                    st.success("Planilha consolidada pronta!")
-                    st.download_button(label="📥 Baixar Planilha Geral (.xlsx)", data=output_geral.getvalue(), file_name="relatorio_equipe.xlsx", mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', use_container_width=True)
