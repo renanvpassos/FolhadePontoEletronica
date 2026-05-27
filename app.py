@@ -614,7 +614,6 @@ elif opcao == "RELATÓRIO":
             for c_just in colunas_justificativas:
                 df_temp[c_just] = df_temp[c_just].fillna("-").replace("", "-")
             
-            # Formata a coluna data para o formato BR caso solicitado (útil para geração do Excel bruto)
             if formatar_data_br:
                 try:
                     df_temp["Data"] = pd.to_datetime(df_temp["Data"]).dt.strftime('%d/%m/%Y')
@@ -630,7 +629,6 @@ elif opcao == "RELATÓRIO":
         
         with col_exp1:
             if dados_relatorio:
-                # Gera o dataframe individual já aplicando a formatação de data brasileira (DD/MM/AAAA)
                 df_excel_individual = processar_dados_ponto(dados_relatorio, incluir_usuario_info=False, formatar_data_br=True)
                 excel_individual_bytes = converter_para_excel_individual(df_excel_individual)
                 
@@ -648,9 +646,7 @@ elif opcao == "RELATÓRIO":
             if cargo_usuario == "Supervisor":
                 dados_gerais = executar_query_supabase("buscar_relatorio_geral", data_filtro=data_inicio, data_fim=data_fim)
                 if dados_gerais:
-                    # Carrega e padroniza os dados, formatando as datas estruturalmente para BR
                     df_excel_geral = processar_dados_ponto(dados_gerais, incluir_usuario_info=True, formatar_data_br=True)
-                    # Converte gerando separação dinâmica por abas unificadas no Excel
                     excel_geral_bytes = converter_para_excel_multiaba(df_excel_geral)
                     
                     st.download_button(
