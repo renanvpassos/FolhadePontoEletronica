@@ -490,11 +490,10 @@ elif opcao == "LOG":
 # --- MENU: RELATÓRIO ---
 elif opcao == "RELATÓRIO":
     st.title("📊 Espelho de Ponto Pessoal")
-    
     email_busca = user_email
     nome_busca = user_name
-    cargo_usuario = "Colaborador"
     
+    cargo_usuario = "Colaborador"
     try:
         dados_usuario_logado = supabase.table("usuarios_ponto").select("cargo").eq("email", user_email).execute()
         if dados_usuario_logado.data:
@@ -509,125 +508,123 @@ elif opcao == "RELATÓRIO":
         try:
             usuarios_banco = supabase.table("usuarios_ponto").select("email, nome").execute()
             if usuarios_banco.data:
-                lista_todos_usuarios = sorted(usuarios_banco.data, key=lambda x: x['nome'].lower())
-                opces_usuarios = {f"{u['nome']} ({u['email']})": u for u in lista_todos_usuarios}
-                
-                usuario_selecionado_str = st.selectbox(
-                    "Selecione o colaborador que deseja consultar na tela:",
-                    options=list(opces_usuarios.keys())
-                )
-                
-                colaborador_escolhido = opces_usuarios[usuario_selecionado_str]
+                lista_todos_usuarios = usuarios_banco.data
+                opcoes_usuarios = {f"{u['nome']} ({u['email']})": u for u in usuarios_banco.data}
+                usuario_selecionado_str = st.selectbox("Selecione o colaborador que deseja consultar na tela:", options=list(opcoes_usuarios.keys()))
+                colaborador_escolhido = opcoes_usuarios[usuario_selecionado_str]
                 email_busca = colaborador_escolhido["email"]
                 nome_busca = colaborador_escolhido["nome"]
         except Exception:
             st.error("Erro ao carregar a lista de funcionários.")
             
     st.caption(f"Filtro e exportação de folhas e históricos para: **{nome_busca}**")
-    st.write("")
     
-    with st.container():
-        col1, col2 = st.columns(2)
-        with col1:
-            data_inicio = st.date_input("🗓️ Data Inicial", hoje - timedelta(days=7), format="DD/MM/YYYY")
-        with col2:
-            data_fim = st.date_input("🗓️ Data Final", hoje, format="DD/MM/YYYY")
+    col1, col2 = st.columns(2)
+    with col1:
+        data_inicio = st.date_input("🗓️ Data Inicial", hoje - timedelta(days=7), format="DD/MM/YYYY")
+    with col2:
+        data_fim = st.date_input("🗓️ Data Final", hoje, format="DD/MM/YYYY")
         
     st.write("---")
     
     if data_inicio > data_fim:
         st.error("Erro: A data inicial não pode ser maior que a data final.")
     else:
-        # Função auxiliar para tratar os dados (adaptada para aceitar colunas dinâmicas se for relatório geral)
-        def processar_dados_ponto(dados, eh_geral=False):
-            colunas_completas = [
-                "Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", 
-                "Justificativa Entrada", "Justificativa Saída Almoço", 
-                "Justificativa Retorno Almoço", "Justificativa Saída"
-            ]
-            
-            # Se for o relatório geral do Supervisor, a query costuma trazer a identificação do funcionário
-            if eh_geral:
-                colunas_completas = ["Nome", "Email"] + colunas_completas
-                
+        def processar_dados_ponto(dados):
             if not dados:
-                return pd.DataFrame(columns=colunas_completas)
-                
+                return pd.DataFrame(columns=["Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", "Justificativa Entrada", "Justificativa Saída"])
             df_temp = pd.DataFrame(dados)
-            
-            # Garante a ordem e renomeia apenas as colunas existentes no dicionário retornado
-            df_temp = df_temp.reindex(columns=colunas_completas)
+            df_temp.columns = ["Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", "Justificativa Entrada", "Justificativa Saída"]
             
             def formata_hora(x):
-                if not x or pd.isna(x): return "-"
-                try:
-                    return datetime.fromisoformat(str(x)).astimezone(fuso_br).strftime('%H:%M:%S')
-                except:
-                    return "-"
+                if not x: return "-"
+                try: return datetime.fromisoformat(x).astimezone(fuso_br).strftime('%H:%M:%S')
+                except: return "-"
 
-                df_temp["Entrada"] = df_temp["Entrada"].apply(formata_hora)
-            df_temp["Saída Almoço"] = df_temp["Saída Almoço"].apply(formata_hora)
-            df_temp["Retorno Almoço"] = df_temp["Retorno Almoço"].apply(formata_hora)
-            df_temp["Saída"] = df_temp["Saída"].apply(formata_hora)
-            
-            for col in [c for c in df_temp.columns if "Justificativa" in c]:
-                df_temp[col] = df_temp[col].fillna("-").replace("", "-")
-                
+            for c in ["Entrada", "Saída Almoço", "Retorno Almoço", "Saída"]:
+                df_temp[c] = df_temp[c].apply(formata_hora)
+            df_temp["Justificativa Entrada"] = df_temp["Justificativa Entrada"].fillna("-").replace("", "-")
+            df_temp["Justificativa Saída"] = df_temp["Justificativa Saída"].fillna("-").replace("", "-")
             return df_temp
 
-        # --- AÇÕES DE DOWNLOAD / EXPORTAÇÃO ---
-        st.subheader("📥 Exportar Relatórios")
-        exp_col1, exp_col2 = st.columns(2)
+        dados_relatorio = executar_query_supabase("buscar_relatorio", email=email_busca, data_filtro=data_inicio, data_fim=data_fim)
         
-        # Botão 1: Relatório Individual (Disponível para Usuário e Supervisor)
-        with exp_col1:
-            dados_relatorio = executar_query_supabase("buscar_relatorio", email=email_busca, data_filtro=data_inicio, data_fim=data_fim)
-            if dados_relatorio:
-                df_individual = processar_dados_ponto(dados_relatorio, eh_geral=False)
-                df_individual_csv = df_individual.to_csv(index=False, encoding='utf-8-sig', sep=';')
-                
-                nome_arquivo_ind = f"relatorio_ponto_{nome_busca.replace(' ', '_')}_{data_inicio}_a_{data_fim}.csv"
-                st.download_button(
-                    label=f"📄 Baixar Relatório de {nome_busca}",
-                    data=df_individual_csv,
-                    file_name=nome_arquivo_ind,
-                    mime="text/csv",
-                    key="btn_relatorio_individual"
-                )
-            else:
-                st.info("Sem dados individuais para exportar neste período.")
-
-        # Botão 2: Relatório Geral (Apenas para Supervisor)
-        with exp_col2:
-            if cargo_usuario == "Supervisor":
-                # Aqui assume-se que sua RPC/função "buscar_relatorio" sem o parâmetro email (ou com email=None) traz de todos.
-                # Se sua função exigir outra lógica, mude o nome da query abaixo:
-                dados_gerais = executar_query_supabase("buscar_relatorio", email=None, data_filtro=data_inicio, data_fim=data_fim)
-                
-                if dados_gerais:
-                    df_geral = processar_dados_ponto(dados_gerais, eh_geral=True)
-                    df_geral_csv = df_geral.to_csv(index=False, encoding='utf-8-sig', sep=';')
-                    
-                    nome_arquivo_geral = f"relatorio_GERAL_funcionarios_{data_inicio}_a_{data_fim}.csv"
-                    st.download_button(
-                        label="🗃️ Baixar Relatório Geral (Todos os Funcionários)",
-                        data=df_geral_csv,
-                        file_name=nome_arquivo_geral,
-                        mime="text/csv",
-                        key="btn_relatorio_geral"
-                    )
-                else:
-                    st.warning("Não foram encontrados registros gerais no banco para o período.")
-
-        st.write("---")
-        st.subheader("👀 Visualização Rápida")
-        
-        # Exibição na Tela (Mantém o comportamento original baseado em quem está selecionado)
         if not dados_relatorio:
             st.info(f"Não foram encontrados registros de ponto para {nome_busca} no período selecionado.")
         else:
-            df = processar_dados_ponto(dados_relatorio, eh_geral=False)
+            df = processar_dados_ponto(dados_relatorio)
             df_tela = df.copy()
             df_tela["Data"] = pd.to_datetime(df_tela["Data"]).dt.strftime('%d/%m/%Y')
             
-            st.dataframe(df_tela, use_container_width=True)
+            if cargo_usuario == "Supervisor":
+                st.markdown("📝 **Modo Edição Ativado:** Dê um duplo clique em qualquer célula para alterar.")
+                df_editado = st.data_editor(df_tela, use_container_width=True, disabled=["Data"], key="editor_pontos_supervisor")
+                
+                if st.button("💾 Confirmar Alterações e Salvar no Banco de Dados", use_container_width=True, type="primary"):
+                    colunas_reversas = {
+                        "Entrada": "horario_entrada", "Saída Almoço": "saida_almoco",
+                        "Retorno Almoço": "retorno_almoco", "Saída": "horario_saida",
+                        "Justificativa Entrada": "justificativa_entrada", "Justificativa Saída": "justificativa_saida"
+                    }
+                    
+                    with st.spinner("Salvando alterações..."):
+                        for idx, row in df_editado.iterrows():
+                            data_original = dados_relatorio[idx]["data"]
+                            dados_update = {"email": email_busca, "nome_completo": nome_busca, "data": data_original}
+                            
+                            for col_tela, col_banco in colunas_reversas.items():
+                                valor_celula = str(row[col_tela]).strip()
+                                if col_banco in ["justificativa_entrada", "justificativa_saida"]:
+                                    dados_update[col_banco] = None if valor_celula == "-" else valor_celula
+                                else:
+                                    if valor_celula == "-":
+                                        dados_update[col_banco] = None
+                                    else:
+                                        try:
+                                            if len(valor_celula) == 5:
+                                                hora_objeto = datetime.strptime(valor_celula, "%H:%M").time()
+                                            else:
+                                                hora_objeto = datetime.strptime(valor_celula, "%H:%M:%S").time()
+                                                
+                                            data_objeto = datetime.strptime(data_original, "%Y-%m-%d").date()
+                                            dt_combinado = datetime.combine(data_objeto, hora_objeto).replace(tzinfo=fuso_br)
+                                            
+                                            if dt_combinado > agora_br:
+                                                st.error(f"🛑 Horário '{valor_celula}' no dia {data_original} está no futuro. Cancelado.")
+                                                st.stop()
+                                                
+                                            dados_update[col_banco] = dt_combinado.isoformat()
+                                        except Exception:
+                                            st.error(f"🛑 Erro no formato do horário '{valor_celula}'. Use HH:MM:SS.")
+                                            st.stop()
+                                            
+                            executar_query_supabase("salvar_ponto", data_dict=dados_update)
+                    st.success("Alterações integradas com sucesso!")
+                    st.rerun()
+            else:
+                st.dataframe(df_tela, use_container_width=True)
+            
+            # Exportação individual (.xlsx)
+            output_ind = BytesIO()
+            df_excel_ind = df.copy()
+            df_excel_ind["Data"] = pd.to_datetime(df_excel_ind["Data"]).dt.strftime('%d/%m/%Y')
+            with pd.ExcelWriter(output_ind, engine='openpyxl') as writer:
+                df_excel_ind.to_excel(writer, index=False, sheet_name='Folha de Ponto')
+            
+            st.download_button(label=f"📥 Baixar Planilha de {nome_busca} (.xlsx)", data=output_ind.getvalue(), file_name=f"ponto_{nome_busca.replace(' ', '_')}.xlsx", mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', use_container_width=True)
+
+        if cargo_usuario == "Supervisor" and lista_todos_usuarios:
+            st.write("---")
+            st.markdown("##### 🗂️ Exportação Avançada")
+            if st.button("📊 Gerar Relatório Consolidado de Todos os Funcionários", use_container_width=True):
+                with st.spinner("Gerando abas..."):
+                    output_geral = BytesIO()
+                    with pd.ExcelWriter(output_geral, engine='openpyxl') as writer:
+                        for colab in lista_todos_usuarios:
+                            dados_c = executar_query_supabase("buscar_relatorio", email=colab["email"], data_filtro=data_inicio, data_fim=data_fim)
+                            df_c = processar_dados_ponto(dados_c)
+                            df_c["Data"] = pd.to_datetime(df_c["Data"]).dt.strftime('%d/%m/%Y')
+                            nome_aba = (colab["nome"].split(" ")[0] + " " + (colab["nome"].split(" ")[-1] if len(colab["nome"].split(" ")) > 1 else ""))[:30]
+                            df_c.to_excel(writer, index=False, sheet_name=nome_aba)
+                    st.success("Planilha consolidada pronta!")
+                    st.download_button(label="📥 Baixar Planilha Geral (.xlsx)", data=output_geral.getvalue(), file_name="relatorio_equipe.xlsx", mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', use_container_width=True)
