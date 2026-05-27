@@ -448,11 +448,13 @@ elif opcao == "LOG":
         }
 
         # Dicionário mapeado para identificar qual coluna de criação consultar baseado na ação
+        # --- DENTRO DO SEU MENU: LOG ---
+        # Certifique-se de que as chaves batem exatamente com as colunas do banco
         mapeamento_colunas_registro = {
             "horario_entrada": "data_registro_horario_entrada",
             "saida_almoco": "data_saida_almoco",
             "retorno_almoco": "data_retorno_almoco",
-            "horario_saida": "data_horario_saida"
+            "horario_saida": "data_horario_saida" # Sem espaços aqui
         }
         
         for item in logs_banco:
@@ -477,14 +479,19 @@ elif opcao == "LOG":
                     elif coluna == "horario_saida" and item.get("justificativa_saida"):
                         just_texto = item["justificativa_saida"]
                     
-                    # Identifica a coluna de registro correspondente a este loop específico
+                    # Identifica a coluna de registro correspondente
                     coluna_registro = mapeamento_colunas_registro.get(coluna)
                     data_registro_banco = item.get(coluna_registro)
                     
-                    if data_registro_banco:
-                        dt_sistema = datetime.fromisoformat(data_registro_banco).astimezone(fuso_br)
-                        hora_sistema_gravada = dt_sistema.strftime("%H:%M:%S")
+                    # TESTE DE SEGURANÇA: Se o banco retornar string vazia ou None, tratamos aqui
+                    if data_registro_banco and str(data_registro_banco).strip() != "":
+                        try:
+                            dt_sistema = datetime.fromisoformat(str(data_registro_banco)).astimezone(fuso_br)
+                            hora_sistema_gravada = dt_sistema.strftime("%H:%M:%S")
+                        except Exception:
+                            hora_sistema_gravada = "--:--:--"
                     else:
+                        # Se caiu aqui, o Python leu o banco mas a coluna estava vazia (nula)
                         hora_sistema_gravada = "--:--:--"
                     
                     lista_eventos.append({
