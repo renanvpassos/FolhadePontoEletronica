@@ -446,9 +446,10 @@ elif opcao == "LOG":
             
             with st.container(height=450):
                 for evento in lista_eventos:
-                    hora_sistema = datetime.now().strftime("%H:%M:%S")
+                    # Força o datetime a usar o fuso horário de Brasília
+                    fuso_brasilia = ZoneInfo("America/Sao_Paulo")
+                    hora_sistema = datetime.now(fuso_brasilia).strftime("%H:%M:%S")
                     
-                    # Criamos uma variável para a justificativa ANTES de fechar a div do card
                     html_justificativa = ""
                     if evento.get("justificativa"):
                         html_justificativa = (
@@ -458,14 +459,13 @@ elif opcao == "LOG":
                             f'</span>'
                         )
                     
-                    # Montamos o HTML completo mantendo a justificativa DENTRO do card-log
                     html_log = (
                         f'<div class="card-log" style="position: relative; margin-bottom: 10px;">'
                         f'<span style="float: right; color: gray; font-size: 0.85em; text-align: right; line-height: 1.2;">'
-                        f'📅 {evento["data_str"]}<br> {hora_sistema}'
+                        f'📅 {evento["data_str"]}<br>💻 {hora_sistema}'
                         f'</span>'
                         f'⏱️ <b>{evento["hora_str"]}</b> - <b>{evento["nome"]}</b> {evento["acao"]}'
-                        f'{html_justificativa}'  # A justificativa entra exatamente aqui, abaixo da linha principal
+                        f'{html_justificativa}'
                         f'</div>'
                     )
                     
