@@ -204,7 +204,9 @@ for k, v in pontos.items():
     if v and isinstance(v, str):
         pontos[k] = datetime.fromisoformat(v).astimezone(fuso_br)
 
+# =====================================================================
 # --- MENU: REGISTRO DE HORÁRIOS ---
+# =====================================================================
 if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
     st.title(f"📍 Registro de {opcao.title()}")
     
@@ -383,12 +385,12 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                         st.error("🛑 Erro: Corrija as inconsistências de fluxo ou horário antes de confirmar.")
                         
                     else:
-                        # Mapeamento para direcionar a gravação para a coluna individual correta
+                        # MAPEAMENTO DE GRAVAÇÃO DO SISTEMA
                         mapeamento_registro_sistema = {
                             "ENTRADA": "data_registro_horario_entrada",
                             "SAÍDA ALMOÇO": "data_saida_almoco",
                             "RETORNO ALMOÇO": "data_retorno_almoco",
-                            "SAÍDA": "data_horario_saida"
+                            "SAÍDA": "data_ horario_saida" # Espaço mantido conforme sua tabela
                         }
 
                         dados_ponto = {
@@ -396,7 +398,7 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                             "nome_completo": user_name,
                             "data": str(hoje),
                             colunas_banco[opcao]: horario_final_gravacao.isoformat(),
-                            # Grava o momento do clique na coluna específica do menu atual
+                            # Grava dinamicamente na coluna de auditoria correspondente ao menu aberto
                             mapeamento_registro_sistema[opcao]: agora_br.isoformat()
                         }
                         
@@ -424,13 +426,16 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                     st.session_state[f'confirmar_{opcao}'] = False
                     st.rerun()
 
+
+# =====================================================================
 # --- MENU: LOG ---
+# =====================================================================
 elif opcao == "LOG":
     st.title("📢 Mural de Atividades")
     st.caption("Linha do tempo das batidas eletrônicas registradas pela equipe hoje (Ordem Cronológica).")
     st.write("---")
     
-    logs_banco = executar_query_supabase("buscar_logs")
+    logs_banco = ejecutar_query_supabase("buscar_logs")
     if not logs_banco:
         st.info("Nenhuma atividade registrada no mural recente.")
     else:
@@ -447,12 +452,12 @@ elif opcao == "LOG":
             "horario_saida": "🟠 Saiu"
         }
 
-        # VÍNCULOS ESTRITOS: Mapeamento de cada ponto com sua respectiva coluna de auditoria do sistema
+        # VÍNCULOS ESTRITOS PARA EXIBIÇÃO: Mapeia a coluna do ponto do banco com a sua coluna de auditoria
         mapeamento_colunas_registro = {
             "horario_entrada": "data_registro_horario_entrada",
             "saida_almoco": "data_saida_almoco",
             "retorno_almoco": "data_retorno_almoco",
-            "horario_saida": "data_ horario_saida"  # Mantido o espaço exatamente como na sua tabela
+            "horario_saida": "data_ horario_saida" # Espaço mantido estritamente conforme o banco
         }
         
         for item in logs_banco:
@@ -477,16 +482,16 @@ elif opcao == "LOG":
                     elif coluna == "horario_saida" and item.get("justificativa_saida"):
                         just_texto = item["justificativa_saida"]
                     
-                    # Identifica qual é a coluna de auditoria vinculada a este loop
+                    # Identifica qual é a coluna de auditoria do sistema vinculada a esta batida
                     coluna_registro = mapeamento_colunas_registro.get(coluna)
                     data_registro_banco = item.get(coluna_registro)
                     
-                    # Puxa única e exclusivamente o horário da respectiva coluna de auditoria do sistema
-                    if data_registro_banco:
-                        dt_sistema = datetime.fromisoformat(data_registro_banco).astimezone(fuso_br)
+                    # REGRA SOLICITADA: Puxa única e exclusivamente o horário da respectiva coluna de auditoria
+                    if data_registro_banco and str(data_registro_banco).strip() != "":
+                        dt_sistema = datetime.fromisoformat(str(data_registro_banco)).astimezone(fuso_br)
                         hora_sistema_gravada = dt_sistema.strftime("%H:%M:%S")
                     else:
-                        # Caso a coluna específica esteja vazia (ex: registros antigos), exibe os traços
+                        # Se a coluna de auditoria estiver nula no banco, exibe estritamente os traços
                         hora_sistema_gravada = "--:--:--"
                     
                     lista_eventos.append({
@@ -520,7 +525,7 @@ elif opcao == "LOG":
                     html_log = (
                         f'<div class="card-log" style="position: relative; margin-bottom: 10px;">'
                         f'<span style="float: right; color: gray; font-size: 0.85em; text-align: right; line-height: 1.2;">'
-                        f'📅 {evento["data_str"]}<br>{hora_sistema_gravada}'
+                        f'📅 {evento["data_str"]}<br>{hora_sistema}'
                         f'</span>'
                         f'⏱️ <b>{evento["hora_str"]}</b> - <b>{evento["nome"]}</b> {evento["acao"]}'
                         f'{html_justificativa}'
