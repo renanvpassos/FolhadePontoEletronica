@@ -86,12 +86,12 @@ def converter_para_excel_individual(df_dados):
         df_dados.to_excel(writer, index=False, sheet_name='Espelho de Ponto')
     return output.getvalue()
 
-def converter_para_excel_multiabao(df_geral):
+def converter_para_excel_multiaba(df_geral):
     output = BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         # Agrupa os dados pelo e-mail do funcionário para isolar as jornadas
         for email, group in df_geral.groupby("E-mail"):
-            # Obtém o nome do funcionário baseado no grupo para dar título à aba
+            # Obtem o nome do funcionário baseado no grupo para dar título à aba
             nome_colaborador = group["Funcionário"].iloc[0]
             
             # Limpa caracteres inválidos ou muito longos que quebram abas do Excel (máx 31 caracteres)
@@ -420,7 +420,7 @@ elif opcao == "LOG":
     st.caption("Linha do tempo das batidas eletrônicas registradas pela equipe hoje (Ordem Cronológica).")
     st.write("---")
     
-    logs_banco = executing_query_supabase("buscar_logs")
+    logs_banco = executar_query_supabase("buscar_logs")
     if not logs_banco:
         st.info("Nenhuma atividade registrada no mural recente.")
     else:
