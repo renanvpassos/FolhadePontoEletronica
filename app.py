@@ -298,7 +298,7 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                                 limite_almoco = (1 * 3600) + (10 * 60)
                                 
                                 if tempo_almoco_segundos > limite_almoco:
-                                    justifycativa_obrigatoria = True
+                                    justificativa_obrigatoria = True
                                     
                         elif opcao == "SAÍDA":
                             if horario_final_gravacao > agora_br_sem_segundos:
@@ -383,13 +383,21 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                         st.error("🛑 Erro: Corrija as inconsistências de fluxo ou horário antes de confirmar.")
                         
                     else:
-                        # AJUSTE AQUI: Adicionado o campo "data_registro" enviando o momento exato do preenchimento
+                        # Mapeamento para direcionar a gravação para a coluna individual correta
+                        mapeamento_registro_sistema = {
+                            "ENTRADA": "data_registro_horario_entrada",
+                            "SAÍDA ALMOÇO": "data_saida_almoco",
+                            "RETORNO ALMOÇO": "data_retorno_almoco",
+                            "SAÍDA": "data_horario_saida"
+                        }
+
                         dados_ponto = {
                             "email": user_email,
                             "nome_completo": user_name,
                             "data": str(hoje),
                             colunas_banco[opcao]: horario_final_gravacao.isoformat(),
-                            "data_registro": agora_br.isoformat()  # Captura o horário exato de Brasília em que o clique ocorreu
+                            # Grava o momento do clique na coluna específica do menu atual
+                            mapeamento_registro_sistema[opcao]: agora_br.isoformat()
                         }
                         
                         if opcao == "ENTRADA":
@@ -438,20 +446,17 @@ elif opcao == "LOG":
             "retorno_almoco": "🔵 retornou do almoço",
             "horario_saida": "🟠 Saiu"
         }
+
+        # Dicionário mapeado para identificar qual coluna de criação consultar baseado na ação
+        mapeamento_colunas_registro = {
+            "horario_entrada": "data_registro_horario_entrada",
+            "saida_almoco": "data_saida_almoco",
+            "retorno_almoco": "data_retorno_almoco",
+            "horario_saida": "data_horario_saida"
+        }
         
         for item in logs_banco:
             nome = item["nome_completo"]
-            
-            # Captura a hora que o registro foi feito no banco de dados
-            data_registro_banco = item.get("data_registro") 
-            
-            if data_registro_banco:
-                # Converte o timestamp do banco para o fuso horário de Brasília
-                dt_sistema = datetime.fromisoformat(data_registro_banco).astimezone(fuso_br)
-                hora_sistema_gravada = dt_sistema.strftime("%H:%M:%S")
-            else:
-                # Fallback para registros antigos que não possuem a coluna preenchida
-                hora_sistema_gravada = "--:--:--" 
             
             for coluna, label in labels_acoes.items():
                 valor_hora = item.get(coluna)
@@ -472,6 +477,16 @@ elif opcao == "LOG":
                     elif coluna == "horario_saida" and item.get("justificativa_saida"):
                         just_texto = item["justificativa_saida"]
                     
+                    # Identifica a coluna de registro correspondente a este loop específico
+                    coluna_registro = mapeamento_colunas_registro.get(coluna)
+                    data_registro_banco = item.get(coluna_registro)
+                    
+                    if data_registro_banco:
+                        dt_sistema = datetime.fromisoformat(data_registro_banco).astimezone(fuso_br)
+                        hora_sistema_gravada = dt_sistema.strftime("%H:%M:%S")
+                    else:
+                        hora_sistema_gravada = "--:--:--"
+                    
                     lista_eventos.append({
                         "nome": nome,
                         "data_str": dt_compara,
@@ -479,7 +494,7 @@ elif opcao == "LOG":
                         "hora_str": dt_objeto.strftime("%H:%M:%S"),
                         "objeto_tempo": dt_objeto,
                         "justificativa": just_texto,
-                        "hora_sistema_salva": hora_sistema_gravada  # Armazena o horário fixo no evento
+                        "hora_sistema_salva": hora_sistema_gravada  # Salva a auditoria individualizada no evento
                     })
         
         if not lista_eventos:
@@ -489,7 +504,7 @@ elif opcao == "LOG":
             
             with st.container(height=450):
                 for evento in lista_eventos:
-                    # Usa o horário fixo recuperado do banco de dados (evita que atualize na tela)
+                    # Recupera o valor fixo correspondente à batida
                     hora_sistema = evento["hora_sistema_salva"]
                     
                     html_justificativa = ""
@@ -528,6 +543,7 @@ elif opcao == "LOG":
                 """,
                 height=0
             )
+            
 # --- MENU: RELATÓRIO ---
 elif opcao == "RELATÓRIO":
     st.title("📊 Espelho de Ponto Pessoal")
