@@ -447,14 +447,12 @@ elif opcao == "LOG":
             "horario_saida": "🟠 Saiu"
         }
 
-        # Dicionário mapeado para identificar qual coluna de criação consultar baseado na ação
-        # --- DENTRO DO SEU MENU: LOG ---
-        # Certifique-se de que as chaves batem exatamente com as colunas do banco
+        # Dicionário que mapeia a ação com a sua respectiva coluna de auditoria do sistema
         mapeamento_colunas_registro = {
             "horario_entrada": "data_registro_horario_entrada",
             "saida_almoco": "data_saida_almoco",
             "retorno_almoco": "data_retorno_almoco",
-            "horario_saida": "data_horario_saida" # Sem espaços aqui
+            "horario_saida": "data_horario_saida"  # Corrigido sem espaços internos
         }
         
         for item in logs_banco:
@@ -479,20 +477,18 @@ elif opcao == "LOG":
                     elif coluna == "horario_saida" and item.get("justificativa_saida"):
                         just_texto = item["justificativa_saida"]
                     
-                    # Identifica a coluna de registro correspondente
+                    # 1. Busca a coluna de registro correspondente a esta ação
                     coluna_registro = mapeamento_colunas_registro.get(coluna)
                     data_registro_banco = item.get(coluna_registro)
                     
-                    # TESTE DE SEGURANÇA: Se o banco retornar string vazia ou None, tratamos aqui
-                    if data_registro_banco and str(data_registro_banco).strip() != "":
-                        try:
-                            dt_sistema = datetime.fromisoformat(str(data_registro_banco)).astimezone(fuso_br)
-                            hora_sistema_gravada = dt_sistema.strftime("%H:%M:%S")
-                        except Exception:
-                            hora_sistema_gravada = "--:--:--"
+                    # 2. REGRA DE OURO: Se a coluna de auditoria existir, usa ela. 
+                    # Se estiver vazia, usa o próprio horário que o ponto foi marcado (valor_hora)
+                    if data_registro_banco:
+                        dt_sistema = datetime.fromisoformat(data_registro_banco).astimezone(fuso_br)
+                        hora_sistema_gravada = dt_sistema.strftime("%H:%M:%S")
                     else:
-                        # Se caiu aqui, o Python leu o banco mas a coluna estava vazia (nula)
-                        hora_sistema_gravada = "--:--:--"
+                        # Se não houver data_registro, espelha o horário do próprio ponto digitado
+                        hora_sistema_gravada = dt_objeto.strftime("%H:%M:%S")
                     
                     lista_eventos.append({
                         "nome": nome,
@@ -501,7 +497,7 @@ elif opcao == "LOG":
                         "hora_str": dt_objeto.strftime("%H:%M:%S"),
                         "objeto_tempo": dt_objeto,
                         "justificativa": just_texto,
-                        "hora_sistema_salva": hora_sistema_gravada  # Salva a auditoria individualizada no evento
+                        "hora_sistema_salva": hora_sistema_gravada  
                     })
         
         if not lista_eventos:
@@ -511,7 +507,6 @@ elif opcao == "LOG":
             
             with st.container(height=450):
                 for evento in lista_eventos:
-                    # Recupera o valor fixo correspondente à batida
                     hora_sistema = evento["hora_sistema_salva"]
                     
                     html_justificativa = ""
