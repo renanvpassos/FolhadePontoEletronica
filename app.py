@@ -447,12 +447,12 @@ elif opcao == "LOG":
             "horario_saida": "🟠 Saiu"
         }
 
-        # Dicionário que mapeia a ação com a sua respectiva coluna de auditoria do sistema
+        # Mapeamento estrito: cada ação aponta APENAS para sua respectiva coluna de registro do sistema
         mapeamento_colunas_registro = {
             "horario_entrada": "data_registro_horario_entrada",
             "saida_almoco": "data_saida_almoco",
             "retorno_almoco": "data_retorno_almoco",
-            "horario_saida": "data_horario_saida"  # Corrigido sem espaços internos
+            "horario_saida": "data_ horario_saida"  # Mantido o espaço exatamente como na sua tabela do banco
         }
         
         for item in logs_banco:
@@ -477,18 +477,17 @@ elif opcao == "LOG":
                     elif coluna == "horario_saida" and item.get("justificativa_saida"):
                         just_texto = item["justificativa_saida"]
                     
-                    # 1. Busca a coluna de registro correspondente a esta ação
+                    # Busca a coluna de registro correspondente a esta ação
                     coluna_registro = mapeamento_colunas_registro.get(coluna)
                     data_registro_banco = item.get(coluna_registro)
                     
-                    # 2. REGRA DE OURO: Se a coluna de auditoria existir, usa ela. 
-                    # Se estiver vazia, usa o próprio horário que o ponto foi marcado (valor_hora)
+                    # O seu {hora_sistema} passa a puxar estritamente o valor destas colunas de registro
                     if data_registro_banco:
                         dt_sistema = datetime.fromisoformat(data_registro_banco).astimezone(fuso_br)
                         hora_sistema_gravada = dt_sistema.strftime("%H:%M:%S")
                     else:
-                        # Se não houver data_registro, espelha o horário do próprio ponto digitado
-                        hora_sistema_gravada = dt_objeto.strftime("%H:%M:%S")
+                        # Se não houver dado gravado na coluna de registro específica, exibe os traços
+                        hora_sistema_gravada = "--:--:--"
                     
                     lista_eventos.append({
                         "nome": nome,
