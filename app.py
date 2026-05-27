@@ -5,8 +5,6 @@ from zoneinfo import ZoneInfo
 import hashlib
 from io import BytesIO
 from supabase import create_client, Client
-import smtplib
-from email.mime.text import MIMEText
 import re
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
@@ -48,13 +46,10 @@ def obter_hoje_br():
     """Retorna a data atual com base no fuso horário de Brasília."""
     return obter_agora_br().date()
 
-# --- CONEXÃO COM O SUPABASE E CONFIGURAÇÕES SMTP ---
+# --- CONEXÃO COM O SUPABASE ---
 url: str = st.secrets["supabase"]["url"]
 key: str = st.secrets["supabase"]["key"]
 supabase: Client = create_client(url, key)
-
-SMTP_EMAIL = st.secrets["gmail_smtp"]["usuario"]
-SMTP_SENHA = st.secrets["gmail_smtp"]["senha"]
 
 # --- FUNÇÃO PARA CRIPTOGRAFAR SENHAS ---
 def criptografar_senha(senha):
@@ -80,60 +75,10 @@ def executar_query_supabase(operacao, data_dict=None, email=None, data_filtro=No
         res = supabase.table("registro_ponto").select("data, horario_entrada, saida_almoco, retorno_almoco, horario_saida, justificativa_entrada, justificativa_saida_almoco, justificativa_retorno_almoco, justificativa_saida").eq("email", email).gte("data", str(data_filtro)).lte("data", str(data_fim)).order("data", desc=True).execute()
         return res.data
 
-# --- SISTEMA DE DISPARO DE ALERTA EMBUTIDO ---
+# --- SISTEMA DE DISPARO DE ALERTA (DESATIVADO) ---
 def verificar_e_disparar_alertas():
-    """Varre o banco procurando jornadas chegando a 9h e envia e-mail."""
-    agora = obter_agora_br()
-    hoje_str = str(obter_hoje_br())
-    
-    try:
-        res = supabase.table("registro_ponto")\
-            .select("email, nome_completo, horario_entrada, horario_alerta")\
-            .eq("data", hoje_str)\
-            .eq("alerta_enviado", False)\
-            .not_.is_("horario_alerta", "null")\
-            .execute()
-        
-        for registro in res.data:
-            dt_alerta = datetime.fromisoformat(registro["horario_alerta"]).astimezone(fuso_br)
-            
-            if agora >= dt_alerta:
-                dt_entrada = datetime.fromisoformat(registro["horario_entrada"]).astimezone(fuso_br)
-                dt_fim_jornada = dt_entrada + timedelta(hours=9)
-                
-                str_entrada = dt_entrada.strftime("%H:%M")
-                str_fim = dt_fim_jornada.strftime("%H:%M")
-                nome_usuario = registro["nome_completo"]
-                email_usuario = registro["email"]
-                
-                assunto = f"⏱️ {nome_usuario}, sua jornada de trabalho está terminando!"
-                corpo_html = f"""
-                <html>
-                    <body style="font-family: Arial, sans-serif; color: #333;">
-                        <h2>Olá, {nome_usuario}! ⏱️</h2>
-                        <p>Você registrou sua entrada hoje às <b>{str_entrada}</b>.</p>
-                        <p>Sua jornada bruta de 9 horas encerra às <b style="color: #ff4d4d;">{str_fim}</b>.</p>
-                        <p>⚠️ Lembre-se de <b>bater o seu ponto de saída</b> assim que finalizar suas atividades.</p>
-                    </body>
-                </html>
-                """
-                
-                msg = MIMEText(corpo_html, 'html', 'utf-8')
-                msg['Subject'] = assunto
-                msg['From'] = SMTP_EMAIL
-                msg['To'] = email_usuario
-                
-                with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
-                    server.login(SMTP_EMAIL, SMTP_SENHA)
-                    server.send_message(msg)
-                
-                supabase.table("registro_ponto")\
-                    .update({"alerta_enviado": True})\
-                    .eq("email", email_usuario)\
-                    .eq("data", hoje_str)\
-                    .execute()
-    except Exception:
-        pass
+    """Função temporariamente desativada (remover integração com Google SMTP)."""
+    pass
 
 # --- SISTEMA NATIVO DE LOGIN E CADASTRO ---
 def gerenciar_acesso():
@@ -332,7 +277,7 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                                 limite_almoco = (1 * 3600) + (10 * 60)
                                 
                                 if tempo_almoco_segundos > limite_almoco:
-                                    justificativa_obrigatoria = True
+                                    justifycativa_obrigatoria = True
                                     
                         elif opcao == "SAÍDA":
                             if horario_final_gravacao > agora_br_sem_segundos:
@@ -343,7 +288,6 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                                 t_entrada = pontos["ENTRADA"]
                                 t_saida_atual = horario_final_gravacao
                                 
-                                # AJUSTADO: Validação direta considerando apenas Entrada e Saída
                                 tempo_total_segundos = int((t_saida_atual - t_entrada).total_seconds())
                                 limite_inferior = 9 * 3600
                                 limite_superior = (9 * 3600) + (10 * 60) + 59
@@ -370,7 +314,6 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                         t_entrada = pontos["ENTRADA"]
                         t_saida_atual = horario_final_gravacao
                         
-                        # AJUSTADO: Calculo desconsidera o intervalo do almoço completamente
                         segundos_trabalhados = int((t_saida_atual - t_entrada).total_seconds())
                         if segundos_trabalhados < 0:
                             segundos_trabalhados = 0
@@ -378,7 +321,7 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                         horas_trab = segundos_trabalhados // 3600
                         minutos_trab = (segundos_trabalhados % 3600) // 60
                         
-                        jornada_padrao_segundos = 9 * 3600  # Modificado para a jornada base de 9 horas direta
+                        jornada_padrao_segundos = 9 * 3600 
                         
                         msg_extra = "Não houve hora extra."
                         if segundos_trabalhados > jornada_padrao_segundos:
@@ -460,7 +403,6 @@ elif opcao == "LOG":
     if not logs_banco:
         st.info("Nenhuma atividade registrada no mural recente.")
     else:
-        # Pega o dia, mês e ano de hoje estritamente no fuso BR
         hoje = datetime.now(fuso_br)
         hoje_ano = hoje.year
         hoje_mes = hoje.month
@@ -480,10 +422,8 @@ elif opcao == "LOG":
             for coluna, label in labels_acoes.items():
                 valor_hora = item.get(coluna)
                 if valor_hora:
-                    # Converte a string do Supabase para objeto datetime com fuso
                     dt_objeto = datetime.fromisoformat(valor_hora).astimezone(fuso_br)
                     
-                    # FILTRO ESSENCIAL: Ignora o horário se ele não pertencer ao dia de hoje
                     if not (dt_objeto.year == hoje_ano and dt_objeto.month == hoje_mes and dt_objeto.day == hoje_dia):
                         continue
                     
@@ -510,12 +450,10 @@ elif opcao == "LOG":
         if not lista_eventos:
             st.info("Nenhum registro encontrado para o dia de hoje.")
         else:
-            # Ordena os eventos do dia do mais antigo para o mais recente
             lista_eventos.sort(key=lambda x: x["objeto_tempo"], reverse=False)
             
             with st.container(height=450):
                 for evento in lista_eventos:
-                    # Captura a hora atual do sistema no formato HH:MM:SS
                     hora_sistema = datetime.now().strftime("%H:%M:%S")
                     
                     html_log = (
@@ -572,14 +510,14 @@ elif opcao == "RELATÓRIO":
             usuarios_banco = supabase.table("usuarios_ponto").select("email, nome").execute()
             if usuarios_banco.data:
                 lista_todos_usuarios = sorted(usuarios_banco.data, key=lambda x: x['nome'].lower())
-                opcoes_usuarios = {f"{u['nome']} ({u['email']})": u for u in lista_todos_usuarios}
+                opces_usuarios = {f"{u['nome']} ({u['email']})": u for u in lista_todos_usuarios}
                 
                 usuario_selecionado_str = st.selectbox(
                     "Selecione o colaborador que deseja consultar na tela:",
-                    options=list(opcoes_usuarios.keys())
+                    options=list(opces_usuarios.keys())
                 )
                 
-                colaborador_escolhido = opcoes_usuarios[usuario_selecionado_str]
+                colaborador_escolhido = opces_usuarios[usuario_selecionado_str]
                 email_busca = colaborador_escolhido["email"]
                 nome_busca = colaborador_escolhido["nome"]
         except Exception:
@@ -641,8 +579,4 @@ elif opcao == "RELATÓRIO":
             df_tela = df.copy()
             df_tela["Data"] = pd.to_datetime(df_tela["Data"]).dt.strftime('%d/%m/%Y')
             
-            if cargo_usuario == "Supervisor":
-                st.markdown("### 📝 Modo Edição")
-                st.dataframe(df_tela)
-            else:
-                st.dataframe(df_tela)
+            st.dataframe(df_tela, use_container_width=True)
