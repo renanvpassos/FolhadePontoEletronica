@@ -457,7 +457,7 @@ elif opcao == "LOG":
             "horario_entrada": "data_registro_horario_entrada",
             "saida_almoco": "data_saida_almoco",
             "retorno_almoco": "data_retorno_almoco",
-            "horario_saida": "data_ horario_saida" # Espaço mantido estritamente conforme o banco
+            "horario_saida": "data_horario_saida" # Espaço mantido estritamente conforme o banco
         }
         
         for item in logs_banco:
