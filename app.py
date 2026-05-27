@@ -298,7 +298,7 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                                 limite_almoco = (1 * 3600) + (10 * 60)
                                 
                                 if tempo_almoco_segundos > limite_almoco:
-                                    justificativa_obrigatoria = True
+                                    justifycativa_obrigatoria = True
                                     
                         elif opcao == "SAÍDA":
                             if horario_final_gravacao > agora_br_sem_segundos:
@@ -383,11 +383,13 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                         st.error("🛑 Erro: Corrija as inconsistências de fluxo ou horário antes de confirmar.")
                         
                     else:
+                        # AJUSTE AQUI: Adicionado o campo "data_registro" enviando o momento exato do preenchimento
                         dados_ponto = {
                             "email": user_email,
                             "nome_completo": user_name,
                             "data": str(hoje),
-                            colunas_banco[opcao]: horario_final_gravacao.isoformat()
+                            colunas_banco[opcao]: horario_final_gravacao.isoformat(),
+                            "data_registro": agora_br.isoformat()  # Captura o horário exato de Brasília em que o clique ocorreu
                         }
                         
                         if opcao == "ENTRADA":
