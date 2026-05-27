@@ -517,8 +517,11 @@ elif opcao == "LOG":
                 for evento in lista_eventos:
                     html_log = (
                         f'<div class="card-log">'
-                        f'⏱️ <b>{evento["hora_str"]}</b> - <b>{evento["nome"]}</b> {evento["acao"]} '
-                        f'<span style="float: right; color: gray; font-size: 0.85em;">📅 {evento["data_str"]}</span>'
+                        f'⏱️ <b>{evento["nome"]}</b> {evento["acao"]}'
+                        f'<span style="float: right; color: gray; font-size: 0.85em; text-align: right;">'
+                        f'📅 {evento["data_str"]}<br>🕒 {evento["hora_str"]}'
+                        f'</span>'
+                        f'</div>'  # Fechamento da div card-log que faltava no original
                     )
                     
                     if evento["justificativa"]:
