@@ -75,11 +75,6 @@ def executar_query_supabase(operacao, data_dict=None, email=None, data_filtro=No
         res = supabase.table("registro_ponto").select("data, horario_entrada, saida_almoco, retorno_almoco, horario_saida, justificativa_entrada, justificativa_saida_almoco, justificativa_retorno_almoco, justificativa_saida").eq("email", email).gte("data", str(data_filtro)).lte("data", str(data_fim)).order("data", desc=True).execute()
         return res.data
 
-# --- SISTEMA DE DISPARO DE ALERTA (DESATIVADO) ---
-def verificar_e_disparar_alertas():
-    """Função temporariamente desativada (remover integração com Google SMTP)."""
-    pass
-
 # --- SISTEMA NATIVO DE LOGIN E CADASTRO ---
 def gerenciar_acesso():
     if "connected" not in st.session_state:
@@ -144,9 +139,6 @@ user_name = user_info.get("name", "Colaborador")
 
 hoje = obter_hoje_br() 
 agora_br = obter_agora_br() 
-
-verificar_e_disparar_alertas()
-executar_query_supabase("limpar_log", data_filtro=hoje - timedelta(days=30))
 
 # --- INTERFACE / MENU LATERAL ---
 st.sidebar.markdown(f"### 👤 Usuário Ativo")
