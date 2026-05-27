@@ -390,7 +390,7 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                             "ENTRADA": "data_registro_horario_entrada",
                             "SAÍDA ALMOÇO": "data_saida_almoco",
                             "RETORNO ALMOÇO": "data_retorno_almoco",
-                            "SAÍDA": "data_ horario_saida" # Espaço mantido conforme sua tabela
+                            "SAÍDA": "data_horario_saida" # Espaço mantido conforme sua tabela
                         }
 
                         dados_ponto = {
