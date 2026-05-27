@@ -448,19 +448,27 @@ elif opcao == "LOG":
                 for evento in lista_eventos:
                     hora_sistema = datetime.now().strftime("%H:%M:%S")
                     
+                    # Criamos uma variável para a justificativa ANTES de fechar a div do card
+                    html_justificativa = ""
+                    if evento.get("justificativa"):
+                        html_justificativa = (
+                            f'<br><span style="color: #6c757d; font-size: 0.9em; font-style: italic; '
+                            f'padding-left: 28px; display: inline-block; margin-top: 4px;">'
+                            f'💬 Justificativa: {evento["justificativa"]}'
+                            f'</span>'
+                        )
+                    
+                    # Montamos o HTML completo mantendo a justificativa DENTRO do card-log
                     html_log = (
-                        f'<div class="card-log">'
-                        f'⏱️ <b>{evento["hora_str"]}</b> - <b>{evento["nome"]}</b> {evento["acao"]}'
-                        f'<span style="float: right; color: gray; font-size: 0.85em; text-align: right;">'
+                        f'<div class="card-log" style="position: relative; margin-bottom: 10px;">'
+                        f'<span style="float: right; color: gray; font-size: 0.85em; text-align: right; line-height: 1.2;">'
                         f'📅 {evento["data_str"]}<br>💻 {hora_sistema}'
                         f'</span>'
+                        f'⏱️ <b>{evento["hora_str"]}</b> - <b>{evento["nome"]}</b> {evento["acao"]}'
+                        f'{html_justificativa}'  # A justificativa entra exatamente aqui, abaixo da linha principal
                         f'</div>'
                     )
                     
-                    if evento["justificativa"]:
-                        html_log += f'<br><span style="color: #6c757d; font-size: 0.9em; font-style: italic; padding-left: 24px; display: inline-block; margin-top: 5px;">💬 Justificativa: {evento["justificativa"]}</span>'
-                    
-                    html_log += '</div>'
                     st.markdown(html_log, unsafe_allow_html=True)
             
             st.components.v1.html(
