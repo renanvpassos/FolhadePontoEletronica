@@ -520,7 +520,7 @@ elif opcao == "LOG":
                     html_log = (
                         f'<div class="card-log" style="position: relative; margin-bottom: 10px;">'
                         f'<span style="float: right; color: gray; font-size: 0.85em; text-align: right; line-height: 1.2;">'
-                        f'📅 {evento["data_str"]}<br>{hora_sistema}'
+                        f'📅 {evento["data_str"]}<br>{hora_sistema_gravada}'
                         f'</span>'
                         f'⏱️ <b>{evento["hora_str"]}</b> - <b>{evento["nome"]}</b> {evento["acao"]}'
                         f'{html_justificativa}'
