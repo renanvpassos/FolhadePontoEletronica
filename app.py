@@ -538,44 +538,95 @@ elif opcao == "RELATÓRIO":
     if data_inicio > data_fim:
         st.error("Erro: A data inicial não pode ser maior que a data final.")
     else:
-        def processar_dados_ponto(dados):
+        # Função auxiliar para tratar os dados (adaptada para aceitar colunas dinâmicas se for relatório geral)
+        def processar_dados_ponto(dados, eh_geral=False):
             colunas_completas = [
                 "Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", 
                 "Justificativa Entrada", "Justificativa Saída Almoço", 
                 "Justificativa Retorno Almoço", "Justificativa Saída"
             ]
             
+            # Se for o relatório geral do Supervisor, a query costuma trazer a identificação do funcionário
+            if eh_geral:
+                colunas_completas = ["Nome", "Email"] + colunas_completas
+                
             if not dados:
                 return pd.DataFrame(columns=colunas_completas)
                 
             df_temp = pd.DataFrame(dados)
-            df_temp.columns = colunas_completas
+            
+            # Garante a ordem e renomeia apenas as colunas existentes no dicionário retornado
+            df_temp = df_temp.reindex(columns=colunas_completas)
             
             def formata_hora(x):
-                if not x: return "-"
+                if not x or pd.isna(x): return "-"
                 try:
-                    return datetime.fromisoformat(x).astimezone(fuso_br).strftime('%H:%M:%S')
+                    return datetime.fromisoformat(str(x)).astimezone(fuso_br).strftime('%H:%M:%S')
                 except:
                     return "-"
 
-            df_temp["Entrada"] = df_temp["Entrada"].apply(formata_hora)
+                df_temp["Entrada"] = df_temp["Entrada"].apply(formata_hora)
             df_temp["Saída Almoço"] = df_temp["Saída Almoço"].apply(formata_hora)
             df_temp["Retorno Almoço"] = df_temp["Retorno Almoço"].apply(formata_hora)
             df_temp["Saída"] = df_temp["Saída"].apply(formata_hora)
             
-            df_temp["Justificativa Entrada"] = df_temp["Justificativa Entrada"].fillna("-").replace("", "-")
-            df_temp["Justificativa Saída Almoço"] = df_temp["Justificativa Saída Almoço"].fillna("-").replace("", "-")
-            df_temp["Justificativa Retorno Almoço"] = df_temp["Justificativa Retorno Almoço"].fillna("-").replace("", "-")
-            df_temp["Justificativa Saída"] = df_temp["Justificativa Saída"].fillna("-").replace("", "-")
-            
+            for col in [c for c in df_temp.columns if "Justificativa" in c]:
+                df_temp[col] = df_temp[col].fillna("-").replace("", "-")
+                
             return df_temp
 
-        dados_relatorio = executar_query_supabase("buscar_relatorio", email=email_busca, data_filtro=data_inicio, data_fim=data_fim)
+        # --- AÇÕES DE DOWNLOAD / EXPORTAÇÃO ---
+        st.subheader("📥 Exportar Relatórios")
+        exp_col1, exp_col2 = st.columns(2)
         
+        # Botão 1: Relatório Individual (Disponível para Usuário e Supervisor)
+        with exp_col1:
+            dados_relatorio = executar_query_supabase("buscar_relatorio", email=email_busca, data_filtro=data_inicio, data_fim=data_fim)
+            if dados_relatorio:
+                df_individual = processar_dados_ponto(dados_relatorio, eh_geral=False)
+                df_individual_csv = df_individual.to_csv(index=False, encoding='utf-8-sig', sep=';')
+                
+                nome_arquivo_ind = f"relatorio_ponto_{nome_busca.replace(' ', '_')}_{data_inicio}_a_{data_fim}.csv"
+                st.download_button(
+                    label=f"📄 Baixar Relatório de {nome_busca}",
+                    data=df_individual_csv,
+                    file_name=nome_arquivo_ind,
+                    mime="text/csv",
+                    key="btn_relatorio_individual"
+                )
+            else:
+                st.info("Sem dados individuais para exportar neste período.")
+
+        # Botão 2: Relatório Geral (Apenas para Supervisor)
+        with exp_col2:
+            if cargo_usuario == "Supervisor":
+                # Aqui assume-se que sua RPC/função "buscar_relatorio" sem o parâmetro email (ou com email=None) traz de todos.
+                # Se sua função exigir outra lógica, mude o nome da query abaixo:
+                dados_gerais = executar_query_supabase("buscar_relatorio", email=None, data_filtro=data_inicio, data_fim=data_fim)
+                
+                if dados_gerais:
+                    df_geral = processar_dados_ponto(dados_gerais, eh_geral=True)
+                    df_geral_csv = df_geral.to_csv(index=False, encoding='utf-8-sig', sep=';')
+                    
+                    nome_arquivo_geral = f"relatorio_GERAL_funcionarios_{data_inicio}_a_{data_fim}.csv"
+                    st.download_button(
+                        label="🗃️ Baixar Relatório Geral (Todos os Funcionários)",
+                        data=df_geral_csv,
+                        file_name=nome_arquivo_geral,
+                        mime="text/csv",
+                        key="btn_relatorio_geral"
+                    )
+                else:
+                    st.warning("Não foram encontrados registros gerais no banco para o período.")
+
+        st.write("---")
+        st.subheader("👀 Visualização Rápida")
+        
+        # Exibição na Tela (Mantém o comportamento original baseado em quem está selecionado)
         if not dados_relatorio:
             st.info(f"Não foram encontrados registros de ponto para {nome_busca} no período selecionado.")
         else:
-            df = processar_dados_ponto(dados_relatorio)
+            df = processar_dados_ponto(dados_relatorio, eh_geral=False)
             df_tela = df.copy()
             df_tela["Data"] = pd.to_datetime(df_tela["Data"]).dt.strftime('%d/%m/%Y')
             
