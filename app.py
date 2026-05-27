@@ -415,6 +415,7 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                     st.rerun()
 
 # --- MENU: LOG ---
+# --- MENU: LOG ---
 elif opcao == "LOG":
     st.title("📢 Mural de Atividades")
     st.caption("Linha do tempo das batidas eletrônicas registradas pela equipe hoje (Ordem Cronológica).")
@@ -475,8 +476,8 @@ elif opcao == "LOG":
             
             with st.container(height=450):
                 for evento in lista_eventos:
-                    fuso_brasilia = ZoneInfo("America/Sao_Paulo")
-                    hora_sistema = datetime.now(fuso_brasilia).strftime("%H:%M:%S")
+                    # CORREÇÃO AQUI: Em vez de pegar o datetime.now(), usamos a hora real do evento
+                    hora_sistema = evento["hora_str"]
                     
                     html_justificativa = ""
                     if evento.get("justificativa"):
@@ -490,7 +491,7 @@ elif opcao == "LOG":
                     html_log = (
                         f'<div class="card-log" style="position: relative; margin-bottom: 10px;">'
                         f'<span style="float: right; color: gray; font-size: 0.85em; text-align: right; line-height: 1.2;">'
-                        f'📅 {evento["data_str"]}<br>💻 {hora_sistema}'
+                        f'📅 {evento["data_str"]}<br>{hora_sistema}'
                         f'</span>'
                         f'⏱️ <b>{evento["hora_str"]}</b> - <b>{evento["nome"]}</b> {evento["acao"]}'
                         f'{html_justificativa}'
