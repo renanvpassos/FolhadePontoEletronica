@@ -75,6 +75,18 @@ def executar_query_supabase(operacao, data_dict=None, email=None, data_filtro=No
         res = supabase.table("registro_ponto").select("data, horario_entrada, saida_almoco, retorno_almoco, horario_saida, justificativa_entrada, justificativa_saida_almoco, justificativa_retorno_almoco, justificativa_saida").eq("email", email).gte("data", str(data_filtro)).lte("data", str(data_fim)).order("data", desc=True).execute()
         return res.data
 
+    elif operacao == "buscar_relatorio_geral":
+        res = supabase.table("registro_ponto").select("nome_completo, email, data, horario_entrada, saida_almoco, retorno_almoco, horario_saida, justificativa_entrada, justificativa_saida_almoco, justificativa_retorno_almoco, justificativa_saida").gte("data", str(data_filtro)).lte("data", str(data_fim)).order("nome_completo", desc=False).order("data", desc=True).execute()
+        return res.data
+
+# --- FUNÇÃO AUXILIAR PARA GERAR EXCEL ---
+def converter_para_excel(df_dados):
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df_dados.to_excel(writer, index=False, sheet_name='Espelho de Ponto')
+    dados_processados = output.getvalue()
+    return dados_processados
+
 # --- SISTEMA NATIVO DE LOGIN E CADASTRO ---
 def gerenciar_acesso():
     if "connected" not in st.session_state:
@@ -529,15 +541,19 @@ elif opcao == "RELATÓRIO":
     if data_inicio > data_fim:
         st.error("Erro: A data inicial não pode ser maior que a data final.")
     else:
-        def processar_dados_ponto(dados):
+        def processar_dados_ponto(dados, incluir_usuario_info=False):
             if not dados:
-                return pd.DataFrame(columns=[
+                colunas_vazias = []
+                if incluir_usuario_info:
+                    colunas_vazias.extend(["Funcionário", "E-mail"])
+                colunas_vazias.extend([
                     "Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", 
                     "Justificativa Entrada", "Justificativa Saída Almoço", "Justificativa Retorno Almoço", "Justificativa Saída"
                 ])
+                return pd.DataFrame(columns=colunas_vazias)
+                
             df_temp = pd.DataFrame(dados)
             
-            # Mapeamento explícito das colunas para evitar o erro de disparidade de tamanhos (Length Mismatch)
             mapeamento_colunas = {
                 "data": "Data",
                 "horario_entrada": "Entrada",
@@ -550,18 +566,23 @@ elif opcao == "RELATÓRIO":
                 "justificativa_saida": "Justificativa Saída"
             }
             
+            if incluir_usuario_info:
+                mapeamento_colunas["nome_completo"] = "Funcionário"
+                mapeamento_colunas["email"] = "E-mail"
+            
             df_temp = df_temp.rename(columns=mapeamento_colunas)
             
-            # Garante que todas as colunas mapeadas existam estruturalmente no DataFrame
             for col_esperada in mapeamento_colunas.values():
                 if col_esperada not in df_temp.columns:
                     df_temp[col_esperada] = None
 
-            # Organiza a ordem visual final do DataFrame
-            ordem_colunas = [
+            ordem_colunas = []
+            if incluir_usuario_info:
+                ordem_colunas.extend(["Funcionário", "E-mail"])
+            ordem_colunas.extend([
                 "Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", 
                 "Justificativa Entrada", "Justificativa Saída Almoço", "Justificativa Retorno Almoço", "Justificativa Saída"
-            ]
+            ])
             df_temp = df_temp[ordem_colunas]
             
             def formata_hora(x):
@@ -580,10 +601,51 @@ elif opcao == "RELATÓRIO":
 
         dados_relatorio = executar_query_supabase("buscar_relatorio", email=email_busca, data_filtro=data_inicio, data_fim=data_fim)
         
+        # --- ZONA DE EXPORTAÇÃO EXCEL ---
+        col_exp1, col_exp2 = st.columns(2)
+        
+        with col_exp1:
+            if dados_relatorio:
+                df_excel_individual = processar_dados_ponto(dados_relatorio, incluir_usuario_info=False)
+                excel_individual_bytes = converter_para_excel(df_excel_individual)
+                
+                st.download_button(
+                    label=f"📥 Baixar Excel de {nome_busca.split()[0]}",
+                    data=excel_individual_bytes,
+                    file_name=f"ponto_{nome_busca.replace(' ', '_').lower()}_{data_inicio}_a_{data_fim}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
+            else:
+                st.button(f"📥 Baixar Excel de {nome_busca.split()[0]}", disabled=True, use_container_width=True)
+                
+        with col_exp2:
+            if cargo_usuario == "Supervisor":
+                dados_gerais = executar_query_supabase("buscar_relatorio_geral", data_filtro=data_inicio, data_fim=data_fim)
+                if dados_gerais:
+                    df_excel_geral = processar_dados_ponto(dados_gerais, incluir_usuario_info=True)
+                    excel_geral_bytes = converter_para_excel(df_excel_geral)
+                    
+                    st.download_button(
+                        label="📥 Baixar Excel de TODOS Funcionários",
+                        data=excel_geral_bytes,
+                        file_name=f"ponto_geral_equipe_{data_inicio}_a_{data_fim}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True,
+                        type="primary"
+                    )
+                else:
+                    st.button("📥 Baixar Excel de TODOS Funcionários", disabled=True, use_container_width=True)
+            else:
+                st.empty()
+                
+        st.write("")
+        
+        # --- EXIBIÇÃO EM TELA / EDIÇÃO ---
         if not dados_relatorio:
             st.info(f"Não foram encontrados registros de ponto para {nome_busca} no período selecionado.")
         else:
-            df = processar_dados_ponto(dados_relatorio)
+            df = processar_dados_ponto(dados_relatorio, incluir_usuario_info=False)
             df_tela = df.copy()
             df_tela["Data"] = pd.to_datetime(df_tela["Data"]).dt.strftime('%d/%m/%Y')
             
@@ -591,7 +653,7 @@ elif opcao == "RELATÓRIO":
                 st.markdown("📝 **Modo Edição Ativado:** Dê um duplo clique em qualquer célula para alterar.")
                 df_editado = st.data_editor(df_tela, use_container_width=True, disabled=["Data"], key="editor_pontos_supervisor")
                 
-                if st.button("💾 Confirmar Alterações e Salvar no Banco de Dados", use_container_width=True, type="primary"):
+                if st.button("💾 Confirmar Alterações e Salvar no Banco de Dados", use_container_width=True, type="secondary"):
                     colunas_reversas = {
                         "Entrada": "horario_entrada", 
                         "Saída Almoço": "saida_almoco",
