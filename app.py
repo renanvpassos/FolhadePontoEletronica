@@ -415,7 +415,6 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                     st.rerun()
 
 # --- MENU: LOG ---
-# --- MENU: LOG ---
 elif opcao == "LOG":
     st.title("📢 Mural de Atividades")
     st.caption("Linha do tempo das batidas eletrônicas registradas pela equipe hoje (Ordem Cronológica).")
@@ -440,6 +439,17 @@ elif opcao == "LOG":
         
         for item in logs_banco:
             nome = item["nome_completo"]
+            
+            # Captura a hora que o registro foi feito no banco de dados
+            data_registro_banco = item.get("data_registro") 
+            
+            if data_registro_banco:
+                # Converte o timestamp do banco para o fuso horário de Brasília
+                dt_sistema = datetime.fromisoformat(data_registro_banco).astimezone(fuso_br)
+                hora_sistema_gravada = dt_sistema.strftime("%H:%M:%S")
+            else:
+                # Fallback para registros antigos que não possuem a coluna preenchida
+                hora_sistema_gravada = "--:--:--" 
             
             for coluna, label in labels_acoes.items():
                 valor_hora = item.get(coluna)
@@ -466,7 +476,8 @@ elif opcao == "LOG":
                         "acao": label,
                         "hora_str": dt_objeto.strftime("%H:%M:%S"),
                         "objeto_tempo": dt_objeto,
-                        "justificativa": just_texto
+                        "justificativa": just_texto,
+                        "hora_sistema_salva": hora_sistema_gravada  # Armazena o horário fixo no evento
                     })
         
         if not lista_eventos:
@@ -476,8 +487,8 @@ elif opcao == "LOG":
             
             with st.container(height=450):
                 for evento in lista_eventos:
-                    # CORREÇÃO AQUI: Em vez de pegar o datetime.now(), usamos a hora real do evento
-                    hora_sistema = evento["hora_str"]
+                    # Usa o horário fixo recuperado do banco de dados (evita que atualize na tela)
+                    hora_sistema = evento["hora_sistema_salva"]
                     
                     html_justificativa = ""
                     if evento.get("justificativa"):
@@ -515,7 +526,6 @@ elif opcao == "LOG":
                 """,
                 height=0
             )
-
 # --- MENU: RELATÓRIO ---
 elif opcao == "RELATÓRIO":
     st.title("📊 Espelho de Ponto Pessoal")
