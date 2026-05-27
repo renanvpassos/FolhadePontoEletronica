@@ -541,7 +541,7 @@ elif opcao == "RELATÓRIO":
     if data_inicio > data_fim:
         st.error("Erro: A data inicial não pode ser maior que a data final.")
     else:
-        def processar_dados_ponto(dados, incluir_usuario_info=False):
+        def processar_dados_ponto(dados, incluir_usuario_info=False, formatar_data_br=False):
             if not dados:
                 colunas_vazias = []
                 if incluir_usuario_info:
@@ -596,6 +596,13 @@ elif opcao == "RELATÓRIO":
             colunas_justificativas = ["Justificativa Entrada", "Justificativa Saída Almoço", "Justificativa Retorno Almoço", "Justificativa Saída"]
             for c_just in colunas_justificativas:
                 df_temp[c_just] = df_temp[c_just].fillna("-").replace("", "-")
+            
+            # Formata a coluna data para o formato BR caso solicitado (útil para geração do Excel bruto)
+            if formatar_data_br:
+                try:
+                    df_temp["Data"] = pd.to_datetime(df_temp["Data"]).dt.strftime('%d/%m/%Y')
+                except Exception:
+                    pass
                 
             return df_temp
 
@@ -606,8 +613,9 @@ elif opcao == "RELATÓRIO":
         
         with col_exp1:
             if dados_relatorio:
-                df_excel_individual = processar_dados_ponto(dados_relatorio, incluir_usuario_info=False)
-                excel_individual_bytes = converter_para_excel(df_excel_individual)
+                # Gera o dataframe individual já aplicando a formatação de data brasileira (DD/MM/AAAA)
+                df_excel_individual = processar_dados_ponto(dados_relatorio, incluir_usuario_info=False, formatar_data_br=True)
+                excel_individual_bytes = converter_para_excel_individual(df_excel_individual)
                 
                 st.download_button(
                     label=f"📥 Baixar Excel de {nome_busca.split()[0]}",
@@ -623,8 +631,10 @@ elif opcao == "RELATÓRIO":
             if cargo_usuario == "Supervisor":
                 dados_gerais = executar_query_supabase("buscar_relatorio_geral", data_filtro=data_inicio, data_fim=data_fim)
                 if dados_gerais:
-                    df_excel_geral = processar_dados_ponto(dados_gerais, incluir_usuario_info=True)
-                    excel_geral_bytes = converter_para_excel(df_excel_geral)
+                    # Carrega e padroniza os dados, formatando as datas estruturalmente para BR
+                    df_excel_geral = processar_dados_ponto(dados_gerais, incluir_usuario_info=True, formatar_data_br=True)
+                    # Converte gerando separação dinâmica por abas unificadas no Excel
+                    excel_geral_bytes = converter_para_excel_multiaba(df_excel_geral)
                     
                     st.download_button(
                         label="📥 Baixar Excel de TODOS Funcionários",
