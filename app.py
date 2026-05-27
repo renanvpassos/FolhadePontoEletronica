@@ -79,13 +79,30 @@ def executar_query_supabase(operacao, data_dict=None, email=None, data_filtro=No
         res = supabase.table("registro_ponto").select("nome_completo, email, data, horario_entrada, saida_almoco, retorno_almoco, horario_saida, justificativa_entrada, justificativa_saida_almoco, justificativa_retorno_almoco, justificativa_saida").gte("data", str(data_filtro)).lte("data", str(data_fim)).order("nome_completo", desc=False).order("data", desc=True).execute()
         return res.data
 
-# --- FUNÇÃO AUXILIAR PARA GERAR EXCEL ---
-def converter_para_excel(df_dados):
+# --- FUNÇÕES AUXILIARES PARA GERAR EXCEL ---
+def converter_para_excel_individual(df_dados):
     output = BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df_dados.to_excel(writer, index=False, sheet_name='Espelho de Ponto')
-    dados_processados = output.getvalue()
-    return dados_processados
+    return output.getvalue()
+
+def converter_para_excel_multiabao(df_geral):
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        # Agrupa os dados pelo e-mail do funcionário para isolar as jornadas
+        for email, group in df_geral.groupby("E-mail"):
+            # Obtém o nome do funcionário baseado no grupo para dar título à aba
+            nome_colaborador = group["Funcionário"].iloc[0]
+            
+            # Limpa caracteres inválidos ou muito longos que quebram abas do Excel (máx 31 caracteres)
+            nome_aba = re.sub(r'[\\/*?:\[\]]', '', nome_colaborador)[:30]
+            
+            # Remove as colunas de controle do funcionário para que a aba fique limpa como a individual
+            dados_aba = group.drop(columns=["Funcionário", "E-mail"])
+            
+            dados_aba.to_excel(writer, index=False, sheet_name=nome_aba)
+            
+    return output.getvalue()
 
 # --- SISTEMA NATIVO DE LOGIN E CADASTRO ---
 def gerenciar_acesso():
@@ -403,7 +420,7 @@ elif opcao == "LOG":
     st.caption("Linha do tempo das batidas eletrônicas registradas pela equipe hoje (Ordem Cronológica).")
     st.write("---")
     
-    logs_banco = executar_query_supabase("buscar_logs")
+    logs_banco = executing_query_supabase("buscar_logs")
     if not logs_banco:
         st.info("Nenhuma atividade registrada no mural recente.")
     else:
