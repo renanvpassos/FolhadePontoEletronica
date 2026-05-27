@@ -515,13 +515,16 @@ elif opcao == "LOG":
             
             with st.container(height=450):
                 for evento in lista_eventos:
+                    # Captura a hora atual do sistema no formato HH:MM:SS
+                    hora_sistema = datetime.now().strftime("%H:%M:%S")
+                    
                     html_log = (
                         f'<div class="card-log">'
-                        f'⏱️ <b>{evento["nome"]}</b> {evento["acao"]}'
+                        f'⏱️ <b>{evento["hora_str"]}</b> - <b>{evento["nome"]}</b> {evento["acao"]}'
                         f'<span style="float: right; color: gray; font-size: 0.85em; text-align: right;">'
-                        f'📅 {evento["data_str"]}<br>🕒 {evento["hora_str"]}'
+                        f'📅 {evento["data_str"]}<br>💻 {hora_sistema}'
                         f'</span>'
-                        f'</div>'  # Fechamento da div card-log que faltava no original
+                        f'</div>'
                     )
                     
                     if evento["justificativa"]:
