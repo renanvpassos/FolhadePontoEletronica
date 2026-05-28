@@ -452,6 +452,14 @@ elif opcao == "LOG":
             "horario_saida": "🟠 Saiu"
         }
 
+        # Dicionário interno para mapear o fundo correto baseado no label da ação
+        cores_background = {
+            "🟢 Entrou": "rgba(40, 167, 69, 0.15)",       # VERDE suave
+            "🟡 saiu para o almoço": "rgba(255, 193, 7, 0.15)", # AMARELO suave
+            "🔵 retornou do almoço": "rgba(0, 123, 255, 0.15)", # AZUL suave
+            "🟠 Saiu": "rgba(255, 127, 80, 0.15)"        # LARANJA suave
+        }
+
         # VÍNCULOS ESTRITOS PARA EXIBIÇÃO: Mapeia a coluna do ponto do banco com a sua coluna de auditoria
         mapeamento_colunas_registro = {
             "horario_entrada": "data_registro_horario_entrada",
@@ -513,6 +521,9 @@ elif opcao == "LOG":
                 for evento in lista_eventos:
                     hora_sistema = evento["hora_sistema_salva"]
                     
+                    # Captura a cor de fundo com base na ação atual
+                    cor_fundo = cores_background.get(evento["acao"], "transparent")
+                    
                     html_justificativa = ""
                     if evento.get("justificativa"):
                         html_justificativa = (
@@ -522,8 +533,10 @@ elif opcao == "LOG":
                             f'</span>'
                         )
                     
+                    # Aplicado o background dinâmico, padding interno e cantos arredondados (border-radius)
                     html_log = (
-                        f'<div class="card-log" style="position: relative; margin-bottom: 10px;">'
+                        f'<div class="card-log" style="position: relative; margin-bottom: 10px; '
+                        f'background-color: {cor_fundo}; padding: 10px; border-radius: 6px;">'
                         f'<span style="float: right; color: gray; font-size: 0.85em; text-align: right; line-height: 1.2;">'
                         f'📅 {evento["data_str"]}<br>{hora_sistema}'
                         f'</span>'
