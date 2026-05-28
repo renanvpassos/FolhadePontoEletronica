@@ -446,10 +446,10 @@ elif opcao == "LOG":
         
         lista_eventos = []
         labels_acoes = {
-            "horario_entrada": "🟢 Entrou",
-            "saida_almoco": "🟡 saiu para o almoço",
-            "retorno_almoco": "🔵 retornou do almoço",
-            "horario_saida": "🟠 Saiu"
+            "horario_entrada": "Entrou",
+            "saida_almoco": "saiu para o almoço",
+            "retorno_almoco": "retornou do almoço",
+            "horario_saida": "Saiu"
         }
 
         # Dicionário interno para mapear o fundo correto baseado no label da ação
