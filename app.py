@@ -454,10 +454,10 @@ elif opcao == "LOG":
 
         # Dicionário interno para mapear o fundo correto baseado no label da ação
         cores_background = {
-            "🟢 Entrou": "rgba(40, 167, 69, 0.15)",       # VERDE suave
-            "🟡 saiu para o almoço": "rgba(255, 193, 7, 0.15)", # AMARELO suave
-            "🔵 retornou do almoço": "rgba(0, 123, 255, 0.15)", # AZUL suave
-            "🟠 Saiu": "rgba(255, 127, 80, 0.15)"        # LARANJA suave
+            "Entrou": "rgba(40, 167, 69, 0.15)",       # VERDE suave
+            "Saiu para o almoço": "rgba(255, 193, 7, 0.15)", # AMARELO suave
+            "retornou do almoço": "rgba(0, 123, 255, 0.15)", # AZUL suave
+            "Saiu": "rgba(255, 127, 80, 0.15)"        # LARANJA suave
         }
 
         # VÍNCULOS ESTRITOS PARA EXIBIÇÃO: Mapeia a coluna do ponto do banco com a sua coluna de auditoria
