@@ -457,7 +457,7 @@ elif opcao == "LOG":
             "Entrou": "rgba(40, 167, 69, 0.15)",       # VERDE suave
             "saiu para o almoço": "rgba(255, 193, 7, 0.15)", # AMARELO suave
             "retornou do almoço": "rgba(0, 123, 255, 0.15)", # AZUL suave
-            "Saiu": "rgba(139, 58, 58, 0.15)"        # LARANJA suave
+            "Saiu": "rgba(238, 99, 99, 0.15)"        # LARANJA suave
         }
 
         # VÍNCULOS ESTRITOS PARA EXIBIÇÃO: Mapeia a coluna do ponto do banco com a sua coluna de auditoria
