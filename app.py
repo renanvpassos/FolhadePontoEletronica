@@ -775,12 +775,16 @@ elif opcao == "RELATÓRIO":
                                     continue
                                 
                                 if col_banco in ["horario_entrada", "saida_almoco", "retorno_almoco", "horario_saida"]:
-                                    # Se apagar o valor da célula, permite salvar como nulo
-                                    if novo_valor is None or str(novo_valor).strip() == "" or str(novo_valor).lower() == "none":
+                                    # Garante que o valor seja tratado estritamente como string limpa para evitar falhas do componente
+                                    if novo_valor is None:
                                         update_dict[col_banco] = None
                                         continue
                                         
                                     hora_nova = str(novo_valor).strip()
+                                    
+                                    if hora_nova == "" or hora_nova.lower() == "none":
+                                        update_dict[col_banco] = None
+                                        continue
                                     
                                     # REGEX ESTRITO: Valida se segue rigorosamente o padrão de texto XX:XX:XX
                                     padrao_hhmmss = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d$")
@@ -791,17 +795,20 @@ elif opcao == "RELATÓRIO":
                                         continue
                                     
                                     try:
-                                        # 🛠️ EXTRAÇÃO CIRÚRGICA: Quebra as strings diretamente evitando falhas do strptime
-                                        ano, mes, dia = map(int, data_str.split("-"))
-                                        h, m, s = map(int, hora_nova.split(":"))
+                                        # Captura a string limpa e isola os valores numéricos de forma nativa
+                                        partes_hora = hora_nova.split(":")
+                                        h, m, s = int(partes_hora[0]), int(partes_hora[1]), int(partes_hora[2])
                                         
-                                        # Monta o objeto datetime puro de forma nativa e segura
+                                        # Limpa e isola os valores da data original do banco (YYYY-MM-DD)
+                                        partes_data = data_str.split("-")
+                                        ano, mes, dia = int(partes_data[0]), int(partes_data[1]), int(partes_data[2])
+                                        
+                                        # Monta o datetime nativo direto pelos inteiros extraídos
                                         dt_combinado = datetime(ano, mes, dia, h, m, s)
                                         dt_fuso = fuso_br.localize(dt_combinado)
                                         
-                                        # Converte para o formato exato que o Supabase exige (ISO 8601)
                                         update_dict[col_banco] = dt_fuso.isoformat()
-                                    except Exception as e:
+                                    except Exception:
                                         st.error(f"❌ Falha de conversão temporal na linha {idx_linha + 1}, coluna '{col_df}'. Verifique se os números digitados são horários válidos.")
                                         erros += 1
                                 else:
