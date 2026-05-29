@@ -584,6 +584,7 @@ elif opcao == "RELATÓRIO":
             st.info(f"📍 Sua Célula atual: **{celula_usuario}**")
 
     # Lógica de Filtragem de Usuários por Cargo
+    # Lógica de Filtragem de Usuários por Cargo
     if cargo_usuario == "Master":
         st.markdown("### 🔑 Painel de Gestão (Master)")
         try:
@@ -596,11 +597,11 @@ elif opcao == "RELATÓRIO":
                 colaborador_escolhido = opcoes_usuarios[usuario_selecionado_str]
                 email_busca = colaborador_escolhido["email"]
                 nome_busca = colaborador_escolhido["nome"]
-                celula_busca = colaborador_escolhido.get("celula") # Captura a célula do colaborador selecionado
+                celula_busca = colaborador_escolhido.get("celula")
                 
-                # Exibe o campo de edição vinculado ao colaborador selecionado acima
+                # Exibe o campo com o rótulo exatamente conforme solicitado
                 celula_atual = celula_busca or ""
-                nova_celula = st.text_input(f"📍 Célula de {nome_busca} (Banco de Dados):", value=celula_atual)
+                nova_celula = st.text_input("📍 Célula do Colaborador (Banco de Dados):", value=celula_atual)
                 if nova_celula != celula_atual:
                     try:
                         supabase.table("usuarios_ponto").update({"celula": nova_celula}).eq("email", email_busca).execute()
@@ -619,7 +620,6 @@ elif opcao == "RELATÓRIO":
             st.warning("Você é Supervisor, mas não está vinculado a nenhuma célula no banco de dados.")
         else:
             try:
-                # Supervisor vê apenas usuários definidos na mesma célula que ele
                 usuarios_banco = supabase.table("usuarios_ponto").select("email, nome, celula").eq("celula", celula_usuario).execute()
                 if usuarios_banco.data:
                     lista_todos_usuarios = sorted(usuarios_banco.data, key=lambda x: x.get("nome", "").lower())
@@ -631,6 +631,10 @@ elif opcao == "RELATÓRIO":
                     nome_busca = colaborador_escolhido["nome"]
             except Exception:
                 st.error("Erro ao carregar a lista de funcionários da sua célula.")
+                
+    elif cargo_usuario == "Colaborador":
+        if celula_usuario:
+            st.info(f"📍 Sua Célula atual: **{celula_usuario}**")
                 
     elif cargo_usuario == "Colaborador":
         if celula_usuario:
