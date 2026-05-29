@@ -581,7 +581,7 @@ elif opcao == "RELATÓRIO":
                 if nova_celula != celula_atual:
                     try:
                         supabase.table("usuarios_ponto").update({"celula": nova_celula}).eq("email", email_busca).execute()
-                        st.success(f"Célula de {nome_busca} updated com sucesso!")
+                        st.success(f"Célula de {nome_busca} atualizada com sucesso!")
                         st.rerun()
                     except Exception as e:
                         st.error(f"Erro ao atualizar célula: {e}")
@@ -627,7 +627,7 @@ elif opcao == "RELATÓRIO":
     else:
         def processar_dados_ponto(dados, incluir_usuario_info=False, formatar_data_br=False):
             if not dados:
-                colunas_vazias = ["id_registro_interno", "email_registro_interno"]
+                colunas_vazias = []
                 if incluir_usuario_info:
                     colunas_vazias.extend(["Funcionário", "E-mail"])
                 colunas_vazias.extend([
@@ -641,10 +641,6 @@ elif opcao == "RELATÓRIO":
             linhas_processadas = []
             for item in dados_ordenados:
                 linha = {}
-                # CAMPOS INTERNOS CRÍTICO: Vincula o ID correto diretamente na linha do DataFrame
-                linha["id_registro_interno"] = item.get("id", "")
-                linha["email_registro_interno"] = item.get("email", "")
-
                 if incluir_usuario_info:
                     linha["Funcionário"] = item.get("nome_completo", "")
                     linha["E-mail"] = item.get("email", "")
@@ -715,15 +711,11 @@ elif opcao == "RELATÓRIO":
             if cargo_usuario in ["Supervisor", "Master"]:
                 st.caption(f"💡 Como {cargo_usuario}, você pode editar os horários e justificativas diretamente na tabela abaixo e clicar em salvar.")
                 
-                # Esconde as colunas de ID interno para o usuário final não ver
-                colunas_ocultas = ["id_registro_interno", "email_registro_interno"]
-                
                 df_editado = st.data_editor(
                     df_visualizacao, 
                     use_container_width=True, 
                     hide_index=True,
                     disabled=["Data", "Hora Extra"],
-                    column_config={col: st.column_config.TextColumn(disabled=True) for col in colunas_ocultas},
                     key="editor_ponto_gestao"
                 )
                 
@@ -750,13 +742,11 @@ elif opcao == "RELATÓRIO":
                         for idx_linha_str, colunas_alteradas in alteracoes.items():
                             idx_linha = int(idx_linha_str)
                             
-                            # BUSCA CIRÚRGICA DE DADOS DIRETO DA TELA EDITADA
+                            # Pega os dados direto do dataframe da tela baseado em quem está selecionado
                             linha_tela = df_editado.iloc[idx_linha]
-                            id_registro = linha_tela.get("id_registro_interno")
-                            email_registro = linha_tela.get("email_registro_interno") or email_busca
                             data_tela = linha_tela["Data"]
                             
-                            # Traduz a data BR da tela (DD/MM/YYYY) para ISO (YYYY-MM-DD) de forma garantida
+                            # Formata a data de forma robusta
                             data_str = str(data_tela).strip()
                             if "/" in data_str:
                                 data_str = datetime.strptime(data_str, "%d/%m/%Y").strftime("%Y-%m-%d")
@@ -764,7 +754,6 @@ elif opcao == "RELATÓRIO":
                                 data_str = data_str.split(" ")[0]
                                 
                             update_dict = {}
-                            
                             for col_df, novo_valor in colunas_alteradas.items():
                                 col_banco = mapeamento_colunas.get(col_df)
                                 if not col_banco:
@@ -772,7 +761,6 @@ elif opcao == "RELATÓRIO":
                                 
                                 if col_banco in ["horario_entrada", "saida_almoco", "retorno_almoco", "horario_saida"]:
                                     try:
-                                        # Normaliza objetos time do Streamlit ou strings puras
                                         if novo_valor is not None:
                                             if hasattr(novo_valor, "strftime"):
                                                 hora_nova = novo_valor.strftime("%H:%M:%S")
@@ -785,7 +773,6 @@ elif opcao == "RELATÓRIO":
                                             if "." in hora_nova:
                                                 hora_nova = hora_nova.split(".")[0]
                                             
-                                            # Completa HH:MM para HH:MM:SS de forma automatizada
                                             partes = hora_nova.split(":")
                                             if len(partes) == 2:
                                                 hora_nova = f"{partes[0].zfill(2)}:{partes[1].zfill(2)}:00"
@@ -805,30 +792,22 @@ elif opcao == "RELATÓRIO":
                                 else:
                                     update_dict[col_banco] = novo_valor
                             
+                            # Executa o update utilizando os filtros explícitos do colaborador consultado e data correta
                             if update_dict and erros == 0:
                                 try:
-                                    if id_registro:
-                                        supabase.table("registro_ponto").update(update_dict).eq("id", id_registro).execute()
-                                    else:
-                                        supabase.table("registro_ponto").update(update_dict).eq("email", email_registro).eq("data", data_str).execute()
+                                    supabase.table("registro_ponto").update(update_dict).eq("email", email_busca).eq("data", data_str).execute()
                                     sucessos += 1
                                 except Exception as e:
                                     st.error(f"Erro ao salvar alteração na linha {idx_linha + 1}: {e}")
                                     erros += 1
                         
                         if sucessos > 0 and erros == 0:
-                            st.success(f"✅ Sucesso! Foram atualizadas as células de {sucessos} linha(s).")
+                            st.success(f"✅ Sucesso! Foram atualizadas as alterações de {sucessos} linha(s).")
                             st.rerun()
             else:
-                # Se for colaborador simples, apenas exibe sem o editor (removidas colunas ocultas da visão dele)
-                colunas_visiveis = [c for c in df_visualizacao.columns if c not in ["id_registro_interno", "email_registro_interno"]]
-                st.dataframe(df_visualizacao[colunas_visiveis], use_container_width=True, hide_index=True)
+                st.dataframe(df_visualizacao, use_container_width=True, hide_index=True)
             
             df_exportar_ind = processar_dados_ponto(dados_pessoais, incluir_usuario_info=False, formatar_data_br=True)
-            # Remove colunas de controle do excel individual
-            if "id_registro_interno" in df_exportar_ind.columns:
-                df_exportar_ind = df_exportar_ind.drop(columns=["id_registro_interno", "email_registro_interno"])
-                
             dados_excel_ind = converter_para_excel_individual(df_exportar_ind)
             
             st.download_button(
@@ -888,8 +867,6 @@ elif opcao == "RELATÓRIO":
                     
                     if "Celula_Filtro" in df_filtrado.columns:
                         df_filtrado = df_filtrado.drop(columns=["Celula_Filtro"])
-                    if "id_registro_interno" in df_filtrado.columns:
-                        df_filtrado = df_filtrado.drop(columns=["id_registro_interno", "email_registro_interno"])
 
                     if df_filtrado.empty:
                         st.warning("Nenhum dado localizado para os critérios selecionados.")
