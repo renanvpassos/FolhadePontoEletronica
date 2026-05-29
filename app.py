@@ -13,14 +13,6 @@ st.set_page_config(page_title="Sistema de Ponto Eletrônico", page_icon="⏱️"
 # --- ESTILIZAÇÃO CSS CUSTOMIZADA ---
 st.markdown("""
     <style>
-        .card-ponto {
-            background-color: #f8f9fa;
-            padding: 25px;
-            border-radius: 12px;
-            border-left: 5px solid #4D96FF;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-            margin-bottom: 20px;
-        }
         .card-log {
             background-color: #ffffff;
             padding: 15px;
