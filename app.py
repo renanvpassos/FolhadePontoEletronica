@@ -665,7 +665,7 @@ elif opcao == "RELATÓRIO":
         # Trecho nativo que faz uso da função processar_dados_ponto
         dados_pessoais = executar_query_supabase("buscar_relatorio", email=email_busca, data_filtro=data_inicio, data_fim=data_fim)
         
-        # Garante a ordenação idêntica à do processamento para bater com os índices
+        # Garante a ordenação idêntica à do processamento para bater com os índices do st.data_editor
         if dados_pessoais:
             dados_pessoais = sorted(dados_pessoais, key=lambda x: x.get("data", ""))
             
@@ -680,7 +680,7 @@ elif opcao == "RELATÓRIO":
             if cargo_usuario == "Supervisor":
                 st.caption("💡 Como Supervisor, você pode editar os horários e justificativas diretamente na tabela abaixo e clicar em salvar.")
                 
-                # Desabilita a edição da coluna 'Data' e 'Hora Extra' (calculada automaticamente)
+                # Definimos a key fixa para capturar as modificações no session_state
                 df_editado = st.data_editor(
                     df_visualizacao, 
                     use_container_width=True, 
@@ -691,78 +691,81 @@ elif opcao == "RELATÓRIO":
                 
                 # Botão para salvar alterações no banco
                 if st.button("💾 Salvar Alterações no Banco de Dados", type="primary", use_container_width=True):
-                    erros = 0
-                    sucessos = 0
+                    # Recupera apenas o dicionário de linhas/colunas alteradas pelo usuário
+                    alteracoes = st.session_state.get("editor_ponto_supervisor", {}).get("edited_rows", {})
                     
-                    for idx, linha_original in enumerate(dados_pessoais):
-                        linha_editada = df_editado.iloc[idx]
-                        id_registro = linha_original.get("id") # Presume-se que a tabela tenha uma PK 'id'
-                        data_registro = linha_original.get("data")
+                    if not alteracoes:
+                        st.info("Nenhuma alteração foi detectada para ser salva.")
+                    else:
+                        sucessos = 0
+                        erros = 0
                         
-                        # Mapeamento reverso dos inputs de texto de volta para o formato de Timestamp (ISO) que o banco espera
-                        # Se o campo de horário foi alterado, monta a string ISO mantendo a data original.
-                        update_dict = {}
+                        # Mapeamento do nome da coluna do DataFrame para a coluna do banco de dados
+                        mapeamento_colunas = {
+                            "Entrada": "horario_entrada",
+                            "Justificativa Entrada": "justificativa_entrada",
+                            "Saída Almoço": "saida_almoco",
+                            "Justificativa Saída Almoço": "justificativa_saida_almoco",
+                            "Retorno Almoço": "retorno_almoco",
+                            "Justificativa Retorno Almoço": "justificativa_retorno_almoco",
+                            "Saída": "horario_saida",
+                            "Justificativa Saída": "justificativa_saida"
+                        }
                         
-                        mapeamento_colunas = [
-                            ("Entrada", "horario_entrada", "justificativa_entrada", "Justificativa Entrada"),
-                            ("Saída Almoço", "saida_almoco", "justificativa_saida_almoco", "Justificativa Saída Almoço"),
-                            ("Retorno Almoço", "retorno_almoco", "justificativa_retorno_almoco", "Justificativa Retorno Almoço"),
-                            ("Saída", "horario_saida", "justificativa_saida", "Justificativa Saída")
-                        ]
-                        
-                        for col_df, col_banco_hora, col_banco_just, col_df_just in mapeamento_colunas:
-                            # 1. Atualização das Justificativas
-                            if linha_editada[col_df_just] != (linha_original.get(col_banco_just) or ""):
-                                update_dict[col_banco_just] = linha_editada[col_df_just]
+                        # Percorre apenas os índices das linhas que de fato sofreram alteração
+                        for idx_linha_str, colunas_alteradas in alteracoes.items():
+                            idx_linha = int(idx_linha_str)
+                            linha_original = dados_pessoais[idx_linha]
                             
-                            # 2. Atualização dos Horários (Tratamento para enviar no fuso correto/formato esperado pelo Supabase)
-                            hora_nova = linha_editada[col_df].strip()
-                            if hora_nova:
-                                try:
-                                    # Se a hora digitada possuir apenas HH:MM, adiciona :00 segundos
-                                    if len(hora_nova) == 5:
-                                        hora_nova += ":00"
-                                    
-                                    # Cria um objeto datetime com a data do registro e o novo horário digitado
-                                    dt_novo_nao_localizado = datetime.strptime(f"{data_registro} {hora_nova}", "%Y-%m-%d %H:%M:%S")
-                                    # Localiza no fuso horário do Brasil e converte para ISO string
-                                    dt_novo_fuso = fuso_br.localize(dt_novo_nao_localizado)
-                                    iso_nova = dt_novo_fuso.isoformat()
-                                    
-                                    # Verifica se mudou em relação ao valor original do banco
-                                    valor_orig_banco = linha_original.get(col_banco_hora)
-                                    if valor_orig_banco:
-                                        dt_orig = datetime.fromisoformat(valor_orig_banco).astimezone(fuso_br).strftime("%H:%M:%S")
-                                    else:
-                                        dt_orig = ""
-                                        
-                                    if hora_nova != dt_orig:
-                                        update_dict[col_banco_hora] = iso_nova
-                                except Exception:
-                                    st.error(f"Formato de hora inválido na linha da data {linha_editada['Data']} coluna {col_df}. Use HH:MM:SS.")
-                                    erros += 1
-                            else:
-                                # Se o supervisor apagou a hora, define como nulo no banco
-                                if linha_original.get(col_banco_hora) is not None:
-                                    update_dict[col_banco_hora] = None
-
-                        # Se houver alterações para essa linha específica, envia a query para o Supabase
-                        if update_dict and erros == 0:
-                            try:
-                                # Altere "registro_ponto" para o nome correto da tabela de pontos se for diferente
-                                # Caso use uma coluna combinada de email+data como PK, mude o .eq("id", id_registro)
-                                if id_registro:
-                                    supabase.table("registro_ponto").update(update_dict).eq("id", id_registro).execute()
-                                else:
-                                    supabase.table("registro_ponto").update(update_dict).eq("email", email_busca).eq("data", data_registro).execute()
-                                sucessos += 1
-                            except Exception as e:
-                                st.error(f"Erro ao salvar alterações da data {linha_editada['Data']}: {e}")
-                                erros += 1
+                            id_registro = linha_original.get("id")
+                            data_registro = linha_original.get("data")
+                            
+                            update_dict = {}
+                            
+                            # Percorre apenas as colunas específicas que mudaram naquela linha
+                            for col_df, novo_valor in colunas_alteradas.items():
+                                col_banco = mapeamento_colunas.get(col_df)
                                 
-                    if sucessos > 0 and erros == 0:
-                        st.success(f"✅ {sucessos} registro(s) de ponto atualizado(s) com sucesso!")
-                        st.rerun()
+                                if not col_banco:
+                                    continue
+                                
+                                # Se for uma coluna de horário, precisa tratar fuso horário e string ISO
+                                if col_banco in ["horario_entrada", "saida_almoco", "retorno_almoco", "horario_saida"]:
+                                    hora_nova = novo_valor.strip() if novo_valor else ""
+                                    
+                                    if hora_nova:
+                                        try:
+                                            if len(hora_nova) == 5:  # Caso digitem apenas HH:MM
+                                                hora_nova += ":00"
+                                                
+                                            dt_novo_nao_localizado = datetime.strptime(f"{data_registro} {hora_nova}", "%Y-%m-%d %H:%M:%S")
+                                            dt_novo_fuso = fuso_br.localize(dt_novo_nao_localizado)
+                                            update_dict[col_banco] = dt_novo_fuso.isoformat()
+                                        except Exception:
+                                            st.error(f"Formato de hora inválido na linha {idx_linha + 1}, coluna {col_df}. Use HH:MM:SS.")
+                                            erros += 1
+                                    else:
+                                        update_dict[col_banco] = None
+                                else:
+                                    # Se for coluna de justificativa (texto simples), atribui diretamente
+                                    update_dict[col_banco] = novo_valor
+                            
+                            # Executa a query se houver dados coletados e nenhum erro de formato
+                            if update_dict and erros == 0:
+                                try:
+                                    # Subistitua "registro_ponto" pelo nome real da sua tabela se necessário
+                                    if id_registro:
+                                        supabase.table("registro_ponto").update(update_dict).eq("id", id_registro).execute()
+                                    else:
+                                        supabase.table("registro_ponto").update(update_dict).eq("email", email_busca).eq("data", data_registro).execute()
+                                    sucessos += 1
+                                except Exception as e:
+                                    st.error(f"Erro ao salvar alteração na linha {idx_linha + 1}: {e}")
+                                    erros += 1
+                        
+                        if sucessos > 0 and erros == 0:
+                            st.success(f"✅ Sucesso! Foram atualizadas as células de {sucessos} linha(s).")
+                            st.rerun()
             else:
                 # Mantém visualização simples estática para Colaboradores normais
                 st.dataframe(df_visualizacao, use_container_width=True, hide_index=True)
