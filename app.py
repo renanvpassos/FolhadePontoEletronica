@@ -801,15 +801,20 @@ elif opcao == "RELATÓRIO":
                                         
                                         # Limpa e isola os valores da data original do banco (YYYY-MM-DD)
                                         partes_data = data_str.split("-")
-                                        ano, mes, dia = int(partes_data[0]), int(partes_data[1]), int(partes_data[2])
+                                        # Garante que vai pegar apenas os 2 dígitos do dia, caso o banco envie algo como 29T00:00
+                                        ano, mes, dia = int(partes_data[0]), int(partes_data[1]), int(partes_data[2][:2])
                                         
                                         # Monta o datetime nativo direto pelos inteiros extraídos
                                         dt_combinado = datetime(ano, mes, dia, h, m, s)
-                                        dt_fuso = fuso_br.localize(dt_combinado)
+                                        
+                                        # CORREÇÃO AQUI: ZoneInfo usa .replace() e não .localize()
+                                        dt_fuso = dt_combinado.replace(tzinfo=fuso_br)
                                         
                                         update_dict[col_banco] = dt_fuso.isoformat()
-                                    except Exception:
-                                        st.error(f"❌ Falha de conversão temporal na linha {idx_linha + 1}, coluna '{col_df}'. Verifique se os números digitados são horários válidos.")
+                                        
+                                    except Exception as e:
+                                        # Alterado para mostrar o erro real do Python caso algo bizarro aconteça
+                                        st.error(f"❌ Erro na linha {idx_linha + 1}, coluna '{col_df}': {str(e)}")
                                         erros += 1
                                 else:
                                     # Atualização das justificativas (Texto comum)
