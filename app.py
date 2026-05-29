@@ -397,7 +397,7 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                             "email": user_email,
                             "nome_completo": user_name,
                             "data": str(hoje),
-                            colunas_banco[opcao]: horario_final_gravacao.isoformat(),
+                            "colunas_banco[opcao]": horario_final_gravacao.isoformat(),
                             # Grava dinamicamente na coluna de auditoria correspondente ao menu aberto
                             mapeamento_registro_sistema[opcao]: agora_br.isoformat()
                         }
@@ -612,161 +612,117 @@ elif opcao == "RELATÓRIO":
                 if incluir_usuario_info:
                     colunas_vazias.extend(["Funcionário", "E-mail"])
                 colunas_vazias.extend([
-                    "Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", 
+                    "Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", "Hora Extra",
                     "Justificativa Entrada", "Justificativa Saída Almoço", "Justificativa Retorno Almoço", "Justificativa Saída"
                 ])
                 return pd.DataFrame(columns=colunas_vazias)
-                
-            df_temp = pd.DataFrame(dados)
-            
-            mapeamento_colunas = {
-                "data": "Data",
-                "horario_entrada": "Entrada",
-                "saida_almoco": "Saída Almoço",
-                "retorno_almoco": "Retorno Almoço",
-                "horario_saida": "Saída",
-                "justificativa_entrada": "Justificativa Entrada",
-                "justificativa_saida_almoco": "Justificativa Saída Almoço",
-                "justificativa_retorno_almoco": "Justificativa Retorno Almoço",
-                "justificativa_saida": "Justificativa Saída"
-            }
-            
-            if incluir_usuario_info:
-                mapeamento_colunas["nome_completo"] = "Funcionário"
-                mapeamento_colunas["email"] = "E-mail"
-            
-            df_temp = df_temp.rename(columns=mapeamento_colunas)
-            
-            for col_esperada in mapeamento_colunas.values():
-                if col_esperada not in df_temp.columns:
-                    df_temp[col_esperada] = None
 
-            ordem_colunas = []
-            if incluir_usuario_info:
-                ordem_colunas.extend(["Funcionário", "E-mail"])
-            ordem_colunas.extend([
-                "Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", 
-                "Justificativa Entrada", "Justificativa Saída Almoço", "Justificativa Retorno Almoço", "Justificativa Saída"
-            ])
-            df_temp = df_temp[ordem_colunas]
-            
-            def formata_hora(x):
-                if not x: return "-"
-                try: return datetime.fromisoformat(x).astimezone(fuso_br).strftime('%H:%M:%S')
-                except: return "-"
+            linhas_processadas = []
+            for item in dados:
+                linha = {}
+                if incluir_usuario_info:
+                    linha["Funcionário"] = item.get("nome_completo", "")
+                    linha["E-mail"] = item.get("email", "")
 
-            for c in ["Entrada", "Saída Almoço", "Retorno Almoço", "Saída"]:
-                df_temp[c] = df_temp[c].apply(formata_hora)
-                
-            colunas_justificativas = ["Justificativa Entrada", "Justificativa Saída Almoço", "Justificativa Retorno Almoço", "Justificativa Saída"]
-            for c_just in colunas_justificativas:
-                df_temp[c_just] = df_temp[c_just].fillna("-").replace("", "-")
-            
-            if formatar_data_br:
-                try:
-                    df_temp["Data"] = pd.to_datetime(df_temp["Data"]).dt.strftime('%d/%m/%Y')
-                except Exception:
-                    pass
-                
-            return df_temp
-
-        dados_relatorio = executar_query_supabase("buscar_relatorio", email=email_busca, data_filtro=data_inicio, data_fim=data_fim)
-        
-        # --- ZONA DE EXPORTAÇÃO EXCEL ---
-        col_exp1, col_exp2 = st.columns(2)
-        
-        with col_exp1:
-            if dados_relatorio:
-                df_excel_individual = processar_dados_ponto(dados_relatorio, incluir_usuario_info=False, formatar_data_br=True)
-                excel_individual_bytes = converter_para_excel_individual(df_excel_individual)
-                
-                st.download_button(
-                    label=f"📥 Baixar Excel de {nome_busca.split()[0]}",
-                    data=excel_individual_bytes,
-                    file_name=f"ponto_{nome_busca.replace(' ', '_').lower()}_{data_inicio}_a_{data_fim}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True
-                )
-            else:
-                st.button(f"📥 Baixar Excel de {nome_busca.split()[0]}", disabled=True, use_container_width=True)
-                
-        with col_exp2:
-            if cargo_usuario == "Supervisor":
-                dados_gerais = executar_query_supabase("buscar_relatorio_geral", data_filtro=data_inicio, data_fim=data_fim)
-                if dados_gerais:
-                    df_excel_geral = processar_dados_ponto(dados_gerais, incluir_usuario_info=True, formatar_data_br=True)
-                    excel_geral_bytes = converter_para_excel_multiaba(df_excel_geral)
-                    
-                    st.download_button(
-                        label="📥 Baixar Excel de TODOS Funcionários",
-                        data=excel_geral_bytes,
-                        file_name=f"ponto_geral_equipe_{data_inicio}_a_{data_fim}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        use_container_width=True,
-                        type="primary"
-                    )
+                # Formata a Data
+                data_banco = item.get("data", "")
+                if formatar_data_br and data_banco:
+                    try:
+                        linha["Data"] = datetime.strptime(data_banco, "%Y-%m-%d").strftime("%d/%m/%Y")
+                    except Exception:
+                        linha["Data"] = data_banco
                 else:
-                    st.button("📥 Baixar Excel de TODOS Funcionários", disabled=True, use_container_width=True)
-            else:
-                st.empty()
+                    linha["Data"] = data_banco
+
+                # Auxiliares para cálculo de hora extra
+                dt_entrada = None
+                dt_saida = None
+
+                # Processa os horários
+                for col_banco, col_df in [
+                    ("horario_entrada", "Entrada"),
+                    ("saida_almoco", "Saída Almoço"),
+                    ("retorno_almoco", "Retorno Almoço"),
+                    ("horario_saida", "Saída")
+                ]:
+                    valor = item.get(col_banco)
+                    if valor:
+                        try:
+                            dt_objeto = datetime.fromisoformat(valor).astimezone(fuso_br)
+                            linha[col_df] = dt_objeto.strftime("%H:%M:%S")
+                            if col_banco == "horario_entrada":
+                                dt_entrada = dt_objeto
+                            elif col_banco == "horario_saida":
+                                dt_saida = dt_objeto
+                        except Exception:
+                            linha[col_df] = ""
+                    else:
+                        linha[col_df] = ""
+
+                # LÓGICA DE SOMA DE HORAS E HORA EXTRA (Inicia após 9 horas de jornada)
+                hora_extra_str = "00:00"
+                if dt_entrada and dt_saida:
+                    segundos_trabalhados = int((dt_saida - dt_entrada).total_seconds())
+                    jornada_limite_segundos = 9 * 3600
+                    if segundos_trabalhados > jornada_limite_segundos:
+                        segundos_extras = segundos_trabalhados - jornada_limite_segundos
+                        horas_ext = segundos_extras // 3600
+                        minutos_ext = (segundos_extras % 3600) // 60
+                        hora_extra_str = f"{horas_ext:02d}:{minutos_ext:02d}"
                 
-        st.write("")
-        
-        # --- EXIBIÇÃO EM TELA / EDIÇÃO ---
-        if not dados_relatorio:
-            st.info(f"Não foram encontrados registros de ponto para {nome_busca} no período selecionado.")
+                linha["Hora Extra"] = hora_extra_str
+
+                # Processa as justificativas
+                linha["Justificativa Entrada"] = item.get("justificativa_entrada", "") or ""
+                linha["Justificativa Saída Almoço"] = item.get("justificativa_saida_almoco", "") or ""
+                linha["Justificativa Retorno Almoço"] = item.get("justificativa_retorno_almoco", "") or ""
+                linha["Justificativa Saída"] = item.get("justificativa_saida", "") or ""
+
+                linhas_processadas.append(linha)
+
+            return pd.DataFrame(linhas_processadas)
+
+        # Trecho subsequente nativo que faz uso da função processar_dados_ponto
+        dados_pessoais = executar_query_supabase("buscar_relatorio", email=email_busca, data_filtro=data_inicio, data_fim=data_fim)
+        df_visualizacao = processar_dados_ponto(dados_pessoais, incluir_usuario_info=False, formatar_data_br=True)
+
+        if df_visualizacao.empty:
+            st.info(f"Nenhum registro de ponto localizado para {nome_busca} no período selecionado.")
         else:
-            df = processar_dados_ponto(dados_relatorio, incluir_usuario_info=False)
-            df_tela = df.copy()
-            df_tela["Data"] = pd.to_datetime(df_tela["Data"]).dt.strftime('%d/%m/%Y')
+            st.markdown(f"##### 📑 Histórico de Registros ({data_inicio.strftime('%d/%m/%Y')} até {data_fim.strftime('%d/%m/%Y')})")
+            st.dataframe(df_visualizacao, use_container_width=True, hide_index=True)
             
-            if cargo_usuario == "Supervisor":
-                st.markdown("📝 **Modo Edição Ativado:** Dê um duplo clique em qualquer célula para alterar.")
-                df_editado = st.data_editor(df_tela, use_container_width=True, disabled=["Data"], key="editor_pontos_supervisor")
+            # Botões de download usando as funções exportadoras existentes
+            df_exportar_ind = processar_dados_ponto(dados_pessoais, incluir_usuario_info=False, formatar_data_br=False)
+            dados_excel_ind = converter_para_excel_individual(df_exportar_ind)
+            
+            st.download_button(
+                label="📥 Baixar Espelho de Ponto (Excel)",
+                data=dados_excel_ind,
+                file_name=f"Espelho_Ponto_{nome_busca.replace(' ', '_')}_{data_inicio}_a_{data_fim}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+
+        if cargo_usuario == "Supervisor":
+            st.write("---")
+            st.markdown("### 🗂️ Exportação Geral da Equipe (Multiabas)")
+            st.caption("Gera um único arquivo Excel onde cada colaborador ativo possui uma aba exclusiva contendo seu respectivo espelho de ponto.")
+            
+            if st.button("📊 Gerar Relatório Consolidado de Equipe", use_container_width=True, type="primary"):
+                dados_gerais_banco = executar_query_supabase("buscar_relatorio_geral", data_filtro=data_inicio, data_fim=data_fim)
                 
-                if st.button("💾 Confirmar Alterações e Salvar no Banco de Dados", use_container_width=True, type="secondary"):
-                    colunas_reversas = {
-                        "Entrada": "horario_entrada", 
-                        "Saída Almoço": "saida_almoco",
-                        "Retorno Almoço": "retorno_almoco", 
-                        "Saída": "horario_saida",
-                        "Justificativa Entrada": "justificativa_entrada",
-                        "Justificativa Saída Almoço": "justificativa_saida_almoco",
-                        "Justificativa Retorno Almoço": "justificativa_retorno_almoco",
-                        "Justificativa Saída": "justificativa_saida"
-                    }
+                if not dados_gerais_banco:
+                    st.warning("Não há nenhum registro de ponto de nenhum colaborador no período selecionado para consolidação.")
+                else:
+                    df_geral_processado = processar_dados_ponto(dados_gerais_banco, incluir_usuario_info=True, formatar_data_br=False)
+                    dados_excel_multiaba = converter_para_excel_multiaba(df_geral_processado)
                     
-                    with st.spinner("Salvando alterações..."):
-                        for idx, row in df_editado.iterrows():
-                            data_original = dados_relatorio[idx]["data"]
-                            dados_update = {"email": email_busca, "nome_completo": nome_busca, "data": data_original}
-                            
-                            for col_tela, col_banco in colunas_reversas.items():
-                                valor_celula = str(row[col_tela]).strip()
-                                if col_banco in ["justificativa_entrada", "justificativa_saida_almoco", "justificativa_retorno_almoco", "justificativa_saida"]:
-                                    dados_update[col_banco] = None if valor_celula == "-" else valor_celula
-                                else:
-                                    if valor_celula == "-":
-                                        dados_update[col_banco] = None
-                                    else:
-                                        try:
-                                            if len(valor_celula) == 5:
-                                                hora_objeto = datetime.strptime(valor_celula, "%H:%M").time()
-                                            else:
-                                                hora_objeto = datetime.strptime(valor_celula, "%H:%M:%S").time()
-                                                
-                                            data_objeto = datetime.strptime(data_original, "%Y-%m-%d").date()
-                                            dt_combinado = datetime.combine(data_objeto, hora_objeto).replace(tzinfo=fuso_br)
-                                            
-                                            if dt_combinado > agora_br:
-                                                st.error(f"🛑 Horário '{valor_celula}' no dia {data_original} está no futuro. Cancelado.")
-                                            else:
-                                                dados_update[col_banco] = dt_combinado.isoformat()
-                                        except Exception:
-                                            pass
-                            
-                            executar_query_supabase("salvar_ponto", data_dict=dados_update)
-                        st.success("Alterações salvas com sucesso!")
-                        st.rerun()
-            else:
-                st.dataframe(df_tela, use_container_width=True)
+                    st.success("✅ Relatório geral consolidado com sucesso! Clique no botão abaixo para baixar.")
+                    st.download_button(
+                        label="📥 Fazer Download do Relatório Consolidado (.xlsx)",
+                        data=dados_excel_multiaba,
+                        file_name=f"Relatorio_Consolidado_Equipe_{data_inicio}_a_{data_fim}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True
+                    )
