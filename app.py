@@ -709,7 +709,7 @@ elif opcao == "RELATÓRIO":
             st.markdown(f"##### 📑 Histórico de Registros ({data_inicio.strftime('%d/%m/%Y')} até {data_fim.strftime('%d/%m/%Y')})")
             
             if cargo_usuario in ["Supervisor", "Master"]:
-                st.caption(f"💡 Como {cargo_usuario}, você pode editar os horários e justificativas diretamente na tabela abaixo.")
+                st.warning("⚠️ **Obrigatoriedade:** As colunas de horário exigem o formato estrito **HH:MM:SS** (Exemplo correto: `07:30:00`).")
                 
                 # Renderiza o editor forçando as colunas editáveis a aceitarem Texto Puro (String)
                 df_editado = st.data_editor(
@@ -734,6 +734,7 @@ elif opcao == "RELATÓRIO":
                     confirmou_salvar = caixa_confirmacao.button("Sim, confirmar e salvar", type="primary", use_container_width=True)
                 
                 if confirmou_salvar:
+                    import re # Importa regex para validação estrita de caracteres
                     alteracoes = st.session_state.get("editor_ponto_gestao", {}).get("edited_rows", {})
                     
                     if not alteracoes:
@@ -756,14 +757,14 @@ elif opcao == "RELATÓRIO":
                         for idx_linha_str, colunas_alteradas in alteracoes.items():
                             idx_linha = int(idx_linha_str)
                             
-                            # Resgata a data original em formato ISO (YYYY-MM-DD) baseado no índice da lista do banco
+                            # Resgata a data original em formato ISO (YYYY-MM-DD) baseado no índice mapeado direto do banco
                             try:
                                 data_str = dados_pessoais[idx_linha].get("data")
                                 if not data_str:
-                                    raise ValueError("Data nula no registro original.")
+                                    raise ValueError()
                                 data_str = str(data_str).split(" ")[0].strip()
                             except Exception:
-                                st.error(f"Erro crítico ao sincronizar índice da linha {idx_linha + 1} com o banco de dados.")
+                                st.error(f"Erro ao sincronizar índice da linha {idx_linha + 1} com o banco de dados.")
                                 erros += 1
                                 continue
                                 
@@ -774,42 +775,35 @@ elif opcao == "RELATÓRIO":
                                     continue
                                 
                                 if col_banco in ["horario_entrada", "saida_almoco", "retorno_almoco", "horario_saida"]:
+                                    # Se apagar o valor da célula, permite salvar como nulo
+                                    if novo_valor is None or str(novo_valor).strip() == "" or str(novo_valor).lower() == "none":
+                                        update_dict[col_banco] = None
+                                        continue
+                                        
+                                    hora_nova = str(novo_valor).strip()
+                                    
+                                    # REGEX ESTRITO: Valida se segue rigorosamente o padrão de texto XX:XX:XX
+                                    # Aceita de 00:00:00 até 23:59:59
+                                    padrao_hhmmss = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d$")
+                                    
+                                    if not padrao_hhmmss.match(hora_nova):
+                                        st.error(f"❌ Erro na linha {idx_linha + 1}, coluna '{col_df}': O valor '{hora_nova}' digitado está incorreto. É obrigatório usar o formato HH:MM:SS (com os segundos).")
+                                        erros += 1
+                                        continue
+                                    
                                     try:
-                                        # Remove o registro enviando nulo se o campo for apagado
-                                        if novo_valor is None or str(novo_valor).strip() == "" or str(novo_valor).lower() == "none":
-                                            update_dict[col_banco] = None
-                                            continue
-                                        
-                                        if hasattr(novo_valor, "hour"):
-                                            hora_nova = novo_valor.strftime("%H:%M:%S")
-                                        else:
-                                            hora_nova = str(novo_valor).strip()
-                                        
-                                        if "." in hora_nova:
-                                            hora_nova = hora_nova.split(".")[0]
-                                        
-                                        # Padroniza a string de entrada para HH:MM:SS
-                                        partes = hora_nova.split(":")
-                                        if len(partes) == 1 and partes[0].isdigit():
-                                            hora_nova = f"{partes[0].zfill(2)}:00:00"
-                                        elif len(partes) == 2:
-                                            hora_nova = f"{partes[0].zfill(2)}:{partes[1].zfill(2)}:00"
-                                        elif len(partes) == 3:
-                                            hora_nova = f"{partes[0].zfill(2)}:{partes[1].zfill(2)}:{partes[2].zfill(2)}"
-                                        
-                                        # Montagem do datetime final unindo data limpa (ISO) + hora limpa
+                                        # Montagem do datetime com string validada por regex
                                         dt_combinado = datetime.strptime(f"{data_str} {hora_nova}", "%Y-%m-%d %H:%M:%S")
                                         dt_fuso = fuso_br.localize(dt_combinado)
                                         update_dict[col_banco] = dt_fuso.isoformat()
-                                        
-                                    except Exception as e:
-                                        st.error(f"Formato de hora inválido na linha {idx_linha + 1}, coluna {col_df}. Use HH:MM ou HH:MM:SS.")
+                                    except Exception:
+                                        st.error(f"❌ Falha de conversão temporal na linha {idx_linha + 1}, coluna '{col_df}'.")
                                         erros += 1
                                 else:
-                                    # Atualização das justificativas (Texto puro)
+                                    # Atualização das justificativas (Texto comum)
                                     update_dict[col_banco] = novo_valor
                             
-                            # Atualiza a tabela caso a linha não contenha erros de formatação
+                            # Atualiza a tabela caso a linha inteira esteja 100% livre de erros
                             if update_dict and erros == 0:
                                 try:
                                     supabase.table("registro_ponto").update(update_dict).eq("email", email_busca).eq("data", data_str).execute()
