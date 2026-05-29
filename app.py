@@ -702,7 +702,6 @@ elif opcao == "RELATÓRIO":
                         
                         # Mapeamento do nome da coluna do DataFrame para a coluna do banco de dados
                         mapeamento_colunas = {
-                            "nome": "nome",
                             "Entrada": "horario_entrada",
                             "Justificativa Entrada": "justificativa_entrada",
                             "Saída Almoço": "saida_almoco",
