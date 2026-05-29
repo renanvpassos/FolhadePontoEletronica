@@ -758,11 +758,10 @@ elif opcao == "RELATÓRIO":
                                 
                                 if not col_banco:
                                     continue
-                                    
+                                
                                 if col_banco in ["horario_entrada", "saida_almoco", "retorno_almoco", "horario_saida"]:
-                                    # 1. Garante que o valor editado seja tratado como String
+                                    # 1. Garante que a hora seja string
                                     if novo_valor is not None:
-                                        # Se o Streamlit retornar um objeto datetime.time, converte para string HH:MM:SS
                                         if hasattr(novo_valor, "strftime"):
                                             hora_nova = novo_valor.strftime("%H:%M:%S")
                                         else:
@@ -772,28 +771,32 @@ elif opcao == "RELATÓRIO":
                                     
                                     if hora_nova:
                                         try:
-                                            # 2. Completa os segundos caso o usuário digite apenas HH:MM
+                                            # Completar HH:MM para HH:MM:SS automaticamente
                                             if len(hora_nova) == 5 and ":" in hora_nova:
                                                 hora_nova += ":00"
-                                                
-                                            # 3. Garante que a data esteja no formato string AAAA-MM-DD
-                                            if hasattr(data_registro, "strftime"):
-                                                data_str = data_registro.strftime("%Y-%m-%d")
-                                            else:
-                                                data_str = str(data_registro)
-                                                # Se a data original vier em formato BR (DD/MM/AAAA), ajusta:
-                                                if "/" in data_str:
-                                                    from datetime import datetime as dt_check
-                                                    data_str = dt_check.strptime(data_str, "%d/%m/%Y").strftime("%Y-%m-%d")
                                             
-                                            # 4. Faz a conversão e aplica o fuso horário
+                                            # --- TRATAMENTO CRÍTICO DA DATA DA LINHA ---
+                                            # Garante que data_registro seja string pura
+                                            data_str = str(data_registro).strip()
+                                            
+                                            # Se vier com timestamp (ex: "2026-05-29 00:00:00"), pega só a data
+                                            if " " in data_str:
+                                                data_str = data_str.split(" ")[0]
+                                            
+                                            # Se a data vier no formato BR (DD/MM/AAAA), converte para AAAA-MM-DD
+                                            if "/" in data_str:
+                                                from datetime import datetime as dt_check
+                                                data_str = dt_check.strptime(data_str, "%d/%m/%Y").strftime("%Y-%m-%d")
+                                            # --------------------------------------------
+                            
+                                            # Faz a junção perfeita para o fuso horário
                                             dt_novo_nao_localizado = datetime.strptime(f"{data_str} {hora_nova}", "%Y-%m-%d %H:%M:%S")
                                             dt_novo_fuso = fuso_br.localize(dt_novo_nao_localizado)
                                             update_dict[col_banco] = dt_novo_fuso.isoformat()
                                             
                                         except Exception as e:
-                                            # Mostra o erro real no console/terminal para te ajudar a debugar se ainda falhar
-                                            print(f"Erro interno de conversão: {e}") 
+                                            # Printa no terminal para você ver exatamente o que quebrou
+                                            print(f"Erro no Supervisor/Master: Data lida='{data_registro}' | Data tratada='{data_str}' | Hora='{hora_nova}' | Erro={e}")
                                             
                                             st.error(f"Formato de hora ou data inválido na linha {idx_linha + 1}, coluna {col_df}. Use HH:MM:SS.")
                                             erros += 1
