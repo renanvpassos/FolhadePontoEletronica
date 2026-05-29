@@ -744,15 +744,47 @@ elif opcao == "RELATÓRIO":
                             "Justificativa Saída": "justificativa_saida"
                         }
                         
+                        # --- FUNÇÕES LOCAIS DE LIMPEZA ULTRA-ROBUSTAS ---
+                        def normalizar_data(valor_data):
+                            """Converte qualquer formato de data da tela para 'YYYY-MM-DD'"""
+                            if hasattr(valor_data, "strftime"):  # Se for objeto date/datetime
+                                return valor_data.strftime("%Y-%m-%d")
+                            
+                            s = str(valor_data).strip()
+                            if " " in s:
+                                s = s.split(" ")[0]
+                            
+                            if "/" in s:  # Se for DD/MM/YYYY
+                                try:
+                                    return datetime.strptime(s, "%d/%m/%Y").strftime("%Y-%m-%d")
+                                except:
+                                    pass
+                            return s
+
+                        def normalizar_hora(valor_hora):
+                            """Converte qualquer formato de hora da tela para 'HH:MM:SS'"""
+                            if hasattr(valor_hora, "strftime"):  # Se o Streamlit retornou um objeto time
+                                return valor_hora.strftime("%H:%M:%S")
+                            
+                            s = str(valor_hora).strip()
+                            if not s or s.lower() == "none":
+                                return ""
+                            
+                            # Se o usuário digitou apenas HH:MM, adiciona os segundos
+                            if len(s) == 5 and ":" in s:
+                                s += ":00"
+                            return s
+                        # -----------------------------------------------
+
                         for idx_linha_str, colunas_alteradas in alteracoes.items():
                             idx_linha = int(idx_linha_str)
                             linha_original = dados_pessoais[idx_linha]
                             
                             id_registro = linha_original.get("id")
                             
-                            # --- ALTERAÇÃO CRÍTICA AQUI ---
-                            # Em vez de pegar do dicionário instável, pegamos direto do DataFrame exibido na tela
+                            # Resgata a data da linha direto do dataframe visual e normaliza para YYYY-MM-DD
                             data_tela = df_editado.iloc[idx_linha]["Data"]
+                            data_iso = normalizar_data(data_tela)
                             
                             update_dict = {}
                             
@@ -763,41 +795,19 @@ elif opcao == "RELATÓRIO":
                                     continue
                                 
                                 if col_banco in ["horario_entrada", "saida_almoco", "retorno_almoco", "horario_saida"]:
-                                    # 1. Garante que a hora seja string pura
-                                    if novo_valor is not None:
-                                        if hasattr(novo_valor, "strftime"):
-                                            hora_nova = novo_valor.strftime("%H:%M:%S")
-                                        else:
-                                            hora_nova = str(novo_valor).strip()
-                                    else:
-                                        hora_nova = ""
+                                    hora_iso = normalizar_hora(novo_valor)
                                     
-                                    if hora_nova:
+                                    if hora_iso:
                                         try:
-                                            # Completar HH:MM para HH:MM:SS automaticamente
-                                            if len(hora_nova) == 5 and ":" in hora_nova:
-                                                hora_nova += ":00"
-                                            
-                                            # Tratamento ultra-seguro da Data da Tela
-                                            data_str = str(data_tela).strip()
-                                            if " " in data_str:
-                                                data_str = data_str.split(" ")[0]
-                                                
-                                            # Se a data da tela estiver em formato BR (DD/MM/AAAA), converte para ISO (AAAA-MM-DD)
-                                            if "/" in data_str:
-                                                from datetime import datetime as dt_check
-                                                data_str = dt_check.strptime(data_str, "%d/%m/%Y").strftime("%Y-%m-%d")
-                                            
-                                            # Faz a junção perfeita para o fuso horário
-                                            dt_novo_nao_localizado = datetime.strptime(f"{data_str} {hora_nova}", "%Y-%m-%d %H:%M:%S")
-                                            dt_novo_fuso = fuso_br.localize(dt_novo_nao_localizado)
-                                            update_dict[col_banco] = dt_novo_fuso.isoformat()
-                                            
+                                            # Junta a data limpa (YYYY-MM-DD) com a hora limpa (HH:MM:SS)
+                                            dt_combinado = datetime.strptime(f"{data_iso} {hora_iso}", "%Y-%m-%d %H:%M:%S")
+                                            # Aplica o fuso horário brasileiro
+                                            dt_fuso = fuso_br.localize(dt_combinado)
+                                            # Envia para o Supabase no formato ISO internacional que ele exige
+                                            update_dict[col_banco] = dt_fuso.isoformat()
                                         except Exception as e:
-                                            # Print explicativo no seu terminal rodando o Streamlit
-                                            print(f"🔥 Erro de Conversão -> Data lida: '{data_tela}' | Tratada: '{data_str}' | Hora: '{hora_nova}' | Erro: {e}")
-                                            
-                                            st.error(f"Formato de hora ou data inválido na linha {idx_linha + 1}, coluna {col_df}. Use HH:MM:SS.")
+                                            print(f"🔥 Erro crítico na conversão: Data='{data_iso}', Hora='{hora_iso}'. Erro: {e}")
+                                            st.error(f"Formato de hora ou data inválido na linha {idx_linha + 1}, coluna {col_df}. Use HH:MM.")
                                             erros += 1
                                     else:
                                         update_dict[col_banco] = None
@@ -809,8 +819,7 @@ elif opcao == "RELATÓRIO":
                                     if id_registro:
                                         supabase.table("registro_ponto").update(update_dict).eq("id", id_registro).execute()
                                     else:
-                                        # Caso precise buscar por data, enviamos a 'data_str' limpa e formatada em padrão ISO para o banco
-                                        supabase.table("registro_ponto").update(update_dict).eq("email", email_busca).eq("data", data_str).execute()
+                                        supabase.table("registro_ponto").update(update_dict).eq("email", email_busca).eq("data", data_iso).execute()
                                     sucessos += 1
                                 except Exception as e:
                                     st.error(f"Erro ao salvar alteração na linha {idx_linha + 1}: {e}")
