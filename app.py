@@ -581,7 +581,7 @@ elif opcao == "RELATÓRIO":
                 if nova_celula != celula_atual:
                     try:
                         supabase.table("usuarios_ponto").update({"celula": nova_celula}).eq("email", email_busca).execute()
-                        st.success(f"Célula de {nome_busca} updated com sucesso!")
+                        st.success(f"Célula de {nome_busca} atualizada com sucesso!")
                         st.rerun()
                     except Exception as e:
                         st.error(f"Erro ao atualizar célula: {e}")
@@ -711,20 +711,26 @@ elif opcao == "RELATÓRIO":
             if cargo_usuario in ["Supervisor", "Master"]:
                 st.caption(f"💡 Como {cargo_usuario}, você pode editar os horários e justificativas diretamente na tabela abaixo.")
                 
+                # Renderiza o editor forçando as colunas editáveis a aceitarem Texto Puro (String)
                 df_editado = st.data_editor(
                     df_visualizacao, 
                     use_container_width=True, 
                     hide_index=True,
                     disabled=["Data", "Hora Extra"],
+                    column_config={
+                        "Entrada": st.column_config.TextColumn("Entrada"),
+                        "Saída Almoço": st.column_config.TextColumn("Saída Almoço"),
+                        "Retorno Almoço": st.column_config.TextColumn("Retorno Almoço"),
+                        "Saída": st.column_config.TextColumn("Saída")
+                    },
                     key="editor_ponto_gestao"
                 )
                 
                 # --- SISTEMA DE CONFIRMAÇÃO DE SALVAMENTO ---
                 col_btn, _ = st.columns([1, 1])
                 with col_btn:
-                    # Popover cria uma janela de confirmação limpa que evita cliques acidentais
                     caixa_confirmacao = st.popover("💾 Salvar Alterações no Banco", use_container_width=True)
-                    caixa_confirmacao.warning("⚠️ Atenção: Isso alterará permanentemente os horários do colaborador.")
+                    caixa_confirmacao.warning(f"⚠️ Atenção: Isso alterará permanentemente os dados de {nome_busca}.")
                     confirmou_salvar = caixa_confirmacao.button("Sim, confirmar e salvar", type="primary", use_container_width=True)
                 
                 if confirmou_salvar:
@@ -749,14 +755,17 @@ elif opcao == "RELATÓRIO":
                         
                         for idx_linha_str, colunas_alteradas in alteracoes.items():
                             idx_linha = int(idx_linha_str)
-                            linha_tela = df_editado.iloc[idx_linha]
-                            data_tela = linha_tela["Data"]
                             
-                            data_str = str(data_tela).strip()
-                            if "/" in data_str:
-                                data_str = datetime.strptime(data_str, "%d/%m/%Y").strftime("%Y-%m-%d")
-                            elif " " in data_str:
-                                data_str = data_str.split(" ")[0]
+                            # Resgata a data original em formato ISO (YYYY-MM-DD) baseado no índice da lista do banco
+                            try:
+                                data_str = dados_pessoais[idx_linha].get("data")
+                                if not data_str:
+                                    raise ValueError("Data nula no registro original.")
+                                data_str = str(data_str).split(" ")[0].strip()
+                            except Exception:
+                                st.error(f"Erro crítico ao sincronizar índice da linha {idx_linha + 1} com o banco de dados.")
+                                erros += 1
+                                continue
                                 
                             update_dict = {}
                             for col_df, novo_valor in colunas_alteradas.items():
@@ -766,22 +775,20 @@ elif opcao == "RELATÓRIO":
                                 
                                 if col_banco in ["horario_entrada", "saida_almoco", "retorno_almoco", "horario_saida"]:
                                     try:
-                                        # 1. Se o valor for apagado (vazio), envia nulo ao banco
+                                        # Remove o registro enviando nulo se o campo for apagado
                                         if novo_valor is None or str(novo_valor).strip() == "" or str(novo_valor).lower() == "none":
                                             update_dict[col_banco] = None
                                             continue
                                         
-                                        # 2. Tratamento caso o Streamlit retorne um objeto time/datetime nativo
                                         if hasattr(novo_valor, "hour"):
                                             hora_nova = novo_valor.strftime("%H:%M:%S")
                                         else:
                                             hora_nova = str(novo_valor).strip()
                                         
-                                        # Limpa eventuais frações de segundos (.000)
                                         if "." in hora_nova:
                                             hora_nova = hora_nova.split(".")[0]
                                         
-                                        # 3. Lógica de preenchimento robusto de strings (HH, HH:MM, HH:MM:SS)
+                                        # Padroniza a string de entrada para HH:MM:SS
                                         partes = hora_nova.split(":")
                                         if len(partes) == 1 and partes[0].isdigit():
                                             hora_nova = f"{partes[0].zfill(2)}:00:00"
@@ -790,7 +797,7 @@ elif opcao == "RELATÓRIO":
                                         elif len(partes) == 3:
                                             hora_nova = f"{partes[0].zfill(2)}:{partes[1].zfill(2)}:{partes[2].zfill(2)}"
                                         
-                                        # 4. Converte e aplica fuso horário
+                                        # Montagem do datetime final unindo data limpa (ISO) + hora limpa
                                         dt_combinado = datetime.strptime(f"{data_str} {hora_nova}", "%Y-%m-%d %H:%M:%S")
                                         dt_fuso = fuso_br.localize(dt_combinado)
                                         update_dict[col_banco] = dt_fuso.isoformat()
@@ -799,20 +806,20 @@ elif opcao == "RELATÓRIO":
                                         st.error(f"Formato de hora inválido na linha {idx_linha + 1}, coluna {col_df}. Use HH:MM ou HH:MM:SS.")
                                         erros += 1
                                 else:
-                                    # Para campos de texto/justificativas
+                                    # Atualização das justificativas (Texto puro)
                                     update_dict[col_banco] = novo_valor
                             
-                            # Envia os dados consolidados da linha para o Supabase se não houver erros de formato
+                            # Atualiza a tabela caso a linha não contenha erros de formatação
                             if update_dict and erros == 0:
                                 try:
                                     supabase.table("registro_ponto").update(update_dict).eq("email", email_busca).eq("data", data_str).execute()
                                     sucessos += 1
                                 except Exception as e:
-                                    st.error(f"Erro ao salvar alteração na linha {idx_linha + 1}: {e}")
+                                    st.error(f"Erro ao salvar alteração de {nome_busca} (Linha {idx_linha + 1}): {e}")
                                     erros += 1
                         
                         if sucessos > 0 and erros == 0:
-                            st.success(f"✅ Sucesso! Foram atualizadas as alterações de {sucessos} linha(s).")
+                            st.success(f"✅ Sucesso! Foram atualizadas as alterações de {sucessos} linha(s) para {nome_busca}.")
                             st.rerun()
             else:
                 st.dataframe(df_visualizacao, use_container_width=True, hide_index=True)
