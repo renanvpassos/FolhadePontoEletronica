@@ -783,21 +783,26 @@ elif opcao == "RELATÓRIO":
                                     hora_nova = str(novo_valor).strip()
                                     
                                     # REGEX ESTRITO: Valida se segue rigorosamente o padrão de texto XX:XX:XX
-                                    # Aceita de 00:00:00 até 23:59:59
                                     padrao_hhmmss = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d$")
                                     
                                     if not padrao_hhmmss.match(hora_nova):
-                                        st.error(f"❌ Erro na linha {idx_linha + 1}, coluna '{col_df}': O valor '{hora_nova}' digitado está incorreto. É obrigatório usar o formato HH:MM:SS (com os segundos).")
+                                        st.error(f"❌ Erro na linha {idx_linha + 1}, coluna '{col_df}': O valor '{hora_nova}' é inválido. Use estritamente o formato HH:MM:SS (Ex: 12:30:00).")
                                         erros += 1
                                         continue
                                     
                                     try:
-                                        # Montagem do datetime com string validada por regex
-                                        dt_combinado = datetime.strptime(f"{data_str} {hora_nova}", "%Y-%m-%d %H:%M:%S")
+                                        # 🛠️ EXTRAÇÃO CIRÚRGICA: Quebra as strings diretamente evitando falhas do strptime
+                                        ano, mes, dia = map(int, data_str.split("-"))
+                                        h, m, s = map(int, hora_nova.split(":"))
+                                        
+                                        # Monta o objeto datetime puro de forma nativa e segura
+                                        dt_combinado = datetime(ano, mes, dia, h, m, s)
                                         dt_fuso = fuso_br.localize(dt_combinado)
+                                        
+                                        # Converte para o formato exato que o Supabase exige (ISO 8601)
                                         update_dict[col_banco] = dt_fuso.isoformat()
-                                    except Exception:
-                                        st.error(f"❌ Falha de conversão temporal na linha {idx_linha + 1}, coluna '{col_df}'.")
+                                    except Exception as e:
+                                        st.error(f"❌ Falha de conversão temporal na linha {idx_linha + 1}, coluna '{col_df}'. Verifique se os números digitados são horários válidos.")
                                         erros += 1
                                 else:
                                     # Atualização das justificativas (Texto comum)
