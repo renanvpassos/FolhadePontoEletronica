@@ -557,30 +557,67 @@ elif opcao == "RELATÓRIO":
     nome_busca = user_name
     
     cargo_usuario = "Colaborador"
+    celula_usuario = None
     try:
-        dados_usuario_logado = supabase.table("usuarios_ponto").select("cargo").eq("email", user_email).execute()
+        dados_usuario_logado = supabase.table("usuarios_ponto").select("cargo, celula").eq("email", user_email).execute()
         if dados_usuario_logado.data:
             cargo_usuario = dados_usuario_logado.data[0].get("cargo", "Colaborador")
+            celula_usuario = dados_usuario_logado.data[0].get("celula")
     except Exception:
         st.error("Erro ao verificar nível de acesso do usuário.")
 
     lista_todos_usuarios = []
     
-    if cargo_usuario == "Supervisor":
-        st.markdown("### 🔑 Painel de Gestão (Supervisor)")
+    # Exibe a Célula do Colaborador (Apenas editável pelo Master)
+    if cargo_usuario == "Master":
+        celula_atual = celula_usuario or ""
+        nova_celula = st.text_input("📍 Célula do Colaborador (Banco de Dados):", value=celula_atual)
+        if nova_celula != celula_atual:
+            try:
+                supabase.table("usuarios_ponto").update({"celula": nova_celula}).eq("email", user_email).execute()
+                st.success("Célula atualizada com sucesso!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Erro ao atualizar célula: {e}")
+    else:
+        if celula_usuario:
+            st.info(f"📍 Sua Célula atual: **{celula_usuario}**")
+
+    # Lógica de Filtragem de Usuários por Cargo
+    if cargo_usuario == "Master":
+        st.markdown("### 🔑 Painel de Gestão (Master)")
         try:
-            usuarios_banco = supabase.table("usuarios_ponto").select("email, nome").execute()
+            usuarios_banco = supabase.table("usuarios_ponto").select("email, nome, celula").execute()
             if usuarios_banco.data:
                 lista_todos_usuarios = sorted(usuarios_banco.data, key=lambda x: x.get("nome", "").lower())
-                opcoes_usuarios = {f"{u['nome']} ({u['email']})": u for u in lista_todos_usuarios}
+                opcoes_usuarios = {f"{u['nome']} ({u['email']}) - Célula: {u.get('celula') or 'Sem célula'}": u for u in lista_todos_usuarios}
                 
                 usuario_selecionado_str = st.selectbox("Selecione o colaborador que deseja consultar na tela:", options=list(opcoes_usuarios.keys()))
                 colaborador_escolhido = opcoes_usuarios[usuario_selecionado_str]
                 email_busca = colaborador_escolhido["email"]
                 nome_busca = colaborador_escolhido["nome"]
         except Exception:
-            st.error("Erro ao carregar a lista de funcionários.")
-            
+            st.error("Erro ao carregar a lista completa de funcionários.")
+
+    elif cargo_usuario == "Supervisor":
+        st.markdown("### 🔑 Painel de Gestão (Supervisor)")
+        if not celula_usuario:
+            st.warning("Você é Supervisor, mas não está vinculado a nenhuma célula no banco de dados.")
+        else:
+            try:
+                # Supervisor vê apenas usuários definidos na mesma célula que ele
+                usuarios_banco = supabase.table("usuarios_ponto").select("email, nome, celula").eq("celula", celula_usuario).execute()
+                if usuarios_banco.data:
+                    lista_todos_usuarios = sorted(usuarios_banco.data, key=lambda x: x.get("nome", "").lower())
+                    opcoes_usuarios = {f"{u['nome']} ({u['email']})": u for u in lista_todos_usuarios}
+                    
+                    usuario_selecionado_str = st.selectbox("Selecione o colaborador que deseja consultar na tela:", options=list(opcoes_usuarios.keys()))
+                    colaborador_escolhido = opcoes_usuarios[usuario_selecionado_str]
+                    email_busca = colaborador_escolhido["email"]
+                    nome_busca = colaborador_escolhido["nome"]
+            except Exception:
+                st.error("Erro ao carregar a lista de funcionários da sua célula.")
+                
     st.caption(f"Filtro e exportação de folhas e históricos para: **{nome_busca}**")
     
     col1, col2 = st.columns(2)
@@ -605,7 +642,6 @@ elif opcao == "RELATÓRIO":
                 ])
                 return pd.DataFrame(columns=colunas_vazias)
 
-            # Ordena os dados do banco por data em ordem crescente (AAAA-MM-DD) antes de processar
             dados_ordenados = sorted(dados, key=lambda x: x.get("data", ""))
 
             linhas_processadas = []
@@ -666,10 +702,8 @@ elif opcao == "RELATÓRIO":
 
             return pd.DataFrame(linhas_processadas)
 
-        # Trecho nativo que faz uso da função processar_dados_ponto
         dados_pessoais = executar_query_supabase("buscar_relatorio", email=email_busca, data_filtro=data_inicio, data_fim=data_fim)
         
-        # Garante a ordenação idêntica à do processamento para bater com os índices do st.data_editor
         if dados_pessoais:
             dados_pessoais = sorted(dados_pessoais, key=lambda x: x.get("data", ""))
             
@@ -680,23 +714,20 @@ elif opcao == "RELATÓRIO":
         else:
             st.markdown(f"##### 📑 Histórico de Registros ({data_inicio.strftime('%d/%m/%Y')} até {data_fim.strftime('%d/%m/%Y')})")
             
-            # --- COMPONENTE DE EDIÇÃO OU VISUALIZAÇÃO ---
-            if cargo_usuario == "Supervisor":
-                st.caption("💡 Como Supervisor, você pode editar os horários e justificativas diretamente na tabela abaixo e clicar em salvar.")
+            # Master também pode editar as informações do dataframe e salvar no banco de dados.
+            if cargo_usuario in ["Supervisor", "Master"]:
+                st.caption(f"💡 Como {cargo_usuario}, você pode editar os horários e justificativas diretamente na tabela abaixo e clicar em salvar.")
                 
-                # Definimos a key fixa para capturar as modificações no session_state
                 df_editado = st.data_editor(
                     df_visualizacao, 
                     use_container_width=True, 
                     hide_index=True,
                     disabled=["Data", "Hora Extra"],
-                    key="editor_ponto_supervisor"
+                    key="editor_ponto_gestao"
                 )
                 
-                # Botão para salvar alterações no banco
                 if st.button("💾 Salvar Alterações no Banco de Dados", type="primary", use_container_width=True):
-                    # Recupera apenas o dicionário de linhas/colunas alteradas pelo usuário
-                    alteracoes = st.session_state.get("editor_ponto_supervisor", {}).get("edited_rows", {})
+                    alteracoes = st.session_state.get("editor_ponto_gestao", {}).get("edited_rows", {})
                     
                     if not alteracoes:
                         st.info("Nenhuma alteração foi detectada para ser salva.")
@@ -704,7 +735,6 @@ elif opcao == "RELATÓRIO":
                         sucessos = 0
                         erros = 0
                         
-                        # Mapeamento do nome da coluna do DataFrame para a coluna do banco de dados
                         mapeamento_colunas = {
                             "Entrada": "horario_entrada",
                             "Justificativa Entrada": "justificativa_entrada",
@@ -716,7 +746,6 @@ elif opcao == "RELATÓRIO":
                             "Justificativa Saída": "justificativa_saida"
                         }
                         
-                        # Percorre apenas os índices das linhas que de fato sofreram alteração
                         for idx_linha_str, colunas_alteradas in alteracoes.items():
                             idx_linha = int(idx_linha_str)
                             linha_original = dados_pessoais[idx_linha]
@@ -726,20 +755,18 @@ elif opcao == "RELATÓRIO":
                             
                             update_dict = {}
                             
-                            # Percorre apenas as colunas específicas que mudaram naquela linha
                             for col_df, novo_valor in colunas_alteradas.items():
                                 col_banco = mapeamento_colunas.get(col_df)
                                 
                                 if not col_banco:
                                     continue
                                 
-                                # Se for uma coluna de horário, precisa tratar fuso horário e string ISO
                                 if col_banco in ["horario_entrada", "saida_almoco", "retorno_almoco", "horario_saida"]:
                                     hora_nova = novo_valor.strip() if novo_valor else ""
                                     
                                     if hora_nova:
                                         try:
-                                            if len(hora_nova) == 5:  # Caso digitem apenas HH:MM
+                                            if len(hora_nova) == 5:
                                                 hora_nova += ":00"
                                                 
                                             dt_novo_nao_localizado = datetime.strptime(f"{data_registro} {hora_nova}", "%Y-%m-%d %H:%M:%S")
@@ -751,13 +778,10 @@ elif opcao == "RELATÓRIO":
                                     else:
                                         update_dict[col_banco] = None
                                 else:
-                                    # Se for coluna de justificativa (texto simples), atribui diretamente
                                     update_dict[col_banco] = novo_valor
                             
-                            # Executa a query se houver dados coletados e nenhum erro de formato
                             if update_dict and erros == 0:
                                 try:
-                                    # Subistitua "registro_ponto" pelo nome real da sua tabela se necessário
                                     if id_registro:
                                         supabase.table("registro_ponto").update(update_dict).eq("id", id_registro).execute()
                                     else:
@@ -771,10 +795,7 @@ elif opcao == "RELATÓRIO":
                             st.success(f"✅ Sucesso! Foram atualizadas as células de {sucessos} linha(s).")
                             st.rerun()
             else:
-                # Mantém visualização simples estática para Colaboradores normais
                 st.dataframe(df_visualizacao, use_container_width=True, hide_index=True)
-            
-            # --- FIM DO COMPONENTE DE EDIÇÃO ---
             
             df_exportar_ind = processar_dados_ponto(dados_pessoais, incluir_usuario_info=False, formatar_data_br=True)
             dados_excel_ind = converter_para_excel_individual(df_exportar_ind)
@@ -787,25 +808,68 @@ elif opcao == "RELATÓRIO":
                 use_container_width=True
             )
 
-        if cargo_usuario == "Supervisor":
+        # --- SEÇÃO DE EXPORTAÇÃO CONSOLIDADA POR CARGOS GESTORES ---
+        if cargo_usuario in ["Supervisor", "Master"]:
             st.write("---")
             st.markdown("### 🗂️ Exportação Geral da Equipe (Multiabas)")
-            st.caption("Gera um único arquivo Excel onde cada colaborador ativo possui uma aba exclusiva contendo seu respectivo espelho de ponto.")
             
-            if st.button("📊 Gerar Relatório Consolidado de Equipe", use_container_width=True, type="primary"):
+            opcao_consolidada = "Minha Célula"
+            celulas_disponiveis = []
+            
+            # Componente exclusivo do Master para escolha de célula ou Todas as Células
+            if cargo_usuario == "Master":
+                st.caption("Escolha qual célula extrair ou se deseja consolidar todas as células em multiabas.")
+                try:
+                    busca_celulas = supabase.table("usuarios_ponto").select("celula").execute()
+                    if busca_celulas.data:
+                        celulas_disponiveis = sorted(list(set([u["celula"] for u in busca_celulas.data if u.get("celula")])))
+                except Exception:
+                    pass
+                
+                opcoes_master = ["Todas as Células"] + celulas_disponiveis
+                opcao_consolidada = st.selectbox("Selecione o Relatório Desejado:", options=opcoes_master)
+            else:
+                st.caption(f"Gera o arquivo contendo os espelhos de ponto consolidados de sua célula ativa: **{celula_usuario}**")
+
+            if st.button("📊 Gerar Relatório Consolidado", use_container_width=True, type="primary"):
                 dados_gerais_banco = executar_query_supabase("buscar_relatorio_geral", data_filtro=data_inicio, data_fim=data_fim)
                 
                 if not dados_gerais_banco:
-                    st.warning("Não há nenhum registro de ponto de nenhum colaborador no período selecionado para consolidação.")
+                    st.warning("Não há nenhum registro de ponto de nenhum colaborador no período selecionado.")
                 else:
-                    df_geral_processado = processar_dados_ponto(dados_gerais_banco, incluir_usuario_info=True, formatar_data_br=True)
-                    dados_excel_multiaba = converter_para_excel_multiaba(df_geral_processado)
+                    df_geral_completo = processar_dados_ponto(dados_gerais_banco, incluir_usuario_info=True, formatar_data_br=True)
                     
-                    st.success("✅ Relatório geral consolidado com sucesso! Clique no botão abaixo para baixar.")
-                    st.download_button(
-                        label="📥 Fazer Download do Relatório Consolidado (.xlsx)",
-                        data=dados_excel_multiaba,
-                        file_name=f"Relatorio_Consolidado_Celula_{data_inicio}_a_{data_fim}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        use_container_width=True
-                    )
+                    # Traz as células reais mapeadas aos e-mails para filtragem dinâmica em tempo de execução
+                    try:
+                        mapeamento_usuarios = {u['email']: u.get('celula') for u in supabase.table("usuarios_ponto").select("email, celula").execute().data or []}
+                        df_geral_completo["Celula_Filtro"] = df_geral_completo["E-mail"].map(mapeamento_usuarios)
+                    except Exception:
+                        df_geral_completo["Celula_Filtro"] = None
+
+                    # Filtro de dados baseado no cargo e escolha do menu
+                    if cargo_usuario == "Supervisor":
+                        df_filtrado = df_geral_completo[df_geral_completo["Celula_Filtro"] == celula_usuario]
+                        nome_arquivo = f"Relatorio_Consolidado_Celula_{celula_usuario}_{data_inicio}_a_{data_fim}.xlsx"
+                    else:  # Caso seja Master
+                        if opcao_consolidada == "Todas as Células":
+                            df_filtrado = df_geral_completo.copy()
+                            nome_arquivo = f"Relatorio_Consolidado_Todas_Celulas_{data_inicio}_a_{data_fim}.xlsx"
+                        else:
+                            df_filtrado = df_geral_completo[df_geral_completo["Celula_Filtro"] == opcao_consolidada]
+                            nome_arquivo = f"Relatorio_Consolidado_Celula_{opcao_consolidada}_{data_inicio}_a_{data_fim}.xlsx"
+                    
+                    if "Celula_Filtro" in df_filtrado.columns:
+                        df_filtrado = df_filtrado.drop(columns=["Celula_Filtro"])
+
+                    if df_filtrado.empty:
+                        st.warning("Nenhum dado localizado para os critérios selecionados.")
+                    else:
+                        dados_excel_multiaba = converter_para_excel_multiaba(df_filtrado)
+                        st.success("✅ Relatório geral consolidado com sucesso! Clique no botão abaixo para baixar.")
+                        st.download_button(
+                            label="📥 Fazer Download do Relatório Consolidado (.xlsx)",
+                            data=dados_excel_multiaba,
+                            file_name=nome_arquivo,
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            use_container_width=True
+                        )
