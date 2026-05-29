@@ -702,6 +702,7 @@ elif opcao == "RELATÓRIO":
                         
                         # Mapeamento do nome da coluna do DataFrame para a coluna do banco de dados
                         mapeamento_colunas = {
+                            "Nome": "nome",
                             "Entrada": "horario_entrada",
                             "Justificativa Entrada": "justificativa_entrada",
                             "Saída Almoço": "saida_almoco",
@@ -801,7 +802,7 @@ elif opcao == "RELATÓRIO":
                     st.download_button(
                         label="📥 Fazer Download do Relatório Consolidado (.xlsx)",
                         data=dados_excel_multiaba,
-                        file_name=f"Relatorio_Consolidado_Equipe_{data_inicio}_a_{data_fim}.xlsx",
+                        file_name=f"Relatorio_Consolidado_Celula_{data_inicio}_a_{data_fim}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         use_container_width=True
                     )
