@@ -89,19 +89,11 @@ def converter_para_excel_individual(df_dados):
 def converter_para_excel_multiaba(df_geral):
     output = BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        # Agrupa os dados pelo e-mail do funcionário para isolar as jornadas
         for email, group in df_geral.groupby("E-mail"):
-            # Obtem o nome do funcionário baseado no grupo para dar título à aba
             nome_colaborador = group["Funcionário"].iloc[0]
-            
-            # Limpa caracteres inválidos ou muito longos que quebram abas do Excel (máx 31 caracteres)
             nome_aba = re.sub(r'[\\/*?:\[\]]', '', nome_colaborador)[:30]
-            
-            # Remove as colunas de controle do funcionário para que a aba fique limpa como a individual
             dados_aba = group.drop(columns=["Funcionário", "E-mail"])
-            
             dados_aba.to_excel(writer, index=False, sheet_name=nome_aba)
-            
     return output.getvalue()
 
 # --- SISTEMA NATIVO DE LOGIN E CADASTRO ---
@@ -390,15 +382,15 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                             "ENTRADA": "data_registro_horario_entrada",
                             "SAÍDA ALMOÇO": "data_saida_almoco",
                             "RETORNO ALMOÇO": "data_retorno_almoco",
-                            "SAÍDA": "data_horario_saida" # Espaço mantido conforme sua tabela
+                            "SAÍDA": "data_horario_saida"
                         }
 
+                        # AJUSTE FIEL: Avaliação da variável dinâmica corrigida (removido as aspas literais)
                         dados_ponto = {
                             "email": user_email,
                             "nome_completo": user_name,
                             "data": str(hoje),
-                            "colunas_banco[opcao]": horario_final_gravacao.isoformat(),
-                            # Grava dinamicamente na coluna de auditoria correspondente ao menu aberto
+                            colunas_banco[opcao]: horario_final_gravacao.isoformat(),
                             mapeamento_registro_sistema[opcao]: agora_br.isoformat()
                         }
                         
@@ -426,7 +418,6 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                     st.session_state[f'confirmar_{opcao}'] = False
                     st.rerun()
 
-
 # =====================================================================
 # --- MENU: LOG ---
 # =====================================================================
@@ -452,20 +443,18 @@ elif opcao == "LOG":
             "horario_saida": "Saiu"
         }
 
-        # Dicionário interno para mapear o fundo correto baseado no label da ação
         cores_background = {
-            "Entrou": "rgba(40, 167, 69, 0.15)",       # VERDE suave
-            "saiu para o almoço": "rgba(255, 193, 7, 0.15)", # AMARELO suave
-            "retornou do almoço": "rgba(0, 123, 255, 0.15)", # AZUL suave
-            "Saiu": "rgba(238, 99, 99, 0.15)"        # LARANJA suave
+            "Entrou": "rgba(40, 167, 69, 0.15)",
+            "saiu para o almoço": "rgba(255, 193, 7, 0.15)",
+            "retornou do almoço": "rgba(0, 123, 255, 0.15)",
+            "Saiu": "rgba(238, 99, 99, 0.15)"
         }
 
-        # VÍNCULOS ESTRITOS PARA EXIBIÇÃO: Mapeia a coluna do ponto do banco com a sua coluna de auditoria
         mapeamento_colunas_registro = {
             "horario_entrada": "data_registro_horario_entrada",
             "saida_almoco": "data_saida_almoco",
             "retorno_almoco": "data_retorno_almoco",
-            "horario_saida": "data_horario_saida" # Espaço mantido estritamente conforme o banco
+            "horario_saida": "data_horario_saida"
         }
         
         for item in logs_banco:
@@ -490,16 +479,13 @@ elif opcao == "LOG":
                     elif coluna == "horario_saida" and item.get("justificativa_saida"):
                         just_texto = item["justificativa_saida"]
                     
-                    # Identifica qual é a coluna de auditoria do sistema vinculada a esta batida
                     coluna_registro = mapeamento_colunas_registro.get(coluna)
                     data_registro_banco = item.get(coluna_registro)
                     
-                    # REGRA SOLICITADA: Puxa única e exclusivamente o horário da respectiva coluna de auditoria
                     if data_registro_banco and str(data_registro_banco).strip() != "":
                         dt_sistema = datetime.fromisoformat(str(data_registro_banco)).astimezone(fuso_br)
                         hora_sistema_gravada = dt_sistema.strftime("%H:%M:%S")
                     else:
-                        # Se a coluna de auditoria estiver nula no banco, exibe estritamente os traços
                         hora_sistema_gravada = "--:--:--"
                     
                     lista_eventos.append({
@@ -520,8 +506,6 @@ elif opcao == "LOG":
             with st.container(height=450):
                 for evento in lista_eventos:
                     hora_sistema = evento["hora_sistema_salva"]
-                    
-                    # Captura a cor de fundo com base na ação atual
                     cor_fundo = cores_background.get(evento["acao"], "transparent")
                     
                     html_justificativa = ""
@@ -533,7 +517,6 @@ elif opcao == "LOG":
                             f'</span>'
                         )
                     
-                    # Aplicado o background dinâmico, padding interno e cantos arredondados (border-radius)
                     html_log = (
                         f'<div class="card-log" style="position: relative; margin-bottom: 10px; '
                         f'background-color: {cor_fundo}; padding: 10px; border-radius: 6px;">'
@@ -575,7 +558,7 @@ elif opcao == "RELATÓRIO":
         if dados_usuario_logado.data:
             cargo_usuario = dados_usuario_logado.data[0].get("cargo", "Colaborador")
     except Exception:
-        st.error("Erro ao verificar nível de acesso do usuário.")
+        st.error("Erro ao verificar nível di acesso do usuário.")
 
     lista_todos_usuarios = []
     
@@ -584,9 +567,7 @@ elif opcao == "RELATÓRIO":
         try:
             usuarios_banco = supabase.table("usuarios_ponto").select("email, nome").execute()
             if usuarios_banco.data:
-                # Mantém a lista de usuários em ordem alfabética
                 lista_todos_usuarios = sorted(usuarios_banco.data, key=lambda x: x.get("nome", "").lower())
-                
                 opcoes_usuarios = {f"{u['nome']} ({u['email']})": u for u in lista_todos_usuarios}
                 
                 usuario_selecionado_str = st.selectbox("Selecione o colaborador que deseja consultar na tela:", options=list(opcoes_usuarios.keys()))
@@ -620,7 +601,7 @@ elif opcao == "RELATÓRIO":
                 ])
                 return pd.DataFrame(columns=colunas_vazias)
 
-            # AJUSTE: Ordena os dados do banco por data em ordem crescente (AAAA-MM-DD) antes de processar
+            # Ordena os dados do banco por data em ordem crescente (AAAA-MM-DD) antes de processar
             dados_ordenados = sorted(dados, key=lambda x: x.get("data", ""))
 
             linhas_processadas = []
@@ -630,7 +611,6 @@ elif opcao == "RELATÓRIO":
                     linha["Funcionário"] = item.get("nome_completo", "")
                     linha["E-mail"] = item.get("email", "")
 
-                # Formata a Data
                 data_banco = item.get("data", "")
                 if formatar_data_br and data_banco:
                     try:
@@ -640,11 +620,8 @@ elif opcao == "RELATÓRIO":
                 else:
                     linha["Data"] = data_banco
 
-                # Auxiliares para cálculo de hora extra
-                dt_entrada = None
-                dt_saida = None
+                dt_entrada, dt_saida = None, None
 
-                # Processa os horários
                 for col_banco, col_df in [
                     ("horario_entrada", "Entrada"),
                     ("saida_almoco", "Saída Almoço"),
@@ -665,7 +642,6 @@ elif opcao == "RELATÓRIO":
                     else:
                         linha[col_df] = ""
 
-                # LÓGICA DE SOMA DE HORAS E HORA EXTRA
                 hora_extra_str = "00:00"
                 if dt_entrada and dt_saida:
                     segundos_trabalhados = int((dt_saida - dt_entrada).total_seconds())
@@ -677,8 +653,6 @@ elif opcao == "RELATÓRIO":
                         hora_extra_str = f"{horas_ext:02d}:{minutos_ext:02d}"
                 
                 linha["Hora Extra"] = hora_extra_str
-
-                # Processa as justificativas
                 linha["Justificativa Entrada"] = item.get("justificativa_entrada", "") or ""
                 linha["Justificativa Saída Almoço"] = item.get("justificativa_saida_almoco", "") or ""
                 linha["Justificativa Retorno Almoço"] = item.get("justificativa_retorno_almoco", "") or ""
@@ -688,7 +662,7 @@ elif opcao == "RELATÓRIO":
 
             return pd.DataFrame(linhas_processadas)
 
-        # Trecho subsequente nativo que faz uso da função processar_dados_ponto
+        # Trecho nativo que faz uso da função processar_dados_ponto
         dados_pessoais = executar_query_supabase("buscar_relatorio", email=email_busca, data_filtro=data_inicio, data_fim=data_fim)
         df_visualizacao = processar_dados_ponto(dados_pessoais, incluir_usuario_info=False, formatar_data_br=True)
 
@@ -698,7 +672,6 @@ elif opcao == "RELATÓRIO":
             st.markdown(f"##### 📑 Histórico de Registros ({data_inicio.strftime('%d/%m/%Y')} até {data_fim.strftime('%d/%m/%Y')})")
             st.dataframe(df_visualizacao, use_container_width=True, hide_index=True)
             
-            # Gera o DataFrame individual já ordenado e formatado em PT-BR para o Excel
             df_exportar_ind = processar_dados_ponto(dados_pessoais, incluir_usuario_info=False, formatar_data_br=True)
             dados_excel_ind = converter_para_excel_individual(df_exportar_ind)
             
@@ -721,7 +694,6 @@ elif opcao == "RELATÓRIO":
                 if not dados_gerais_banco:
                     st.warning("Não há nenhum registro de ponto de nenhum colaborador no período selecionado para consolidação.")
                 else:
-                    # Gera o DataFrame geral já ordenado e formatado em PT-BR para o Excel consolidado
                     df_geral_processado = processar_dados_ponto(dados_gerais_banco, incluir_usuario_info=True, formatar_data_br=True)
                     dados_excel_multiaba = converter_para_excel_multiaba(df_geral_processado)
                     
