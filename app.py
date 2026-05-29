@@ -568,22 +568,6 @@ elif opcao == "RELATÓRIO":
 
     lista_todos_usuarios = []
     
-    # Exibe a Célula do Colaborador (Apenas editável pelo Master)
-    if cargo_usuario == "Master":
-        celula_atual = celula_usuario or ""
-        nova_celula = st.text_input("📍 Célula do Colaborador (Banco de Dados):", value=celula_atual)
-        if nova_celula != celula_atual:
-            try:
-                supabase.table("usuarios_ponto").update({"celula": nova_celula}).eq("email", user_email).execute()
-                st.success("Célula atualizada com sucesso!")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Erro ao atualizar célula: {e}")
-    else:
-        if celula_usuario:
-            st.info(f"📍 Sua Célula atual: **{celula_usuario}**")
-
-    # Lógica de Filtragem de Usuários por Cargo
     # Lógica de Filtragem de Usuários por Cargo
     if cargo_usuario == "Master":
         st.markdown("### 🔑 Painel de Gestão (Master)")
