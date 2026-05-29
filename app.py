@@ -581,7 +581,7 @@ elif opcao == "RELATÓRIO":
                 if nova_celula != celula_atual:
                     try:
                         supabase.table("usuarios_ponto").update({"celula": nova_celula}).eq("email", email_busca).execute()
-                        st.success(f"Célula de {nome_busca} atualizada com sucesso!")
+                        st.success(f"Célula de {nome_busca} updated com sucesso!")
                         st.rerun()
                     except Exception as e:
                         st.error(f"Erro ao atualizar célula: {e}")
@@ -709,7 +709,7 @@ elif opcao == "RELATÓRIO":
             st.markdown(f"##### 📑 Histórico de Registros ({data_inicio.strftime('%d/%m/%Y')} até {data_fim.strftime('%d/%m/%Y')})")
             
             if cargo_usuario in ["Supervisor", "Master"]:
-                st.caption(f"💡 Como {cargo_usuario}, você pode editar os horários e justificativas diretamente na tabela abaixo e clicar em salvar.")
+                st.caption(f"💡 Como {cargo_usuario}, você pode editar os horários e justificativas diretamente na tabela abaixo.")
                 
                 df_editado = st.data_editor(
                     df_visualizacao, 
@@ -719,7 +719,15 @@ elif opcao == "RELATÓRIO":
                     key="editor_ponto_gestao"
                 )
                 
-                if st.button("💾 Salvar Alterações no Banco de Dados", type="primary", use_container_width=True):
+                # --- SISTEMA DE CONFIRMAÇÃO DE SALVAMENTO ---
+                col_btn, _ = st.columns([1, 1])
+                with col_btn:
+                    # Popover cria uma janela de confirmação limpa que evita cliques acidentais
+                    caixa_confirmacao = st.popover("💾 Salvar Alterações no Banco", use_container_width=True)
+                    caixa_confirmacao.warning("⚠️ Atenção: Isso alterará permanentemente os horários do colaborador.")
+                    confirmou_salvar = caixa_confirmacao.button("Sim, confirmar e salvar", type="primary", use_container_width=True)
+                
+                if confirmou_salvar:
                     alteracoes = st.session_state.get("editor_ponto_gestao", {}).get("edited_rows", {})
                     
                     if not alteracoes:
@@ -741,9 +749,8 @@ elif opcao == "RELATÓRIO":
                         
                         for idx_linha_str, colunas_alteradas in alteracoes.items():
                             idx_linha = int(idx_linha_str)
-                            
                             linha_tela = df_editado.iloc[idx_linha]
-                            data_tela = inline_data_tela = linha_tela["Data"]
+                            data_tela = linha_tela["Data"]
                             
                             data_str = str(data_tela).strip()
                             if "/" in data_str:
@@ -759,43 +766,43 @@ elif opcao == "RELATÓRIO":
                                 
                                 if col_banco in ["horario_entrada", "saida_almoco", "retorno_almoco", "horario_saida"]:
                                     try:
-                                        if novo_valor is not None:
-                                            if hasattr(novo_valor, "strftime"):
-                                                hora_nova = novo_valor.strftime("%H:%M:%S")
-                                            else:
-                                                hora_nova = str(novo_valor).strip()
-                                        else:
-                                            hora_nova = ""
-                                        
-                                        if hora_nova and hora_nova.lower() != "none":
-                                            if "." in hora_nova:
-                                                hora_nova = hora_nova.split(".")[0]
-                                            
-                                            # Lógica robusta de preenchimento para as abas B, C, D, E
-                                            partes = hora_nova.split(":")
-                                            if len(partes) == 1 and partes[0].isdigit():
-                                                # Se o usuário digitou apenas a hora (ex: "08")
-                                                hora_nova = f"{partes[0].zfill(2)}:00:00"
-                                            elif len(partes) == 2:
-                                                # Se o usuário digitou HH:MM (ex: "08:30"), completa com os segundos zerados
-                                                hora_nova = f"{partes[0].zfill(2)}:{partes[1].zfill(2)}:00"
-                                            elif len(partes) == 3:
-                                                # Se já possui o formato HH:MM:SS completo, apenas padroniza os zeros à esquerda
-                                                hora_nova = f"{partes[0].zfill(2)}:{partes[1].zfill(2)}:{partes[2].zfill(2)}"
-                                            
-                                            dt_combinado = datetime.strptime(f"{data_str} {hora_nova}", "%Y-%m-%d %H:%M:%S")
-                                            dt_fuso = fuso_br.localize(dt_combinado)
-                                            update_dict[col_banco] = dt_fuso.isoformat()
-                                        else:
+                                        # 1. Se o valor for apagado (vazio), envia nulo ao banco
+                                        if novo_valor is None or str(novo_valor).strip() == "" or str(novo_valor).lower() == "none":
                                             update_dict[col_banco] = None
-                                            
+                                            continue
+                                        
+                                        # 2. Tratamento caso o Streamlit retorne um objeto time/datetime nativo
+                                        if hasattr(novo_valor, "hour"):
+                                            hora_nova = novo_valor.strftime("%H:%M:%S")
+                                        else:
+                                            hora_nova = str(novo_valor).strip()
+                                        
+                                        # Limpa eventuais frações de segundos (.000)
+                                        if "." in hora_nova:
+                                            hora_nova = hora_nova.split(".")[0]
+                                        
+                                        # 3. Lógica de preenchimento robusto de strings (HH, HH:MM, HH:MM:SS)
+                                        partes = hora_nova.split(":")
+                                        if len(partes) == 1 and partes[0].isdigit():
+                                            hora_nova = f"{partes[0].zfill(2)}:00:00"
+                                        elif len(partes) == 2:
+                                            hora_nova = f"{partes[0].zfill(2)}:{partes[1].zfill(2)}:00"
+                                        elif len(partes) == 3:
+                                            hora_nova = f"{partes[0].zfill(2)}:{partes[1].zfill(2)}:{partes[2].zfill(2)}"
+                                        
+                                        # 4. Converte e aplica fuso horário
+                                        dt_combinado = datetime.strptime(f"{data_str} {hora_nova}", "%Y-%m-%d %H:%M:%S")
+                                        dt_fuso = fuso_br.localize(dt_combinado)
+                                        update_dict[col_banco] = dt_fuso.isoformat()
+                                        
                                     except Exception as e:
-                                        print(f"❌ Falha de conversão: Data={data_str} | Hora={hora_nova} | Erro={e}")
                                         st.error(f"Formato de hora inválido na linha {idx_linha + 1}, coluna {col_df}. Use HH:MM ou HH:MM:SS.")
                                         erros += 1
                                 else:
+                                    # Para campos de texto/justificativas
                                     update_dict[col_banco] = novo_valor
                             
+                            # Envia os dados consolidados da linha para o Supabase se não houver erros de formato
                             if update_dict and erros == 0:
                                 try:
                                     supabase.table("registro_ponto").update(update_dict).eq("email", email_busca).eq("data", data_str).execute()
