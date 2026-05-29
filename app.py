@@ -584,10 +584,9 @@ elif opcao == "RELATÓRIO":
         try:
             usuarios_banco = supabase.table("usuarios_ponto").select("email, nome").execute()
             if usuarios_banco.data:
-                # AJUSTE 1: Ordena a lista de usuários por ordem alfabética do nome
+                # Mantém a lista de usuários em ordem alfabética
                 lista_todos_usuarios = sorted(usuarios_banco.data, key=lambda x: x.get("nome", "").lower())
                 
-                # Monta o dicionário mantendo a nova ordem alfabética
                 opcoes_usuarios = {f"{u['nome']} ({u['email']})": u for u in lista_todos_usuarios}
                 
                 usuario_selecionado_str = st.selectbox("Selecione o colaborador que deseja consultar na tela:", options=list(opcoes_usuarios.keys()))
@@ -621,8 +620,11 @@ elif opcao == "RELATÓRIO":
                 ])
                 return pd.DataFrame(columns=colunas_vazias)
 
+            # AJUSTE: Ordena os dados do banco por data em ordem crescente (AAAA-MM-DD) antes de processar
+            dados_ordenados = sorted(dados, key=lambda x: x.get("data", ""))
+
             linhas_processadas = []
-            for item in dados:
+            for item in dados_ordenados:
                 linha = {}
                 if incluir_usuario_info:
                     linha["Funcionário"] = item.get("nome_completo", "")
@@ -663,7 +665,7 @@ elif opcao == "RELATÓRIO":
                     else:
                         linha[col_df] = ""
 
-                # LÓGICA DE SOMA DE HORAS E HORA EXTRA (Inicia após 9 horas de jornada)
+                # LÓGICA DE SOMA DE HORAS E HORA EXTRA
                 hora_extra_str = "00:00"
                 if dt_entrada and dt_saida:
                     segundos_trabalhados = int((dt_saida - dt_entrada).total_seconds())
@@ -696,7 +698,7 @@ elif opcao == "RELATÓRIO":
             st.markdown(f"##### 📑 Histórico de Registros ({data_inicio.strftime('%d/%m/%Y')} até {data_fim.strftime('%d/%m/%Y')})")
             st.dataframe(df_visualizacao, use_container_width=True, hide_index=True)
             
-            # AJUSTE 2: Alterado formatar_data_br de False para True na exportação individual
+            # Gera o DataFrame individual já ordenado e formatado em PT-BR para o Excel
             df_exportar_ind = processar_dados_ponto(dados_pessoais, incluir_usuario_info=False, formatar_data_br=True)
             dados_excel_ind = converter_para_excel_individual(df_exportar_ind)
             
@@ -719,7 +721,7 @@ elif opcao == "RELATÓRIO":
                 if not dados_gerais_banco:
                     st.warning("Não há nenhum registro de ponto de nenhum colaborador no período selecionado para consolidação.")
                 else:
-                    # AJUSTE 3: Alterado formatar_data_br de False para True na exportação geral consolidada
+                    # Gera o DataFrame geral já ordenado e formatado em PT-BR para o Excel consolidado
                     df_geral_processado = processar_dados_ponto(dados_gerais_banco, incluir_usuario_info=True, formatar_data_br=True)
                     dados_excel_multiaba = converter_para_excel_multiaba(df_geral_processado)
                     
