@@ -795,46 +795,52 @@ elif opcao == "RELATÓRIO":
                                     continue
                                 
                                 if col_banco in ["horario_entrada", "saida_almoco", "retorno_almoco", "horario_saida"]:
-                                    # 1. Transforma o valor da tela em string limpa, não importa o tipo
-                                    if novo_valor is not None:
-                                        if hasattr(novo_valor, "strftime"):
-                                            hora_nova = novo_valor.strftime("%H:%M:%S")
-                                        else:
-                                            hora_nova = str(novo_valor).strip()
-                                    else:
-                                        hora_nova = ""
+                                    # 1. Inicializa data_str logo no início para evitar NameError no except
+                                    data_str = str(data_registro).strip() if data_registro else ""
+                                    hora_nova = ""
                                     
-                                    if hora_nova and hora_nova.lower() != "none":
-                                        try:
-                                            # 2. Se tiver pontos de milissegundos (ex: 12:00:00.00), remove
+                                    try:
+                                        # 2. Transforma o valor da tela em string limpa
+                                        if novo_valor is not None:
+                                            if hasattr(novo_valor, "strftime"):
+                                                hora_nova = novo_valor.strftime("%H:%M:%S")
+                                            else:
+                                                hora_nova = str(novo_valor).strip()
+                                        
+                                        if hora_nova and hora_nova.lower() != "none":
+                                            # 3. Se tiver pontos de milissegundos (ex: 12:00:00.00), remove
                                             if "." in hora_nova:
                                                 hora_nova = hora_nova.split(".")[0]
                                             
-                                            # 3. Se o usuário digitou apenas HH:MM, completa automaticamente para HH:MM:SS
+                                            # 4. Ajusta o preenchimento de HH:MM para HH:MM:SS
                                             partes = hora_nova.split(":")
                                             if len(partes) == 2:
                                                 hora_nova = f"{partes[0].zfill(2)}:{partes[1].zfill(2)}:00"
                                             elif len(partes) == 3:
                                                 hora_nova = f"{partes[0].zfill(2)}:{partes[1].zfill(2)}:{partes[2].zfill(2)}"
                                                 
-                                            # 4. Limpa a data do registro para garantir que seja apenas YYYY-MM-DD
-                                            data_str = str(data_registro).strip().split(" ")[0]
+                                            # 5. Limpa a data do registro (pega só a parte YYYY-MM-DD se houver espaço)
+                                            if " " in data_str:
+                                                data_str = data_str.split(" ")[0]
+                                            
                                             if "/" in data_str:
                                                 from datetime import datetime as dt_check
                                                 data_str = dt_check.strptime(data_str, "%d/%m/%Y").strftime("%Y-%m-%d")
                                             
-                                            # 5. Combina a data limpa com a hora limpa
+                                            # 6. Combina a data limpa com a hora limpa
                                             dt_combinado = datetime.strptime(f"{data_str} {hora_nova}", "%Y-%m-%d %H:%M:%S")
                                             dt_fuso = fuso_br.localize(dt_combinado)
                                             
-                                            # Salva no dicionário no formato ISO que o Supabase exige
                                             update_dict[col_banco] = dt_fuso.isoformat()
+                                        else:
+                                            # Se o campo foi limpo pelo gestor, manda nulo para o banco
+                                            update_dict[col_banco] = None
                                             
-                                        except Exception as e:
-                                            # Exibe o erro real escondido no console para debug rápido
-                                            print(f"❌ Falha de conversão: Data={data_str} | Hora={hora_nova} | Erro={e}")
-                                            st.error(f"Formato de hora inválido na linha {idx_linha + 1}, coluna {col_df}. Use HH:MM.")
-                                            erros += 1
+                                    except Exception as e:
+                                        # Agora esse print nunca vai dar NameError
+                                        print(f"❌ Falha de conversão: Data original='{data_registro}' | Data tratada='{data_str}' | Hora='{hora_nova}' | Erro={e}")
+                                        st.error(f"Formato de hora inválido na linha {idx_linha + 1}, coluna {col_df}. Use HH:MM.")
+                                        erros += 1
                                     else:
                                         # Se o campo foi limpo pelo gestor, manda nulo para o banco
                                         update_dict[col_banco] = None
