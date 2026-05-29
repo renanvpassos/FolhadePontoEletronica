@@ -596,11 +596,25 @@ elif opcao == "RELATÓRIO":
                 colaborador_escolhido = opcoes_usuarios[usuario_selecionado_str]
                 email_busca = colaborador_escolhido["email"]
                 nome_busca = colaborador_escolhido["nome"]
+                celula_busca = colaborador_escolhido.get("celula") # Captura a célula do colaborador selecionado
+                
+                # Exibe o campo de edição vinculado ao colaborador selecionado acima
+                celula_atual = celula_busca or ""
+                nova_celula = st.text_input(f"📍 Célula de {nome_busca} (Banco de Dados):", value=celula_atual)
+                if nova_celula != celula_atual:
+                    try:
+                        supabase.table("usuarios_ponto").update({"celula": nova_celula}).eq("email", email_busca).execute()
+                        st.success(f"Célula de {nome_busca} atualizada com sucesso!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erro ao atualizar célula: {e}")
         except Exception:
             st.error("Erro ao carregar a lista completa de funcionários.")
 
     elif cargo_usuario == "Supervisor":
         st.markdown("### 🔑 Painel de Gestão (Supervisor)")
+        if celula_usuario:
+            st.info(f"📍 Sua Célula atual: **{celula_usuario}**")
         if not celula_usuario:
             st.warning("Você é Supervisor, mas não está vinculado a nenhuma célula no banco de dados.")
         else:
@@ -617,6 +631,10 @@ elif opcao == "RELATÓRIO":
                     nome_busca = colaborador_escolhido["nome"]
             except Exception:
                 st.error("Erro ao carregar a lista de funcionários da sua célula.")
+                
+    elif cargo_usuario == "Colaborador":
+        if celula_usuario:
+            st.info(f"📍 Sua Célula atual: **{celula_usuario}**")
                 
     st.caption(f"Filtro e exportação de folhas e históricos para: **{nome_busca}**")
     
