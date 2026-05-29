@@ -795,19 +795,28 @@ elif opcao == "RELATÓRIO":
                                     continue
                                 
                                 if col_banco in ["horario_entrada", "saida_almoco", "retorno_almoco", "horario_saida"]:
-                                    hora_iso = normalizar_hora(novo_valor)
+                                    # --- CORREÇÃO DO ERRO DO SUPERVISOR ---
+                                    # Se o valor veio como um objeto time (comum no Supervisor), converte para string HH:MM:SS
+                                    if novo_valor is not None:
+                                        if hasattr(novo_valor, "strftime"):
+                                            hora_nova = novo_valor.strftime("%H:%M:%S")
+                                        else:
+                                            hora_nova = str(novo_valor).strip()
+                                    else:
+                                        hora_nova = ""
+                                    # --------------------------------------
                                     
-                                    if hora_iso:
+                                    if hora_nova:
                                         try:
-                                            # Junta a data limpa (YYYY-MM-DD) com a hora limpa (HH:MM:SS)
-                                            dt_combinado = datetime.strptime(f"{data_iso} {hora_iso}", "%Y-%m-%d %H:%M:%S")
-                                            # Aplica o fuso horário brasileiro
-                                            dt_fuso = fuso_br.localize(dt_combinado)
-                                            # Envia para o Supabase no formato ISO internacional que ele exige
-                                            update_dict[col_banco] = dt_fuso.isoformat()
+                                            # Se o usuário digitou apenas HH:MM, o sistema completa automaticamente
+                                            if len(hora_nova) == 5 and ":" in hora_nova:
+                                                hora_nova += ":00"
+                                                
+                                            dt_novo_nao_localizado = datetime.strptime(f"{data_registro} {hora_nova}", "%Y-%m-%d %H:%M:%S")
+                                            dt_novo_fuso = fuso_br.localize(dt_novo_nao_localizado)
+                                            update_dict[col_banco] = dt_novo_fuso.isoformat()
                                         except Exception as e:
-                                            print(f"🔥 Erro crítico na conversão: Data='{data_iso}', Hora='{hora_iso}'. Erro: {e}")
-                                            st.error(f"Formato de hora ou data inválido na linha {idx_linha + 1}, coluna {col_df}. Use HH:MM.")
+                                            st.error(f"Formato de hora inválido na linha {idx_linha + 1}, coluna {col_df}. Use HH:MM.")
                                             erros += 1
                                     else:
                                         update_dict[col_banco] = None
