@@ -581,7 +581,7 @@ elif opcao == "RELATÓRIO":
                 if nova_celula != celula_atual:
                     try:
                         supabase.table("usuarios_ponto").update({"celula": nova_celula}).eq("email", email_busca).execute()
-                        st.success(f"Célula de {nome_busca} atualizada com sucesso!")
+                        st.success(f"Célula de {nome_busca} updated com sucesso!")
                         st.rerun()
                     except Exception as e:
                         st.error(f"Erro ao atualizar célula: {e}")
@@ -612,10 +612,6 @@ elif opcao == "RELATÓRIO":
         if celula_usuario:
             st.info(f"📍 Sua Célula atual: **{celula_usuario}**")
                 
-    elif cargo_usuario == "Colaborador":
-        if celula_usuario:
-            st.info(f"📍 Sua Célula atual: **{celula_usuario}**")
-                
     st.caption(f"Filtro e exportação de folhas e históricos para: **{nome_busca}**")
     
     col1, col2 = st.columns(2)
@@ -631,7 +627,7 @@ elif opcao == "RELATÓRIO":
     else:
         def processar_dados_ponto(dados, incluir_usuario_info=False, formatar_data_br=False):
             if not dados:
-                colunas_vazias = []
+                colunas_vazias = ["id_registro_interno", "email_registro_interno"]
                 if incluir_usuario_info:
                     colunas_vazias.extend(["Funcionário", "E-mail"])
                 colunas_vazias.extend([
@@ -645,6 +641,10 @@ elif opcao == "RELATÓRIO":
             linhas_processadas = []
             for item in dados_ordenados:
                 linha = {}
+                # CAMPOS INTERNOS CRÍTICO: Vincula o ID correto diretamente na linha do DataFrame
+                linha["id_registro_interno"] = item.get("id", "")
+                linha["email_registro_interno"] = item.get("email", "")
+
                 if incluir_usuario_info:
                     linha["Funcionário"] = item.get("nome_completo", "")
                     linha["E-mail"] = item.get("email", "")
@@ -712,15 +712,18 @@ elif opcao == "RELATÓRIO":
         else:
             st.markdown(f"##### 📑 Histórico de Registros ({data_inicio.strftime('%d/%m/%Y')} até {data_fim.strftime('%d/%m/%Y')})")
             
-            # Master também pode editar as informações do dataframe e salvar no banco de dados.
             if cargo_usuario in ["Supervisor", "Master"]:
                 st.caption(f"💡 Como {cargo_usuario}, você pode editar os horários e justificativas diretamente na tabela abaixo e clicar em salvar.")
+                
+                # Esconde as colunas de ID interno para o usuário final não ver
+                colunas_ocultas = ["id_registro_interno", "email_registro_interno"]
                 
                 df_editado = st.data_editor(
                     df_visualizacao, 
                     use_container_width=True, 
                     hide_index=True,
                     disabled=["Data", "Hora Extra"],
+                    column_config={col: st.column_config.TextColumn(disabled=True) for col in colunas_ocultas},
                     key="editor_ponto_gestao"
                 )
                 
@@ -744,50 +747,22 @@ elif opcao == "RELATÓRIO":
                             "Justificativa Saída": "justificativa_saida"
                         }
                         
-                        # --- FUNÇÕES LOCAIS DE LIMPEZA ULTRA-ROBUSTAS ---
-                        def normalizar_data(valor_data):
-                            """Converte qualquer formato de data da tela para 'YYYY-MM-DD'"""
-                            if hasattr(valor_data, "strftime"):  # Se for objeto date/datetime
-                                return valor_data.strftime("%Y-%m-%d")
-                            
-                            s = str(valor_data).strip()
-                            if " " in s:
-                                s = s.split(" ")[0]
-                            
-                            if "/" in s:  # Se for DD/MM/YYYY
-                                try:
-                                    return datetime.strptime(s, "%d/%m/%Y").strftime("%Y-%m-%d")
-                                except:
-                                    pass
-                            return s
-
-                        def normalizar_hora(valor_hora):
-                            """Converte qualquer formato de hora da tela para 'HH:MM:SS'"""
-                            if hasattr(valor_hora, "strftime"):  # Se o Streamlit retornou um objeto time
-                                return valor_hora.strftime("%H:%M:%S")
-                            
-                            s = str(valor_hora).strip()
-                            if not s or s.lower() == "none":
-                                return ""
-                            
-                            # Se o usuário digitou apenas HH:MM, adiciona os segundos
-                            if len(s) == 5 and ":" in s:
-                                s += ":00"
-                            return s
-                        # -----------------------------------------------
-
                         for idx_linha_str, colunas_alteradas in alteracoes.items():
                             idx_linha = int(idx_linha_str)
                             
-                            # 1. Garante a declaração dos dados originais da linha
-                            linha_original = dados_pessoais[idx_linha]
-                            id_registro = linha_original.get("id")
-                            data_registro = linha_original.get("data")
+                            # BUSCA CIRÚRGICA DE DADOS DIRETO DA TELA EDITADA
+                            linha_tela = df_editado.iloc[idx_linha]
+                            id_registro = linha_tela.get("id_registro_interno")
+                            email_registro = linha_tela.get("email_registro_interno") or email_busca
+                            data_tela = linha_tela["Data"]
                             
-                            # 2. Inicializa as strings de controle
-                            data_str = str(data_registro).strip() if data_registro else ""
-                            hora_nova = ""
-                            
+                            # Traduz a data BR da tela (DD/MM/YYYY) para ISO (YYYY-MM-DD) de forma garantida
+                            data_str = str(data_tela).strip()
+                            if "/" in data_str:
+                                data_str = datetime.strptime(data_str, "%d/%m/%Y").strftime("%Y-%m-%d")
+                            elif " " in data_str:
+                                data_str = data_str.split(" ")[0]
+                                
                             update_dict = {}
                             
                             for col_df, novo_valor in colunas_alteradas.items():
@@ -797,87 +772,45 @@ elif opcao == "RELATÓRIO":
                                 
                                 if col_banco in ["horario_entrada", "saida_almoco", "retorno_almoco", "horario_saida"]:
                                     try:
-                                        # 3. Transforma o valor da tela em string limpa
+                                        # Normaliza objetos time do Streamlit ou strings puras
                                         if novo_valor is not None:
                                             if hasattr(novo_valor, "strftime"):
                                                 hora_nova = novo_valor.strftime("%H:%M:%S")
                                             else:
                                                 hora_nova = str(novo_valor).strip()
+                                        else:
+                                            hora_nova = ""
                                         
                                         if hora_nova and hora_nova.lower() != "none":
-                                            # 4. Remove milissegundos se houver (ex: 12:00:00.00)
                                             if "." in hora_nova:
                                                 hora_nova = hora_nova.split(".")[0]
                                             
-                                            # 5. Ajusta o preenchimento de HH:MM para HH:MM:SS automaticamente
+                                            # Completa HH:MM para HH:MM:SS de forma automatizada
                                             partes = hora_nova.split(":")
                                             if len(partes) == 2:
                                                 hora_nova = f"{partes[0].zfill(2)}:{partes[1].zfill(2)}:00"
                                             elif len(partes) == 3:
                                                 hora_nova = f"{partes[0].zfill(2)}:{partes[1].zfill(2)}:{partes[2].zfill(2)}"
-                                                
-                                            # 6. Limpa a data do registro original (pega só YYYY-MM-DD)
-                                            if " " in data_str:
-                                                data_str = data_str.split(" ")[0]
                                             
-                                            # Se a data original vier em formato BR por algum motivo, converte
-                                            if "/" in data_str:
-                                                from datetime import datetime as dt_check
-                                                data_str = dt_check.strptime(data_str, "%d/%m/%Y").strftime("%Y-%m-%d")
-                                            
-                                            # 7. Combina a data limpa com a hora limpa
                                             dt_combinado = datetime.strptime(f"{data_str} {hora_nova}", "%Y-%m-%d %H:%M:%S")
                                             dt_fuso = fuso_br.localize(dt_combinado)
-                                            
                                             update_dict[col_banco] = dt_fuso.isoformat()
                                         else:
-                                            # Se limpou o campo na tela, limpa no banco
                                             update_dict[col_banco] = None
                                             
                                     except Exception as e:
-                                        print(f"❌ Falha de conversão: Data original='{data_registro}' | Data tratada='{data_str}' | Hora='{hora_nova}' | Erro={e}")
+                                        print(f"❌ Falha de conversão: Data={data_str} | Hora={hora_nova} | Erro={e}")
                                         st.error(f"Formato de hora inválido na linha {idx_linha + 1}, coluna {col_df}. Use HH:MM.")
                                         erros += 1
                                 else:
                                     update_dict[col_banco] = novo_valor
                             
-                            # 8. Executa o update no banco caso não haja erros de formato
                             if update_dict and erros == 0:
                                 try:
                                     if id_registro:
                                         supabase.table("registro_ponto").update(update_dict).eq("id", id_registro).execute()
                                     else:
-                                        supabase.table("registro_ponto").update(update_dict).eq("email", email_busca).eq("data", data_str).execute()
-                                    sucessos += 1
-                                except Exception as e:
-                                    st.error(f"Erro ao salvar alteração na linha {idx_linha + 1}: {e}")
-                                    erros += 1
-                                else:
-                                    update_dict[col_banco] = novo_valor
-                            
-                            # 8. Executa o update no banco caso não haja erros de formato
-                            if update_dict and erros == 0:
-                                try:
-                                    if id_registro:
-                                        supabase.table("registro_ponto").update(update_dict).eq("id", id_registro).execute()
-                                    else:
-                                        supabase.table("registro_ponto").update(update_dict).eq("email", email_busca).eq("data", data_str).execute()
-                                    sucessos += 1
-                                except Exception as e:
-                                    st.error(f"Erro ao salvar alteração na linha {idx_linha + 1}: {e}")
-                                    erros += 1
-                                    else:
-                                        # Se o campo foi limpo pelo gestor, manda nulo para o banco
-                                        update_dict[col_banco] = None
-                                else:
-                                    update_dict[col_banco] = novo_valor
-                            
-                            if update_dict and erros == 0:
-                                try:
-                                    if id_registro:
-                                        supabase.table("registro_ponto").update(update_dict).eq("id", id_registro).execute()
-                                    else:
-                                        supabase.table("registro_ponto").update(update_dict).eq("email", email_busca).eq("data", data_iso).execute()
+                                        supabase.table("registro_ponto").update(update_dict).eq("email", email_registro).eq("data", data_str).execute()
                                     sucessos += 1
                                 except Exception as e:
                                     st.error(f"Erro ao salvar alteração na linha {idx_linha + 1}: {e}")
@@ -887,9 +820,15 @@ elif opcao == "RELATÓRIO":
                             st.success(f"✅ Sucesso! Foram atualizadas as células de {sucessos} linha(s).")
                             st.rerun()
             else:
-                st.dataframe(df_visualizacao, use_container_width=True, hide_index=True)
+                # Se for colaborador simples, apenas exibe sem o editor (removidas colunas ocultas da visão dele)
+                colunas_visiveis = [c for c in df_visualizacao.columns if c not in ["id_registro_interno", "email_registro_interno"]]
+                st.dataframe(df_visualizacao[colunas_visiveis], use_container_width=True, hide_index=True)
             
             df_exportar_ind = processar_dados_ponto(dados_pessoais, incluir_usuario_info=False, formatar_data_br=True)
+            # Remove colunas de controle do excel individual
+            if "id_registro_interno" in df_exportar_ind.columns:
+                df_exportar_ind = df_exportar_ind.drop(columns=["id_registro_interno", "email_registro_interno"])
+                
             dados_excel_ind = converter_para_excel_individual(df_exportar_ind)
             
             st.download_button(
@@ -908,7 +847,6 @@ elif opcao == "RELATÓRIO":
             opcao_consolidada = "Minha Célula"
             celulas_disponiveis = []
             
-            # Componente exclusivo do Master para escolha de célula ou Todas as Células
             if cargo_usuario == "Master":
                 st.caption("Escolha qual célula extrair ou se deseja consolidar todas as células em multiabas.")
                 try:
@@ -931,18 +869,16 @@ elif opcao == "RELATÓRIO":
                 else:
                     df_geral_completo = processar_dados_ponto(dados_gerais_banco, incluir_usuario_info=True, formatar_data_br=True)
                     
-                    # Traz as células reais mapeadas aos e-mails para filtragem dinâmica em tempo de execução
                     try:
                         mapeamento_usuarios = {u['email']: u.get('celula') for u in supabase.table("usuarios_ponto").select("email, celula").execute().data or []}
                         df_geral_completo["Celula_Filtro"] = df_geral_completo["E-mail"].map(mapeamento_usuarios)
                     except Exception:
                         df_geral_completo["Celula_Filtro"] = None
 
-                    # Filtro de dados baseado no cargo e escolha do menu
                     if cargo_usuario == "Supervisor":
                         df_filtrado = df_geral_completo[df_geral_completo["Celula_Filtro"] == celula_usuario]
                         nome_arquivo = f"Relatorio_Consolidado_Celula_{celula_usuario}_{data_inicio}_a_{data_fim}.xlsx"
-                    else:  # Caso seja Master
+                    else:  
                         if opcao_consolidada == "Todas as Células":
                             df_filtrado = df_geral_completo.copy()
                             nome_arquivo = f"Relatorio_Consolidado_Todas_Celulas_{data_inicio}_a_{data_fim}.xlsx"
@@ -952,6 +888,8 @@ elif opcao == "RELATÓRIO":
                     
                     if "Celula_Filtro" in df_filtrado.columns:
                         df_filtrado = df_filtrado.drop(columns=["Celula_Filtro"])
+                    if "id_registro_interno" in df_filtrado.columns:
+                        df_filtrado = df_filtrado.drop(columns=["id_registro_interno", "email_registro_interno"])
 
                     if df_filtrado.empty:
                         st.warning("Nenhum dado localizado para os critérios selecionados.")
