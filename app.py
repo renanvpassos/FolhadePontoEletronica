@@ -584,8 +584,12 @@ elif opcao == "RELATÓRIO":
         try:
             usuarios_banco = supabase.table("usuarios_ponto").select("email, nome").execute()
             if usuarios_banco.data:
-                lista_todos_usuarios = usuarios_banco.data
-                opcoes_usuarios = {f"{u['nome']} ({u['email']})": u for u in usuarios_banco.data}
+                # AJUSTE 1: Ordena a lista de usuários por ordem alfabética do nome
+                lista_todos_usuarios = sorted(usuarios_banco.data, key=lambda x: x.get("nome", "").lower())
+                
+                # Monta o dicionário mantendo a nova ordem alfabética
+                opcoes_usuarios = {f"{u['nome']} ({u['email']})": u for u in lista_todos_usuarios}
+                
                 usuario_selecionado_str = st.selectbox("Selecione o colaborador que deseja consultar na tela:", options=list(opcoes_usuarios.keys()))
                 colaborador_escolhido = opcoes_usuarios[usuario_selecionado_str]
                 email_busca = colaborador_escolhido["email"]
@@ -692,8 +696,8 @@ elif opcao == "RELATÓRIO":
             st.markdown(f"##### 📑 Histórico de Registros ({data_inicio.strftime('%d/%m/%Y')} até {data_fim.strftime('%d/%m/%Y')})")
             st.dataframe(df_visualizacao, use_container_width=True, hide_index=True)
             
-            # Botões de download usando as funções exportadoras existentes
-            df_exportar_ind = processar_dados_ponto(dados_pessoais, incluir_usuario_info=False, formatar_data_br=False)
+            # AJUSTE 2: Alterado formatar_data_br de False para True na exportação individual
+            df_exportar_ind = processar_dados_ponto(dados_pessoais, incluir_usuario_info=False, formatar_data_br=True)
             dados_excel_ind = converter_para_excel_individual(df_exportar_ind)
             
             st.download_button(
@@ -715,7 +719,8 @@ elif opcao == "RELATÓRIO":
                 if not dados_gerais_banco:
                     st.warning("Não há nenhum registro de ponto de nenhum colaborador no período selecionado para consolidação.")
                 else:
-                    df_geral_processado = processar_dados_ponto(dados_gerais_banco, incluir_usuario_info=True, formatar_data_br=False)
+                    # AJUSTE 3: Alterado formatar_data_br de False para True na exportação geral consolidada
+                    df_geral_processado = processar_dados_ponto(dados_gerais_banco, incluir_usuario_info=True, formatar_data_br=True)
                     dados_excel_multiaba = converter_para_excel_multiaba(df_geral_processado)
                     
                     st.success("✅ Relatório geral consolidado com sucesso! Clique no botão abaixo para baixar.")
