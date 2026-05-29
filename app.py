@@ -778,29 +778,26 @@ elif opcao == "RELATÓRIO":
 
                         for idx_linha_str, colunas_alteradas in alteracoes.items():
                             idx_linha = int(idx_linha_str)
+                            
+                            # 1. GARANTE A DECLARAÇÃO DOS DADOS ORIGINAIS DA LINHA
                             linha_original = dados_pessoais[idx_linha]
-                            
                             id_registro = linha_original.get("id")
+                            data_registro = linha_original.get("data")
                             
-                            # Resgata a data da linha direto do dataframe visual e normaliza para YYYY-MM-DD
-                            data_tela = df_editado.iloc[idx_linha]["Data"]
-                            data_iso = normalizar_data(data_tela)
+                            # 2. Inicializa as strings de controle
+                            data_str = str(data_registro).strip() if data_registro else ""
+                            hora_nova = ""
                             
                             update_dict = {}
                             
                             for col_df, novo_valor in colunas_alteradas.items():
                                 col_banco = mapeamento_colunas.get(col_df)
-                                
                                 if not col_banco:
                                     continue
                                 
                                 if col_banco in ["horario_entrada", "saida_almoco", "retorno_almoco", "horario_saida"]:
-                                    # 1. Inicializa data_str logo no início para evitar NameError no except
-                                    data_str = str(data_registro).strip() if data_registro else ""
-                                    hora_nova = ""
-                                    
                                     try:
-                                        # 2. Transforma o valor da tela em string limpa
+                                        # 3. Transforma o valor da tela em string limpa
                                         if novo_valor is not None:
                                             if hasattr(novo_valor, "strftime"):
                                                 hora_nova = novo_valor.strftime("%H:%M:%S")
@@ -808,39 +805,53 @@ elif opcao == "RELATÓRIO":
                                                 hora_nova = str(novo_valor).strip()
                                         
                                         if hora_nova and hora_nova.lower() != "none":
-                                            # 3. Se tiver pontos de milissegundos (ex: 12:00:00.00), remove
+                                            # 4. Remove milissegundos se houver (ex: 12:00:00.00)
                                             if "." in hora_nova:
                                                 hora_nova = hora_nova.split(".")[0]
                                             
-                                            # 4. Ajusta o preenchimento de HH:MM para HH:MM:SS
+                                            # 5. Ajusta o preenchimento de HH:MM para HH:MM:SS automaticamente
                                             partes = hora_nova.split(":")
                                             if len(partes) == 2:
                                                 hora_nova = f"{partes[0].zfill(2)}:{partes[1].zfill(2)}:00"
                                             elif len(partes) == 3:
                                                 hora_nova = f"{partes[0].zfill(2)}:{partes[1].zfill(2)}:{partes[2].zfill(2)}"
                                                 
-                                            # 5. Limpa a data do registro (pega só a parte YYYY-MM-DD se houver espaço)
+                                            # 6. Limpa a data do registro original (pega só YYYY-MM-DD)
                                             if " " in data_str:
                                                 data_str = data_str.split(" ")[0]
                                             
+                                            # Se a data original vier em formato BR por algum motivo, converte
                                             if "/" in data_str:
                                                 from datetime import datetime as dt_check
                                                 data_str = dt_check.strptime(data_str, "%d/%m/%Y").strftime("%Y-%m-%d")
                                             
-                                            # 6. Combina a data limpa com a hora limpa
+                                            # 7. Combina a data limpa com a hora limpa
                                             dt_combinado = datetime.strptime(f"{data_str} {hora_nova}", "%Y-%m-%d %H:%M:%S")
                                             dt_fuso = fuso_br.localize(dt_combinado)
                                             
                                             update_dict[col_banco] = dt_fuso.isoformat()
                                         else:
-                                            # Se o campo foi limpo pelo gestor, manda nulo para o banco
+                                            # Se limpou o campo na tela, limpa no banco
                                             update_dict[col_banco] = None
                                             
                                     except Exception as e:
-                                        # Agora esse print nunca vai dar NameError
                                         print(f"❌ Falha de conversão: Data original='{data_registro}' | Data tratada='{data_str}' | Hora='{hora_nova}' | Erro={e}")
                                         st.error(f"Formato de hora inválido na linha {idx_linha + 1}, coluna {col_df}. Use HH:MM.")
                                         erros += 1
+                                else:
+                                    update_dict[col_banco] = novo_valor
+                            
+                            # 8. Executa o update no banco caso não haja erros de formato
+                            if update_dict and erros == 0:
+                                try:
+                                    if id_registro:
+                                        supabase.table("registro_ponto").update(update_dict).eq("id", id_registro).execute()
+                                    else:
+                                        supabase.table("registro_ponto").update(update_dict).eq("email", email_busca).eq("data", data_str).execute()
+                                    sucessos += 1
+                                except Exception as e:
+                                    st.error(f"Erro ao salvar alteração na linha {idx_linha + 1}: {e}")
+                                    erros += 1
                                     else:
                                         # Se o campo foi limpo pelo gestor, manda nulo para o banco
                                         update_dict[col_banco] = None
