@@ -282,7 +282,11 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                     # --- REGRAS DE OBRIGATORIEDADE E TRAVAS ---
                     if not erro_validacao:
                         if opcao == "ENTRADA":
-                            if horario_final_gravacao < agora_br_sem_segundos:
+                            # Define a tolerância de 10 minutos somada ao horário informado
+                            horario_com_tolerancia = horario_final_gravacao + timedelta(minutes=10)
+                            
+                            # Se o horário atual passou da tolerância, a justificativa vira obrigatória
+                            if horario_com_tolerancia < agora_br_sem_segundos:
                                 justificativa_obrigatoria = True
                                 
                         elif opcao == "RETORNO ALMOÇO":
