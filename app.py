@@ -758,20 +758,44 @@ elif opcao == "RELATÓRIO":
                                 
                                 if not col_banco:
                                     continue
-                                
+                                    
                                 if col_banco in ["horario_entrada", "saida_almoco", "retorno_almoco", "horario_saida"]:
-                                    hora_nova = novo_valor.strip() if novo_valor else ""
+                                    # 1. Garante que o valor editado seja tratado como String
+                                    if novo_valor is not None:
+                                        # Se o Streamlit retornar um objeto datetime.time, converte para string HH:MM:SS
+                                        if hasattr(novo_valor, "strftime"):
+                                            hora_nova = novo_valor.strftime("%H:%M:%S")
+                                        else:
+                                            hora_nova = str(novo_valor).strip()
+                                    else:
+                                        hora_nova = ""
                                     
                                     if hora_nova:
                                         try:
-                                            if len(hora_nova) == 5:
+                                            # 2. Completa os segundos caso o usuário digite apenas HH:MM
+                                            if len(hora_nova) == 5 and ":" in hora_nova:
                                                 hora_nova += ":00"
                                                 
-                                            dt_novo_nao_localizado = datetime.strptime(f"{data_registro} {hora_nova}", "%Y-%m-%d %H:%M:%S")
+                                            # 3. Garante que a data esteja no formato string AAAA-MM-DD
+                                            if hasattr(data_registro, "strftime"):
+                                                data_str = data_registro.strftime("%Y-%m-%d")
+                                            else:
+                                                data_str = str(data_registro)
+                                                # Se a data original vier em formato BR (DD/MM/AAAA), ajusta:
+                                                if "/" in data_str:
+                                                    from datetime import datetime as dt_check
+                                                    data_str = dt_check.strptime(data_str, "%d/%m/%Y").strftime("%Y-%m-%d")
+                                            
+                                            # 4. Faz a conversão e aplica o fuso horário
+                                            dt_novo_nao_localizado = datetime.strptime(f"{data_str} {hora_nova}", "%Y-%m-%d %H:%M:%S")
                                             dt_novo_fuso = fuso_br.localize(dt_novo_nao_localizado)
                                             update_dict[col_banco] = dt_novo_fuso.isoformat()
-                                        except Exception:
-                                            st.error(f"Formato de hora inválido na linha {idx_linha + 1}, coluna {col_df}. Use HH:MM:SS.")
+                                            
+                                        except Exception as e:
+                                            # Mostra o erro real no console/terminal para te ajudar a debugar se ainda falhar
+                                            print(f"Erro interno de conversão: {e}") 
+                                            
+                                            st.error(f"Formato de hora ou data inválido na linha {idx_linha + 1}, coluna {col_df}. Use HH:MM:SS.")
                                             erros += 1
                                     else:
                                         update_dict[col_banco] = None
