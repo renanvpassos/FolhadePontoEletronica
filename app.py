@@ -709,7 +709,7 @@ elif opcao == "RELATÓRIO":
             st.markdown(f"##### 📑 Histórico de Registros ({data_inicio.strftime('%d/%m/%Y')} até {data_fim.strftime('%d/%m/%Y')})")
             
             if cargo_usuario in ["Supervisor", "Master"]:
-                st.warning("⚠️ **Obrigatoriedade:** As colunas de horário exigem o formato estrito **HH:MM:SS** (Exemplo correto: `07:30:00`).")
+                st.warning("⚠️ **Atenção:** Confirme as alterações antes de salvar.")
                 
                 # Renderiza o editor forçando as colunas editáveis a aceitarem Texto Puro (String)
                 df_editado = st.data_editor(
