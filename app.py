@@ -742,11 +742,9 @@ elif opcao == "RELATÓRIO":
                         for idx_linha_str, colunas_alteradas in alteracoes.items():
                             idx_linha = int(idx_linha_str)
                             
-                            # Pega os dados direto do dataframe da tela baseado em quem está selecionado
                             linha_tela = df_editado.iloc[idx_linha]
-                            data_tela = linha_tela["Data"]
+                            data_tela = inline_data_tela = linha_tela["Data"]
                             
-                            # Formata a data de forma robusta
                             data_str = str(data_tela).strip()
                             if "/" in data_str:
                                 data_str = datetime.strptime(data_str, "%d/%m/%Y").strftime("%Y-%m-%d")
@@ -773,10 +771,16 @@ elif opcao == "RELATÓRIO":
                                             if "." in hora_nova:
                                                 hora_nova = hora_nova.split(".")[0]
                                             
+                                            # Lógica robusta de preenchimento para as abas B, C, D, E
                                             partes = hora_nova.split(":")
-                                            if len(partes) == 2:
+                                            if len(partes) == 1 and partes[0].isdigit():
+                                                # Se o usuário digitou apenas a hora (ex: "08")
+                                                hora_nova = f"{partes[0].zfill(2)}:00:00"
+                                            elif len(partes) == 2:
+                                                # Se o usuário digitou HH:MM (ex: "08:30"), completa com os segundos zerados
                                                 hora_nova = f"{partes[0].zfill(2)}:{partes[1].zfill(2)}:00"
                                             elif len(partes) == 3:
+                                                # Se já possui o formato HH:MM:SS completo, apenas padroniza os zeros à esquerda
                                                 hora_nova = f"{partes[0].zfill(2)}:{partes[1].zfill(2)}:{partes[2].zfill(2)}"
                                             
                                             dt_combinado = datetime.strptime(f"{data_str} {hora_nova}", "%Y-%m-%d %H:%M:%S")
@@ -787,12 +791,11 @@ elif opcao == "RELATÓRIO":
                                             
                                     except Exception as e:
                                         print(f"❌ Falha de conversão: Data={data_str} | Hora={hora_nova} | Erro={e}")
-                                        st.error(f"Formato de hora inválido na linha {idx_linha + 1}, coluna {col_df}. Use HH:MM.")
+                                        st.error(f"Formato de hora inválido na linha {idx_linha + 1}, coluna {col_df}. Use HH:MM ou HH:MM:SS.")
                                         erros += 1
                                 else:
                                     update_dict[col_banco] = novo_valor
                             
-                            # Executa o update utilizando os filtros explícitos do colaborador consultado e data correta
                             if update_dict and erros == 0:
                                 try:
                                     supabase.table("registro_ponto").update(update_dict).eq("email", email_busca).eq("data", data_str).execute()
