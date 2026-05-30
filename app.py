@@ -196,9 +196,9 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
     
     c_data, c_hora = st.columns(2)
     with c_data:
-        st.metric(label="🗓️ Data Oficial", value=hoje.strftime('%d/%m/%Y'))
+        st.metric(label="🗓️ Data Atual", value=hoje.strftime('%d/%m/%Y'))
     with c_hora:
-        st.metric(label="⏱️ Horário do Servidor (Brasília)", value=agora_br.strftime('%H:%M'))
+        st.metric(label="⏱️ Horário atual", value=agora_br.strftime('%H:%M'))
         
     st.write("")
     
@@ -863,7 +863,7 @@ elif opcao == "RELATÓRIO":
                 except Exception:
                     pass
                 
-                opcoes_master = ["Todas as Células"] + celulas_disponiveis
+                opcoes_master = ["Todos os Colaboradores"] + celulas_disponiveis
                 opcao_consolidada = st.selectbox("Selecione o Relatório Desejado:", options=opcoes_master)
             else:
                 st.caption(f"Gera o arquivo contendo os espelhos de ponto consolidados de sua célula ativa: **{celula_usuario}**")
