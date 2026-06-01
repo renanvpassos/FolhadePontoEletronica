@@ -6,6 +6,7 @@ import hashlib
 from io import BytesIO
 from supabase import create_client, Client
 import re
+from weasyprint import HTML
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Sistema de Ponto Eletrônico", page_icon="⏱️", layout="centered")
@@ -29,6 +30,109 @@ st.markdown("""
 
 # --- DEFINIÇÃO DO FUSO HORÁRIO DE BRASÍLIA ---
 fuso_br = ZoneInfo("America/Sao_Paulo")
+
+# --- FUNÇÃO AUXILIAR PARA GERAÇÃO DE PDF (Pode ser colocada no topo do seu ficheiro) ---
+def gerar_pdf_espelho_ponto(df_export, nome_relatorio, data_in, data_out):
+    df_pdf = df_export.copy()
+    
+    # Adicionar Dia da Semana
+    df_pdf['Data_Obj'] = pd.to_datetime(df_pdf['Data'], format='%d/%m/%Y', errors='coerce')
+    dias_semana = {
+        'Monday': 'Segunda-feira', 'Tuesday': 'Terça-feira', 'Wednesday': 'Quarta-feira',
+        'Thursday': 'Quinta-feira', 'Friday': 'Sexta-feira', 'Saturday': 'Sábado', 'Sunday': 'Domingo'
+    }
+    df_pdf['Dia da Semana'] = df_pdf['Data_Obj'].dt.day_name().map(dias_semana).fillna('')
+
+    # Função para calcular o Tempo Trabalhado (usado no PDF e na regra de final de semana)
+    def calc_tempo_trabalhado(row):
+        try:
+            fmt = "%H:%M:%S"
+            ent = datetime.strptime(str(row.get('Entrada', '00:00:00')), fmt) if pd.notna(row.get('Entrada')) and str(row.get('Entrada')).strip() else None
+            sai = datetime.strptime(str(row.get('Saída', '00:00:00')), fmt) if pd.notna(row.get('Saída')) and str(row.get('Saída')).strip() else None
+            s_almoco = datetime.strptime(str(row.get('Saída Almoço', '00:00:00')), fmt) if pd.notna(row.get('Saída Almoço')) and str(row.get('Saída Almoço')).strip() else None
+            r_almoco = datetime.strptime(str(row.get('Retorno Almoço', '00:00:00')), fmt) if pd.notna(row.get('Retorno Almoço')) and str(row.get('Retorno Almoço')).strip() else None
+            
+            if ent and sai:
+                total_segs = (sai - ent).total_seconds()
+                if s_almoco and r_almoco:
+                    almoco_segs = (r_almoco - s_almoco).total_seconds()
+                    total_segs -= almoco_segs
+                
+                if total_segs < 0: total_segs = 0
+                h = int(total_segs // 3600)
+                m = int((total_segs % 3600) // 60)
+                return f"{h:02d}:{m:02d}:00"
+            return ""
+        except:
+            return ""
+
+    df_pdf['Tempo Trabalhado'] = df_pdf.apply(calc_tempo_trabalhado, axis=1)
+
+    # Regra: Sábado e Domingo preencher tempo trabalhado na coluna de hora extra
+    def ajusta_fim_semana(row):
+        if row['Dia da Semana'] in ['Sábado', 'Domingo']:
+            return row['Tempo Trabalhado']
+        return row.get('Hora Extra', '')
+
+    df_pdf['Hora Extra'] = df_pdf.apply(ajusta_fim_semana, axis=1)
+
+    # Prepara iteração (Se for consolidado separa por funcionário, se for individual cria uma lista única)
+    if 'Funcionário' in df_pdf.columns:
+        usuarios = df_pdf['Funcionário'].unique()
+    else:
+        usuarios = [nome_relatorio]
+        df_pdf['Funcionário'] = nome_relatorio
+
+    data_extracao = datetime.now().strftime('%d/%m/%Y %H:%M')
+    
+    html_parts = ["""
+    <html>
+    <head>
+        <style>
+            @page { size: A4 landscape; margin: 10mm; }
+            body { font-family: Arial, sans-serif; font-size: 11px; color: #333; }
+            h1 { text-align: center; font-size: 18px; margin-bottom: 5px; color: #000; }
+            h2 { text-align: center; font-size: 13px; font-weight: normal; margin-top: 0; margin-bottom: 20px; color: #555; }
+            .page-break { page-break-after: always; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
+            th, td { border: 1px solid #000; padding: 6px; text-align: center; }
+            th { background-color: #f2f2f2; font-weight: bold; }
+        </style>
+    </head>
+    <body>
+    """]
+
+    for i, user in enumerate(usuarios):
+        df_user = df_pdf[df_pdf['Funcionário'] == user]
+        
+        html_parts.append(f"<h1>ESPELHO DE PONTO</h1>")
+        html_parts.append(f"<h2><strong>Colaborador:</strong> {user} <br> <strong>Data Escolhida:</strong> {data_in.strftime('%d/%m/%Y')} a {data_out.strftime('%d/%m/%Y')} <br> <strong>Data da Extração:</strong> {data_extracao}</h2>")
+        
+        html_parts.append("<table>")
+        html_parts.append("<tr><th>Data</th><th>Dia da Semana</th><th>Entrada</th><th>Saída Almoço</th><th>Retorno Almoço</th><th>Saída</th><th>Tempo Trabalhado</th><th>Hora Extra</th></tr>")
+        
+        for _, row in df_user.iterrows():
+            html_parts.append(f"""
+            <tr>
+                <td>{row.get('Data', '')}</td>
+                <td>{row.get('Dia da Semana', '')}</td>
+                <td>{row.get('Entrada', '')}</td>
+                <td>{row.get('Saída Almoço', '')}</td>
+                <td>{row.get('Retorno Almoço', '')}</td>
+                <td>{row.get('Saída', '')}</td>
+                <td>{row.get('Tempo Trabalhado', '')}</td>
+                <td>{row.get('Hora Extra', '')}</td>
+            </tr>
+            """)
+        html_parts.append("</table>")
+        
+        # Quebra de página para separar utilizadores no PDF Consolidado
+        if i < len(usuarios) - 1:
+            html_parts.append('<div class="page-break"></div>')
+
+    html_parts.append("</body></html>")
+    
+    return HTML(string="".join(html_parts)).write_pdf()
 
 def obter_agora_br():
     """Retorna o datetime atual com o fuso horário de Brasília."""
