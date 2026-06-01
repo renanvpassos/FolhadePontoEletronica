@@ -867,7 +867,7 @@ elif opcao == "RELATÓRIO":
                 opcao_consolidada = st.selectbox("Selecione o Relatório Desejado:", options=opcoes_master)
             else:
                 st.caption(f"Gera o arquivo contendo os espelhos de ponto consolidados de sua célula ativa: **{celula_usuario}**")
-
+        
             if st.button("📊 Gerar Relatório Consolidado", use_container_width=True, type="primary"):
                 dados_gerais_banco = executar_query_supabase("buscar_relatorio_geral", data_filtro=data_inicio, data_fim=data_fim)
                 
@@ -881,12 +881,13 @@ elif opcao == "RELATÓRIO":
                         df_geral_completo["Celula_Filtro"] = df_geral_completo["E-mail"].map(mapeamento_usuarios)
                     except Exception:
                         df_geral_completo["Celula_Filtro"] = None
-
+        
                     if cargo_usuario == "Supervisor":
                         df_filtrado = df_geral_completo[df_geral_completo["Celula_Filtro"] == celula_usuario]
                         nome_arquivo = f"Relatorio_Consolidado_Celula_{celula_usuario}_{data_inicio}_a_{data_fim}.xlsx"
                     else:  
-                        if opcao_consolidada == "Todas as Células":
+                        # Ajuste realizado aqui para corresponder à string do selectbox
+                        if opcao_consolidada == "Todos os Colaboradores":
                             df_filtrado = df_geral_completo.copy()
                             nome_arquivo = f"Relatorio_Consolidado_Todas_Celulas_{data_inicio}_a_{data_fim}.xlsx"
                         else:
@@ -895,7 +896,7 @@ elif opcao == "RELATÓRIO":
                     
                     if "Celula_Filtro" in df_filtrado.columns:
                         df_filtrado = df_filtrado.drop(columns=["Celula_Filtro"])
-
+        
                     if df_filtrado.empty:
                         st.warning("Nenhum dado localizado para os critérios selecionados.")
                     else:
