@@ -942,13 +942,25 @@ elif opcao == "RELATÓRIO":
             df_exportar_ind = processar_dados_ponto(dados_pessoais, incluir_usuario_info=False, formatar_data_br=True)
             dados_excel_ind = converter_para_excel_individual(df_exportar_ind)
             
-            st.download_button(
-                label="📥 Baixar Espelho de Ponto (Excel)",
-                data=dados_excel_ind,
-                file_name=f"Espelho_Ponto_{nome_busca.replace(' ', '_')}_{data_inicio}_a_{data_fim}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True
-            )
+            # --- INSERIDO BOTÕES EM COLUNAS PARA EXCEL E PDF INDIVIDUAL ---
+            col_down1, col_down2 = st.columns(2)
+            with col_down1:
+                st.download_button(
+                    label="📥 Baixar Espelho de Ponto (Excel)",
+                    data=dados_excel_ind,
+                    file_name=f"Espelho_Ponto_{nome_busca.replace(' ', '_')}_{data_inicio}_a_{data_fim}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
+            with col_down2:
+                pdf_ind_bytes = gerar_pdf_espelho_ponto(df_exportar_ind, nome_busca, data_inicio, data_fim)
+                st.download_button(
+                    label="📄 Baixar Espelho de Ponto (PDF)",
+                    data=pdf_ind_bytes,
+                    file_name=f"Espelho_Ponto_{nome_busca.replace(' ', '_')}_{data_inicio}_a_{data_fim}.pdf",
+                    mime="application/pdf",
+                    use_container_width=True
+                )
 
         # --- SEÇÃO DE EXPORTAÇÃO CONSOLIDADA POR CARGOS GESTORES ---
         if cargo_usuario in ["Supervisor", "Master"]:
@@ -990,7 +1002,6 @@ elif opcao == "RELATÓRIO":
                         df_filtrado = df_geral_completo[df_geral_completo["Celula_Filtro"] == celula_usuario]
                         nome_arquivo = f"Relatorio_Consolidado_Celula_{celula_usuario}_{data_inicio}_a_{data_fim}.xlsx"
                     else:  
-                        # Ajuste realizado aqui para corresponder à string do selectbox
                         if opcao_consolidada == "Todos os Colaboradores":
                             df_filtrado = df_geral_completo.copy()
                             nome_arquivo = f"Relatorio_Consolidado_Todos_Funcionarios_{data_inicio}_a_{data_fim}.xlsx"
@@ -1005,11 +1016,25 @@ elif opcao == "RELATÓRIO":
                         st.warning("Nenhum dado localizado para os critérios selecionados.")
                     else:
                         dados_excel_multiaba = converter_para_excel_multiaba(df_filtrado)
-                        st.success("✅ Relatório geral consolidado com sucesso! Clique no botão abaixo para baixar.")
-                        st.download_button(
-                            label="📥 Fazer Download do Relatório Consolidado (.xlsx)",
-                            data=dados_excel_multiaba,
-                            file_name=nome_arquivo,
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            use_container_width=True
-                        )
+                        st.success("✅ Relatório geral consolidado com sucesso! Clique nos botões abaixo para baixar.")
+                        
+                        # --- INSERIDO BOTÕES EM COLUNAS PARA EXCEL E PDF CONSOLIDADO ---
+                        col_cons1, col_cons2 = st.columns(2)
+                        with col_cons1:
+                            st.download_button(
+                                label="📥 Fazer Download (Excel)",
+                                data=dados_excel_multiaba,
+                                file_name=nome_arquivo,
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                use_container_width=True
+                            )
+                        with col_cons2:
+                            pdf_cons_bytes = gerar_pdf_espelho_ponto(df_filtrado, "Consolidado", data_inicio, data_fim)
+                            nome_arquivo_pdf = nome_arquivo.replace('.xlsx', '.pdf')
+                            st.download_button(
+                                label="📄 Fazer Download (PDF)",
+                                data=pdf_cons_bytes,
+                                file_name=nome_arquivo_pdf,
+                                mime="application/pdf",
+                                use_container_width=True
+                            )
