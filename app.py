@@ -889,7 +889,7 @@ elif opcao == "RELATÓRIO":
                         # Ajuste realizado aqui para corresponder à string do selectbox
                         if opcao_consolidada == "Todos os Colaboradores":
                             df_filtrado = df_geral_completo.copy()
-                            nome_arquivo = f"Relatorio_Consolidado_Todas_Celulas_{data_inicio}_a_{data_fim}.xlsx"
+                            nome_arquivo = f"Relatorio_Consolidado_Todos_Funcionarios_{data_inicio}_a_{data_fim}.xlsx"
                         else:
                             df_filtrado = df_geral_completo[df_geral_completo["Celula_Filtro"] == opcao_consolidada]
                             nome_arquivo = f"Relatorio_Consolidado_Celula_{opcao_consolidada}_{data_inicio}_a_{data_fim}.xlsx"
