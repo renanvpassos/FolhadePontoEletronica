@@ -3,4 +3,4 @@ supabase
 pandas
 openpyxl
 streamlit-antd-components
-weasyprint
+reportlab
