@@ -7,83 +7,64 @@ from io import BytesIO
 from supabase import create_client, Client
 import re
 from reportlab.lib.pagesizes import A4, landscape
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
 def converter_para_pdf_consolidado(df):
     output = BytesIO()
-    # Define o documento em modo Paisagem (Landscape) para caber todas as colunas
     doc = SimpleDocTemplate(
         output, 
         pagesize=landscape(A4), 
-        rightMargin=15, 
-        leftMargin=15, 
-        topMargin=15, 
-        bottomMargin=15
+        rightMargin=15, leftMargin=15, topMargin=15, bottomMargin=15
     )
     story = []
-    
     styles = getSampleStyleSheet()
     
-    # Estilos customizados para o PDF
-    title_style = ParagraphStyle(
-        'TituloPDF',
-        parent=styles['Heading1'],
-        fontSize=14,
-        leading=18,
-        textColor=colors.HexColor("#1E3A8A"),
-        spaceAfter=12
-    )
-    header_style = ParagraphStyle(
-        'HeaderPDF',
-        parent=styles['Normal'],
-        fontSize=6.5,
-        leading=8,
-        textColor=colors.white,
-        fontName="Helvetica-Bold"
-    )
-    cell_style = ParagraphStyle(
-        'CeluaPDF',
-        parent=styles['Normal'],
-        fontSize=6,
-        leading=8,
-        fontName="Helvetica"
-    )
+    # Estilos
+    title_style = ParagraphStyle('TituloPDF', parent=styles['Heading1'], fontSize=14, textColor=colors.HexColor("#1E3A8A"), spaceAfter=10)
+    header_style = ParagraphStyle('HeaderPDF', parent=styles['Normal'], fontSize=6.5, textColor=colors.white, fontName="Helvetica-Bold")
+    cell_style = ParagraphStyle('CeluaPDF', parent=styles['Normal'], fontSize=6, fontName="Helvetica")
     
-    # Título do Documento
-    story.append(Paragraph("<b>Relatório Consolidado de Espelho de Ponto</b>", title_style))
-    story.append(Spacer(1, 5))
+    # 1. Agrupar os dados por funcionário (usando E-mail como chave única)
+    usuarios = df['E-mail'].unique()
     
-    # Montagem dos dados (Convertendo strings para Paragraph para permitir quebra automática de linha)
-    dados_tabela = []
-    
-    # Cabeçalho
-    header_row = [Paragraph(f"<b>{col}</b>", header_style) for col in df.columns]
-    dados_tabela.append(header_row)
-    
-    # Linhas de dados
-    for _, row in df.iterrows():
-        linha = [Paragraph(str(val) if val is not None else "", cell_style) for val in row]
-        dados_tabela.append(linha)
+    for i, email in enumerate(usuarios):
+        df_funcionario = df[df['E-mail'] == email]
+        nome_funcionario = df_funcionario['Funcionário'].iloc[0]
         
-    # Criação da Tabela com larguras automáticas proporcionais
-    tabela = Table(dados_tabela, repeatRows=1)
+        # Título da página do funcionário
+        story.append(Paragraph(f"Relatório de Ponto: {nome_funcionario}", title_style))
+        story.append(Paragraph(f"E-mail: {email}", styles['Normal']))
+        story.append(Spacer(1, 10))
+        
+        # Preparar dados da tabela (Removendo colunas de identificação para não repetir em cada linha)
+        # Se quiser manter as colunas Nome/Email na tabela, pule o .drop abaixo
+        df_tabela = df_funcionario.drop(columns=["Funcionário", "E-mail"]) 
+        
+        dados_tabela = []
+        header_row = [Paragraph(f"<b>{col}</b>", header_style) for col in df_tabela.columns]
+        dados_tabela.append(header_row)
+        
+        for _, row in df_tabela.iterrows():
+            linha = [Paragraph(str(val) if val is not None else "", cell_style) for val in row]
+            dados_tabela.append(linha)
+            
+        tabela = Table(dados_tabela, repeatRows=1)
+        tabela.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1E3A8A")),
+            ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+            ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#D1D5DB")),
+            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor("#F9FAFB")]),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ]))
+        
+        story.append(tabela)
+        
+        # 2. Adicionar quebra de página, exceto no último funcionário
+        if i < len(usuarios) - 1:
+            story.append(PageBreak())
     
-    # Estilização visual da tabela (similar ao layout do sistema)
-    tabela.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1E3A8A")), # Azul escuro no cabeçalho
-        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
-        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#D1D5DB")), # Linhas cinzas claras
-        ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor("#F9FAFB")]), # Linhas alternadas
-        ('TOPPADDING', (0,0), (-1,-1), 4),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
-        ('LEFTPADDING', (0,0), (-1,-1), 3),
-        ('RIGHTPADDING', (0,0), (-1,-1), 3),
-    ]))
-    
-    story.append(tabela)
     doc.build(story)
     output.seek(0)
     return output.getvalue()
