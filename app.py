@@ -616,7 +616,6 @@ elif opcao == "RELATÓRIO":
      
     col1, col2 = st.columns(2)
     with col1:
-        # Ajustado para days=14 para que o padrão traga um intervalo de 15 dias (ex: do dia 1 ao dia 15)
         data_inicio = st.date_input("🗓️ Data Inicial", hoje - timedelta(days=14), format="DD/MM/YYYY")
     with col2:
         data_fim = st.date_input("🗓️ Data Final", hoje, format="DD/MM/YYYY")
@@ -626,44 +625,93 @@ elif opcao == "RELATÓRIO":
     if data_inicio > data_fim:
         st.error("Erro: A data inicial não pode ser maior que a data final.")
     else:
-        # FUNÇÃO MODIFICADA: Agora ela exige data_inicio e data_fim para montar o período completo
         def processar_dados_ponto(dados, dt_inicio, dt_fim, incluir_usuario_info=False, formatar_data_br=False):
-            # 1. Cria uma lista com todas as datas reais do período selecionado
+            # Se for relatório consolidado de múltiplos usuários, processa as linhas existentes normalmente
+            if incluir_usuario_info:
+                if not dados:
+                    return pd.DataFrame()
+                dados_ordenados = sorted(dados, key=lambda x: x.get("data", ""))
+                linhas_processadas = []
+                for item in dados_ordenados:
+                    linha = {}
+                    linha["Funcionário"] = item.get("nome_completo", "")
+                    linha["E-mail"] = item.get("email", "")
+                    
+                    data_banco = item.get("data", "")
+                    if formatar_data_br and data_banco:
+                        try:
+                            linha["Data"] = datetime.strptime(data_banco, "%Y-%m-%d").strftime("%d/%m/%Y")
+                        except Exception:
+                            linha["Data"] = data_banco
+                    else:
+                        linha["Data"] = data_banco
+
+                    dt_entrada, dt_saida = None, None
+                    for col_banco, col_df in [
+                        ("horario_entrada", "Entrada"),
+                        ("saida_almoco", "Saída Almoço"),
+                        ("retorno_almoco", "Retorno Almoço"),
+                        ("horario_saida", "Saída")
+                    ]:
+                        valor = item.get(col_banco)
+                        if valor:
+                            try:
+                                dt_objeto = datetime.fromisoformat(valor).astimezone(fuso_br)
+                                inline_df = dt_objeto.strftime("%H:%M:%S")
+                                linha[col_df] = inline_df
+                                if col_banco == "horario_entrada":
+                                    dt_entrada = dt_objeto
+                                elif col_banco == "horario_saida":
+                                    dt_saida = dt_objeto
+                            except Exception:
+                                linha[col_df] = ""
+                        else:
+                            linha[col_df] = ""
+
+                    hora_extra_str = "00:00"
+                    if dt_entrada and dt_saida:
+                        segundos_trabalhados = int((dt_saida - dt_entrada).total_seconds())
+                        jornada_limite_segundos = 9 * 3600
+                        if segundos_trabalhados > jornada_limite_segundos:
+                            segundos_extras = segundos_trabalhados - jornada_limite_segundos
+                            horas_ext = segundos_extras // 3600
+                            minutos_ext = (segundos_extras % 3600) // 60
+                            hora_extra_str = f"{horas_ext:02d}:{minutos_ext:02d}"
+                    
+                    linha["Hora Extra"] = hora_extra_str
+                    linha["Justificativa Entrada"] = item.get("justificativa_entrada", "") or ""
+                    linha["Justificativa Saída Almoço"] = item.get("justificativa_saida_almoco", "") or ""
+                    linha["Justificativa Retorno Almoço"] = item.get("justificativa_retorno_almoco", "") or ""
+                    linha["Justificativa Saída"] = item.get("justificativa_saida", "") or ""
+                    linhas_processadas.append(linha)
+                return pd.DataFrame(linhas_processadas)
+            
+            # Caso contrário, aplica a grade contínua para o usuário individual selecionado
             lista_datas = []
             curr_date = dt_inicio
             while curr_date <= dt_fim:
                 lista_datas.append(curr_date)
                 curr_date += timedelta(days=1)
-    
-            # 2. Mapeia os dados do banco usando a data (String YYYY-MM-DD) como chave para busca rápida
+
             dados_por_data = {}
             if dados:
                 for item in dados:
                     dt_banco = item.get("data")
                     if dt_banco:
                         dados_por_data[dt_banco] = item
-    
+
             linhas_processadas = []
-    
-            # 3. Passa por cada dia do período garantindo que ele existirá no DataFrame final
             for dt in lista_datas:
                 data_iso = dt.strftime("%Y-%m-%d")
-                item = dados_por_data.get(data_iso, {})  # Se não achar ponto no dia, retorna um dict vazio
-    
+                item = dados_por_data.get(data_iso, {})
+
                 linha = {}
-                if incluir_usuario_info:
-                    linha["Funcionário"] = item.get("nome_completo", nome_busca)
-                    linha["E-mail"] = item.get("email", email_busca)
-    
-                # Define a exibição da data obrigatória da linha
                 if formatar_data_br:
                     linha["Data"] = dt.strftime("%d/%m/%Y")
                 else:
                     linha["Data"] = data_iso
-    
+
                 dt_entrada, dt_saida = None, None
-    
-                # Processamento dos Horários (Trata dados se houver, senão deixa em branco)
                 for col_banco, col_df in [
                     ("horario_entrada", "Entrada"),
                     ("saida_almoco", "Saída Almoço"),
@@ -683,8 +731,7 @@ elif opcao == "RELATÓRIO":
                             linha[col_df] = ""
                     else:
                         linha[col_df] = ""
-    
-                # Cálculo de Hora Extra funcional apenas se houver entrada e saída válidas
+
                 hora_extra_str = "00:00"
                 if dt_entrada and dt_saida:
                     segundos_trabalhados = int((dt_saida - dt_entrada).total_seconds())
@@ -700,29 +747,27 @@ elif opcao == "RELATÓRIO":
                 linha["Justificativa Saída Almoço"] = item.get("justificativa_saida_almoco", "") or ""
                 linha["Justificativa Retorno Almoço"] = item.get("justificativa_retorno_almoco", "") or ""
                 linha["Justificativa Saída"] = item.get("justificativa_saida", "") or ""
-    
                 linhas_processadas.append(linha)
-    
+
             return pd.DataFrame(linhas_processadas)
-    
+        
         # Executa a busca no banco
         dados_pessoais = executar_query_supabase("buscar_relatorio", email=email_busca, data_filtro=data_inicio, data_fim=data_fim)
         
-        # Processa os dados (passando as variáveis de data para criar o range completo)
+        # Processa os dados
         df_visualizacao = processar_dados_ponto(dados_pessoais, data_inicio, data_fim, incluir_usuario_info=False, formatar_data_br=True)
     
-        # REMOVIDO: O bloco "if df_visualizacao.empty:" foi removido porque a tabela nunca mais virá vazia.
         st.markdown(f"##### 📑 Histórico de Registros ({data_inicio.strftime('%d/%m/%Y')} até {data_fim.strftime('%d/%m/%Y')})")
         
         if cargo_usuario in ["Supervisor", "Master"]:
             st.warning("⚠️ **Atenção:** Confirme as alterações antes de salvar.")
             
-            # Renderiza o editor habilitado para alteração de todas as linhas (existentes ou vazias)
+            # Renderiza o editor habilitado para alteração de todas as linhas
             df_editado = st.data_editor(
                 df_visualizacao, 
                 use_container_width=True, 
                 hide_index=True,
-                disabled=["Data", "Hora Extra"],  # A data fica travada para o supervisor saber exatamente que dia está editando
+                disabled=["Data", "Hora Extra"], 
                 column_config={
                     "Entrada": st.column_config.TextColumn("Entrada"),
                     "Saída Almoço": st.column_config.TextColumn("Saída Almoço"),
@@ -731,129 +776,130 @@ elif opcao == "RELATÓRIO":
                 },
                 key="editor_ponto_gestao"
             )
+            
+            # --- SISTEMA DE CONFIRMAÇÃO DE SALVAMENTO (REPOSICIONADO E ALINHADO CORRETAMENTE) ---
+            col_btn, _ = st.columns([1, 1])
+            with col_btn:
+                caixa_confirmacao = st.popover("💾 Salvar Alterações no Banco", use_container_width=True)
+                caixa_confirmacao.warning(f"⚠️ Atenção: Isso alterará permanentemente os dados de {nome_busca}.")
+                confirmou_salvar = caixa_confirmacao.button("Sim, confirmar e salvar", type="primary", use_container_width=True)
+            
+            if confirmou_salvar:
+                import re # Importa regex para validação estrita de caracteres
+                alteracoes = st.session_state.get("editor_ponto_gestao", {}).get("edited_rows", {})
+                
+                if not alteracoes:
+                    st.info("Nenhuma alteração foi detectada para ser salva.")
+                else:
+                    sucessos = 0
+                    erros = 0
+                    
+                    mapeamento_colunas = {
+                        "Entrada": "horario_entrada",
+                        "Justificativa Entrada": "justificativa_entrada",
+                        "Saída Almoço": "saida_almoco",
+                        "Justificativa Saída Almoço": "justificativa_saida_almoco",
+                        "Retorno Almoço": "retorno_almoco",
+                        "Justificativa Retorno Almoço": "justificativa_retorno_almoco",
+                        "Saída": "horario_saida",
+                        "Justificativa Saída": "justificativa_saida"
+                    }
+                    
+                    # Cria um set com as datas que já existem de fato no banco para saber se dá Update ou Insert
+                    datas_com_registro = {item.get("data") for item in dados_pessoais if item.get("data")}
+                    
+                    for idx_linha_str, colunas_alteradas in alteracoes.items():
+                        idx_linha = int(idx_linha_str)
+                        
+                        # Resgata a data diretamente do DataFrame da tela (garante consistência total no índice)
+                        try:
+                            data_br = df_visualizacao.iloc[idx_linha]["Data"]
+                            data_str = datetime.strptime(data_br, "%d/%m/%Y").strftime("%Y-%m-%d")
+                        except Exception:
+                            st.error(f"Erro ao sincronizar índice da linha {idx_linha + 1} com o banco de dados.")
+                            erros += 1
+                            continue
+                            
+                        update_dict = {}
+                        for col_df, novo_valor in colunas_alteradas.items():
+                            col_banco = mapeamento_colunas.get(col_df)
+                            if not col_banco:
+                                continue
+                            
+                            if col_banco in ["horario_entrada", "saida_almoco", "retorno_almoco", "horario_saida"]:
+                                if novo_valor is None:
+                                    update_dict[col_banco] = None
+                                    continue
+                                    
+                                hora_nova = str(novo_valor).strip()
+                                
+                                if hora_nova == "" or hora_nova.lower() == "none":
+                                    update_dict[col_banco] = None
+                                    continue
+                                
+                                # REGEX ESTRITO: Valida se segue rigorosamente o padrão de texto XX:XX:XX
+                                padrao_hhmmss = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d$")
+                                
+                                if not padrao_hhmmss.match(hora_nova):
+                                    st.error(f"❌ Erro na linha {idx_linha + 1}, coluna '{col_df}': O valor '{hora_nova}' é inválido. Use estritamente o formato HH:MM:SS (Ex: 12:30:00).")
+                                    erros += 1
+                                    continue
+                                
+                                try:
+                                    partes_hora = hora_nova.split(":")
+                                    h, m, s = int(partes_hora[0]), int(partes_hora[1]), int(partes_hora[2])
+                                    
+                                    partes_data = data_str.split("-")
+                                    ano, mes, dia = int(partes_data[0]), int(partes_data[1]), int(partes_data[2][:2])
+                                    
+                                    dt_combinado = datetime(ano, mes, dia, h, m, s)
+                                    dt_fuso = dt_combinado.replace(tzinfo=fuso_br)
+                                    update_dict[col_banco] = dt_fuso.isoformat()
+                                    
+                                except Exception as e:
+                                    st.error(f"❌ Erro na linha {idx_linha + 1}, coluna '{col_df}': {str(e)}")
+                                    erros += 1
+                            else:
+                                update_dict[col_banco] = novo_valor
+                        
+                        # Executa persistência caso a linha esteja válida
+                        if update_dict and erros == 0:
+                            try:
+                                if data_str in datas_com_registro:
+                                    # Se a data já existia no banco, atualiza dados modificados
+                                    supabase.table("registro_ponto").update(update_dict).eq("email", email_busca).eq("data", data_str).execute()
+                                else:
+                                    # Se o colaborador não tinha batido ponto (linha limpa), cria o registro retroativo
+                                    insert_dict = {
+                                        "email": email_busca,
+                                        "data": data_str,
+                                        "nome_completo": nome_busca
+                                    }
+                                    insert_dict.update(update_dict)
+                                    supabase.table("registro_ponto").insert(insert_dict).execute()
+                                sucessos += 1
+                            except Exception as e:
+                                st.error(f"Erro ao salvar alteração de {nome_busca} (Linha {idx_linha + 1}): {e}")
+                                erros += 1
+                    
+                    if sucessos > 0 and erros == 0:
+                        st.success(f"✅ Sucesso! Foram atualizadas as alterações de {sucessos} linha(s) para {nome_busca}.")
+                        st.rerun()
         else:
             # Se for Colaborador comum, apenas visualiza a folha com os dias vazios (sem permissão de edição)
             st.dataframe(df_visualizacao, use_container_width=True, hide_index=True)
-                
-                # --- SISTEMA DE CONFIRMAÇÃO DE SALVAMENTO ---
-                col_btn, _ = st.columns([1, 1])
-                with col_btn:
-                    caixa_confirmacao = st.popover("💾 Salvar Alterações no Banco", use_container_width=True)
-                    caixa_confirmacao.warning(f"⚠️ Atenção: Isso alterará permanentemente os dados de {nome_busca}.")
-                    confirmou_salvar = caixa_confirmacao.button("Sim, confirmar e salvar", type="primary", use_container_width=True)
-                
-                if confirmou_salvar:
-                    import re # Importa regex para validação estrita de caracteres
-                    alteracoes = st.session_state.get("editor_ponto_gestao", {}).get("edited_rows", {})
-                    
-                    if not alteracoes:
-                        st.info("Nenhuma alteração foi detectada para ser salva.")
-                    else:
-                        sucessos = 0
-                        erros = 0
-                        
-                        mapeamento_colunas = {
-                            "Entrada": "horario_entrada",
-                            "Justificativa Entrada": "justificativa_entrada",
-                            "Saída Almoço": "saida_almoco",
-                            "Justificativa Saída Almoço": "justificativa_saida_almoco",
-                            "Retorno Almoço": "retorno_almoco",
-                            "Justificativa Retorno Almoço": "justificativa_retorno_almoco",
-                            "Saída": "horario_saida",
-                            "Justificativa Saída": "justificativa_saida"
-                        }
-                        
-                        for idx_linha_str, colunas_alteradas in alteracoes.items():
-                            idx_linha = int(idx_linha_str)
-                            
-                            # Resgata a data original em formato ISO (YYYY-MM-DD) baseado no índice mapeado direto do banco
-                            try:
-                                data_str = dados_pessoais[idx_linha].get("data")
-                                if not data_str:
-                                    raise ValueError()
-                                data_str = str(data_str).split(" ")[0].strip()
-                            except Exception:
-                                st.error(f"Erro ao sincronizar índice da linha {idx_linha + 1} com o banco de dados.")
-                                erros += 1
-                                continue
-                                
-                            update_dict = {}
-                            for col_df, novo_valor in colunas_alteradas.items():
-                                col_banco = mapeamento_colunas.get(col_df)
-                                if not col_banco:
-                                    continue
-                                
-                                if col_banco in ["horario_entrada", "saida_almoco", "retorno_almoco", "horario_saida"]:
-                                    # Garante que o valor seja tratado estritamente como string limpa para evitar falhas do componente
-                                    if novo_valor is None:
-                                        update_dict[col_banco] = None
-                                        continue
-                                        
-                                    hora_nova = str(novo_valor).strip()
-                                    
-                                    if hora_nova == "" or hora_nova.lower() == "none":
-                                        update_dict[col_banco] = None
-                                        continue
-                                    
-                                    # REGEX ESTRITO: Valida se segue rigorosamente o padrão de texto XX:XX:XX
-                                    padrao_hhmmss = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d$")
-                                    
-                                    if not padrao_hhmmss.match(hora_nova):
-                                        st.error(f"❌ Erro na linha {idx_linha + 1}, coluna '{col_df}': O valor '{hora_nova}' é inválido. Use estritamente o formato HH:MM:SS (Ex: 12:30:00).")
-                                        erros += 1
-                                        continue
-                                    
-                                    try:
-                                        # Captura a string limpa e isola os valores numéricos de forma nativa
-                                        partes_hora = hora_nova.split(":")
-                                        h, m, s = int(partes_hora[0]), int(partes_hora[1]), int(partes_hora[2])
-                                        
-                                        # Limpa e isola os valores da data original do banco (YYYY-MM-DD)
-                                        partes_data = data_str.split("-")
-                                        # Garante que vai pegar apenas os 2 dígitos do dia, caso o banco envie algo como 29T00:00
-                                        ano, mes, dia = int(partes_data[0]), int(partes_data[1]), int(partes_data[2][:2])
-                                        
-                                        # Monta o datetime nativo direto pelos inteiros extraídos
-                                        dt_combinado = datetime(ano, mes, dia, h, m, s)
-                                        
-                                        # CORREÇÃO AQUI: ZoneInfo usa .replace() e não .localize()
-                                        dt_fuso = dt_combinado.replace(tzinfo=fuso_br)
-                                        
-                                        update_dict[col_banco] = dt_fuso.isoformat()
-                                        
-                                    except Exception as e:
-                                        # Alterado para mostrar o erro real do Python caso algo bizarro aconteça
-                                        st.error(f"❌ Erro na linha {idx_linha + 1}, coluna '{col_df}': {str(e)}")
-                                        erros += 1
-                                else:
-                                    # Atualização das justificativas (Texto comum)
-                                    update_dict[col_banco] = novo_valor
-                            
-                            # Atualiza a tabela caso a linha inteira esteja 100% livre de erros
-                            if update_dict and erros == 0:
-                                try:
-                                    supabase.table("registro_ponto").update(update_dict).eq("email", email_busca).eq("data", data_str).execute()
-                                    sucessos += 1
-                                except Exception as e:
-                                    st.error(f"Erro ao salvar alteração de {nome_busca} (Linha {idx_linha + 1}): {e}")
-                                    erros += 1
-                        
-                        if sucessos > 0 and erros == 0:
-                            st.success(f"✅ Sucesso! Foram atualizadas as alterações de {sucessos} linha(s) para {nome_busca}.")
-                            st.rerun()
-            else:
-                st.dataframe(df_visualizacao, use_container_width=True, hide_index=True)
-            
-            df_exportar_ind = processar_dados_ponto(dados_pessoais, incluir_usuario_info=False, formatar_data_br=True)
-            dados_excel_ind = converter_para_excel_individual(df_exportar_ind)
-            
-            st.download_button(
-                label="📥 Baixar Espelho de Ponto (Excel)",
-                data=dados_excel_ind,
-                file_name=f"Espelho_Ponto_{nome_busca.replace(' ', '_')}_{data_inicio}_a_{data_fim}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True
-            )
+        
+        # Botão individual de exportar atualizado com os argumentos corretos de data
+        df_exportar_ind = processar_dados_ponto(dados_pessoais, data_inicio, data_fim, incluir_usuario_info=False, formatar_data_br=True)
+        dados_excel_ind = converter_para_excel_individual(df_exportar_ind)
+        
+        st.download_button(
+            label="📥 Baixar Espelho de Ponto (Excel)",
+            data=dados_excel_ind,
+            file_name=f"Espelho_Ponto_{nome_busca.replace(' ', '_')}_{data_inicio}_a_{data_fim}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
 
         # --- SEÇÃO DE EXPORTAÇÃO CONSOLIDADA POR CARGOS GESTORES ---
         if cargo_usuario in ["Supervisor", "Master"]:
@@ -883,7 +929,8 @@ elif opcao == "RELATÓRIO":
                 if not dados_gerais_banco:
                     st.warning("Não há nenhum registro de ponto de nenhum colaborador no período selecionado.")
                 else:
-                    df_geral_completo = processar_dados_ponto(dados_gerais_banco, incluir_usuario_info=True, formatar_data_br=True)
+                    # Relatório geral também ganha os argumentos de data necessários
+                    df_geral_completo = processar_dados_ponto(dados_gerais_banco, data_inicio, data_fim, incluir_usuario_info=True, formatar_data_br=True)
                     
                     try:
                         mapeamento_usuarios = {u['email']: u.get('celula') for u in supabase.table("usuarios_ponto").select("email, celula").execute().data or []}
@@ -895,7 +942,6 @@ elif opcao == "RELATÓRIO":
                         df_filtrado = df_geral_completo[df_geral_completo["Celula_Filtro"] == celula_usuario]
                         nome_arquivo = f"Relatorio_Consolidado_Celula_{celula_usuario}_{data_inicio}_a_{data_fim}.xlsx"
                     else:  
-                        # Ajuste realizado aqui para corresponder à string do selectbox
                         if opcao_consolidada == "Todos os Colaboradores":
                             df_filtrado = df_geral_completo.copy()
                             nome_arquivo = f"Relatorio_Consolidado_Todos_Funcionarios_{data_inicio}_a_{data_fim}.xlsx"
