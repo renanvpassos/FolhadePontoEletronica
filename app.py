@@ -581,13 +581,13 @@ elif opcao == "RELATÓRIO":
                 if nova_celula != celula_atual:
                     try:
                         supabase.table("usuarios_ponto").update({"celula": nova_celula}).eq("email", email_busca).execute()
-                        st.success(f"Célula de {nome_busca} atualizada com sucesso!")
+                        st.success(f"Célula de {nome_busca} updated com sucesso!")
                         st.rerun()
                     except Exception as e:
                         st.error(f"Erro ao atualizar célula: {e}")
         except Exception:
             st.error("Erro ao carregar a lista completa de funcionários.")
-
+    
     elif cargo_usuario == "Supervisor":
         st.markdown("### 🔑 Painel de Gestão (Supervisor)")
         if celula_usuario:
@@ -613,49 +613,57 @@ elif opcao == "RELATÓRIO":
             st.info(f"📍 Sua Célula atual: **{celula_usuario}**")
                 
     st.caption(f"Filtro e exportação de folhas e históricos para: **{nome_busca}**")
-    
+     
     col1, col2 = st.columns(2)
     with col1:
-        data_inicio = st.date_input("🗓️ Data Inicial", hoje - timedelta(days=7), format="DD/MM/YYYY")
+        # Ajustado para days=14 para que o padrão traga um intervalo de 15 dias (ex: do dia 1 ao dia 15)
+        data_inicio = st.date_input("🗓️ Data Inicial", hoje - timedelta(days=14), format="DD/MM/YYYY")
     with col2:
         data_fim = st.date_input("🗓️ Data Final", hoje, format="DD/MM/YYYY")
         
     st.write("---")
-    
+     
     if data_inicio > data_fim:
         st.error("Erro: A data inicial não pode ser maior que a data final.")
     else:
-        def processar_dados_ponto(dados, incluir_usuario_info=False, formatar_data_br=False):
-            if not dados:
-                colunas_vazias = []
-                if incluir_usuario_info:
-                    colunas_vazias.extend(["Funcionário", "E-mail"])
-                colunas_vazias.extend([
-                    "Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", "Hora Extra",
-                    "Justificativa Entrada", "Justificativa Saída Almoço", "Justificativa Retorno Almoço", "Justificativa Saída"
-                ])
-                return pd.DataFrame(columns=colunas_vazias)
-
-            dados_ordenados = sorted(dados, key=lambda x: x.get("data", ""))
-
+        # FUNÇÃO MODIFICADA: Agora ela exige data_inicio e data_fim para montar o período completo
+        def processar_dados_ponto(dados, dt_inicio, dt_fim, incluir_usuario_info=False, formatar_data_br=False):
+            # 1. Cria uma lista com todas as datas reais do período selecionado
+            lista_datas = []
+            curr_date = dt_inicio
+            while curr_date <= dt_fim:
+                lista_datas.append(curr_date)
+                curr_date += timedelta(days=1)
+    
+            # 2. Mapeia os dados do banco usando a data (String YYYY-MM-DD) como chave para busca rápida
+            dados_por_data = {}
+            if dados:
+                for item in dados:
+                    dt_banco = item.get("data")
+                    if dt_banco:
+                        dados_por_data[dt_banco] = item
+    
             linhas_processadas = []
-            for item in dados_ordenados:
+    
+            # 3. Passa por cada dia do período garantindo que ele existirá no DataFrame final
+            for dt in lista_datas:
+                data_iso = dt.strftime("%Y-%m-%d")
+                item = dados_por_data.get(data_iso, {})  # Se não achar ponto no dia, retorna um dict vazio
+    
                 linha = {}
                 if incluir_usuario_info:
-                    linha["Funcionário"] = item.get("nome_completo", "")
-                    linha["E-mail"] = item.get("email", "")
-
-                data_banco = item.get("data", "")
-                if formatar_data_br and data_banco:
-                    try:
-                        linha["Data"] = datetime.strptime(data_banco, "%Y-%m-%d").strftime("%d/%m/%Y")
-                    except Exception:
-                        linha["Data"] = data_banco
+                    linha["Funcionário"] = item.get("nome_completo", nome_busca)
+                    linha["E-mail"] = item.get("email", email_busca)
+    
+                # Define a exibição da data obrigatória da linha
+                if formatar_data_br:
+                    linha["Data"] = dt.strftime("%d/%m/%Y")
                 else:
-                    linha["Data"] = data_banco
-
+                    linha["Data"] = data_iso
+    
                 dt_entrada, dt_saida = None, None
-
+    
+                # Processamento dos Horários (Trata dados se houver, senão deixa em branco)
                 for col_banco, col_df in [
                     ("horario_entrada", "Entrada"),
                     ("saida_almoco", "Saída Almoço"),
@@ -675,7 +683,8 @@ elif opcao == "RELATÓRIO":
                             linha[col_df] = ""
                     else:
                         linha[col_df] = ""
-
+    
+                # Cálculo de Hora Extra funcional apenas se houver entrada e saída válidas
                 hora_extra_str = "00:00"
                 if dt_entrada and dt_saida:
                     segundos_trabalhados = int((dt_saida - dt_entrada).total_seconds())
@@ -691,40 +700,40 @@ elif opcao == "RELATÓRIO":
                 linha["Justificativa Saída Almoço"] = item.get("justificativa_saida_almoco", "") or ""
                 linha["Justificativa Retorno Almoço"] = item.get("justificativa_retorno_almoco", "") or ""
                 linha["Justificativa Saída"] = item.get("justificativa_saida", "") or ""
-
+    
                 linhas_processadas.append(linha)
-
+    
             return pd.DataFrame(linhas_processadas)
-
+    
+        # Executa a busca no banco
         dados_pessoais = executar_query_supabase("buscar_relatorio", email=email_busca, data_filtro=data_inicio, data_fim=data_fim)
         
-        if dados_pessoais:
-            dados_pessoais = sorted(dados_pessoais, key=lambda x: x.get("data", ""))
+        # Processa os dados (passando as variáveis de data para criar o range completo)
+        df_visualizacao = processar_dados_ponto(dados_pessoais, data_inicio, data_fim, incluir_usuario_info=False, formatar_data_br=True)
+    
+        # REMOVIDO: O bloco "if df_visualizacao.empty:" foi removido porque a tabela nunca mais virá vazia.
+        st.markdown(f"##### 📑 Histórico de Registros ({data_inicio.strftime('%d/%m/%Y')} até {data_fim.strftime('%d/%m/%Y')})")
+        
+        if cargo_usuario in ["Supervisor", "Master"]:
+            st.warning("⚠️ **Atenção:** Confirme as alterações antes de salvar.")
             
-        df_visualizacao = processar_dados_ponto(dados_pessoais, incluir_usuario_info=False, formatar_data_br=True)
-
-        if df_visualizacao.empty:
-            st.info(f"Nenhum registro de ponto localizado para {nome_busca} no período selecionado.")
+            # Renderiza o editor habilitado para alteração de todas as linhas (existentes ou vazias)
+            df_editado = st.data_editor(
+                df_visualizacao, 
+                use_container_width=True, 
+                hide_index=True,
+                disabled=["Data", "Hora Extra"],  # A data fica travada para o supervisor saber exatamente que dia está editando
+                column_config={
+                    "Entrada": st.column_config.TextColumn("Entrada"),
+                    "Saída Almoço": st.column_config.TextColumn("Saída Almoço"),
+                    "Retorno Almoço": st.column_config.TextColumn("Retorno Almoço"),
+                    "Saída": st.column_config.TextColumn("Saída")
+                },
+                key="editor_ponto_gestao"
+            )
         else:
-            st.markdown(f"##### 📑 Histórico de Registros ({data_inicio.strftime('%d/%m/%Y')} até {data_fim.strftime('%d/%m/%Y')})")
-            
-            if cargo_usuario in ["Supervisor", "Master"]:
-                st.warning("⚠️ **Atenção:** Confirme as alterações antes de salvar.")
-                
-                # Renderiza o editor forçando as colunas editáveis a aceitarem Texto Puro (String)
-                df_editado = st.data_editor(
-                    df_visualizacao, 
-                    use_container_width=True, 
-                    hide_index=True,
-                    disabled=["Data", "Hora Extra"],
-                    column_config={
-                        "Entrada": st.column_config.TextColumn("Entrada"),
-                        "Saída Almoço": st.column_config.TextColumn("Saída Almoço"),
-                        "Retorno Almoço": st.column_config.TextColumn("Retorno Almoço"),
-                        "Saída": st.column_config.TextColumn("Saída")
-                    },
-                    key="editor_ponto_gestao"
-                )
+            # Se for Colaborador comum, apenas visualiza a folha com os dias vazios (sem permissão de edição)
+            st.dataframe(df_visualizacao, use_container_width=True, hide_index=True)
                 
                 # --- SISTEMA DE CONFIRMAÇÃO DE SALVAMENTO ---
                 col_btn, _ = st.columns([1, 1])
