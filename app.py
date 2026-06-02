@@ -626,7 +626,14 @@ elif opcao == "RELATÓRIO":
         st.error("Erro: A data inicial não pode ser maior que a data final.")
     else:
         def processar_dados_ponto(dados, dt_inicio, dt_fim, incluir_usuario_info=False, formatar_data_br=False):
-            # Se for relatório consolidado de múltiplos usuários, processa as linhas existentes normalmente
+            # Mapeamento dos dias da semana em português
+            dias_semana = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"]
+            
+            # Ordem estrita das colunas desejadas para garantir posicionamento correto
+            ordem_individual = ["Dia da Semana", "Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", "Hora Extra", "Justificativa Entrada", "Justificativa Saída Almoço", "Justificativa Retorno Almoço", "Justificativa Saída"]
+            ordem_consolidada = ["Funcionário", "E-mail", "Dia da Semana", "Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", "Hora Extra", "Justificativa Entrada", "Justificativa Saída Almoço", "Justificativa Retorno Almoço", "Justificativa Saída"]
+
+            # Se for relatório consolidado de múltiplos usuários
             if incluir_usuario_info:
                 if not dados:
                     return pd.DataFrame()
@@ -638,6 +645,17 @@ elif opcao == "RELATÓRIO":
                     linha["E-mail"] = item.get("email", "")
                     
                     data_banco = item.get("data", "")
+                    
+                    dia_semana_str = ""
+                    if data_banco:
+                        try:
+                            dt_obj = datetime.strptime(data_banco, "%Y-%m-%d")
+                            dia_semana_str = dias_semana[dt_obj.weekday()]
+                        except Exception:
+                            pass
+                    
+                    linha["Dia da Semana"] = dia_semana_str
+                    
                     if formatar_data_br and data_banco:
                         try:
                             linha["Data"] = datetime.strptime(data_banco, "%Y-%m-%d").strftime("%d/%m/%Y")
@@ -657,8 +675,7 @@ elif opcao == "RELATÓRIO":
                         if valor:
                             try:
                                 dt_objeto = datetime.fromisoformat(valor).astimezone(fuso_br)
-                                inline_df = dt_objeto.strftime("%H:%M:%S")
-                                linha[col_df] = inline_df
+                                linha[col_df] = dt_objeto.strftime("%H:%M:%S")
                                 if col_banco == "horario_entrada":
                                     dt_entrada = dt_objeto
                                 elif col_banco == "horario_saida":
@@ -684,7 +701,9 @@ elif opcao == "RELATÓRIO":
                     linha["Justificativa Retorno Almoço"] = item.get("justificativa_retorno_almoco", "") or ""
                     linha["Justificativa Saída"] = item.get("justificativa_saida", "") or ""
                     linhas_processadas.append(linha)
-                return pd.DataFrame(linhas_processadas)
+                
+                df_res = pd.DataFrame(linhas_processadas)
+                return df_res[[c for c in ordem_consolidada if c in df_res.columns]]
             
             # Caso contrário, aplica a grade contínua para o usuário individual selecionado
             lista_datas = []
@@ -706,6 +725,8 @@ elif opcao == "RELATÓRIO":
                 item = dados_por_data.get(data_iso, {})
 
                 linha = {}
+                linha["Dia da Semana"] = dias_semana[dt.weekday()]
+                
                 if formatar_data_br:
                     linha["Data"] = dt.strftime("%d/%m/%Y")
                 else:
@@ -749,26 +770,33 @@ elif opcao == "RELATÓRIO":
                 linha["Justificativa Saída"] = item.get("justificativa_saida", "") or ""
                 linhas_processadas.append(linha)
 
-            return pd.DataFrame(linhas_processadas)
+            df_res = pd.DataFrame(linhas_processadas)
+            return df_res[[c for c in ordem_individual if c in df_res.columns]]
         
         # Executa a busca no banco
-        dados_pessoais = executar_query_supabase("buscar_relatorio", email=email_busca, data_filtro=data_inicio, data_fim=data_fim)
+        dados_pessoais = executing_query_supabase("buscar_relatorio", email=email_busca, data_filtro=data_inicio, data_fim=data_fim)
         
-        # Processa os dados
+        # Processa os dados garantindo a ordem no dataframe
         df_visualizacao = processar_dados_ponto(dados_pessoais, data_inicio, data_fim, incluir_usuario_info=False, formatar_data_br=True)
     
         st.markdown(f"##### 📑 Histórico de Registros ({data_inicio.strftime('%d/%m/%Y')} até {data_fim.strftime('%d/%m/%Y')})")
         
+        # Definição explícita da sequência visual na tela
+        ordem_colunas_tela = ["Dia da Semana", "Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", "Hora Extra", "Justificativa Entrada", "Justificativa Saída Almoço", "Justificativa Retorno Almoço", "Justificativa Saída"]
+
         if cargo_usuario in ["Supervisor", "Master"]:
             st.warning("⚠️ **Atenção:** Confirme as alterações antes de salvar.")
             
-            # Renderiza o editor habilitado para alteração de todas as linhas
+            # Renderiza o editor forçando a ordem estrita através do 'column_order'
             df_editado = st.data_editor(
                 df_visualizacao, 
                 use_container_width=True, 
                 hide_index=True,
-                disabled=["Data", "Hora Extra"], 
+                disabled=["Dia da Semana", "Data", "Hora Extra"], 
+                column_order=ordem_colunas_tela,
                 column_config={
+                    "Dia da Semana": st.column_config.TextColumn("Dia da Semana"),
+                    "Data": st.column_config.TextColumn("Data"),
                     "Entrada": st.column_config.TextColumn("Entrada"),
                     "Saída Almoço": st.column_config.TextColumn("Saída Almoço"),
                     "Retorno Almoço": st.column_config.TextColumn("Retorno Almoço"),
@@ -777,7 +805,7 @@ elif opcao == "RELATÓRIO":
                 key="editor_ponto_gestao"
             )
             
-            # --- SISTEMA DE CONFIRMAÇÃO DE SALVAMENTO (REPOSICIONADO E ALINHADO CORRETAMENTE) ---
+            # --- SISTEMA DE CONFIRMAÇÃO DE SALVAMENTO ---
             col_btn, _ = st.columns([1, 1])
             with col_btn:
                 caixa_confirmacao = st.popover("💾 Salvar Alterações no Banco", use_container_width=True)
@@ -785,7 +813,7 @@ elif opcao == "RELATÓRIO":
                 confirmou_salvar = caixa_confirmacao.button("Sim, confirmar e salvar", type="primary", use_container_width=True)
             
             if confirmou_salvar:
-                import re # Importa regex para validação estrita de caracteres
+                import re
                 alteracoes = st.session_state.get("editor_ponto_gestao", {}).get("edited_rows", {})
                 
                 if not alteracoes:
@@ -805,13 +833,11 @@ elif opcao == "RELATÓRIO":
                         "Justificativa Saída": "justificativa_saida"
                     }
                     
-                    # Cria um set com as datas que já existem de fato no banco para saber se dá Update ou Insert
                     datas_com_registro = {item.get("data") for item in dados_pessoais if item.get("data")}
                     
                     for idx_linha_str, colunas_alteradas in alteracoes.items():
                         idx_linha = int(idx_linha_str)
                         
-                        # Resgata a data diretamente do DataFrame da tela (garante consistência total no índice)
                         try:
                             data_br = df_visualizacao.iloc[idx_linha]["Data"]
                             data_str = datetime.strptime(data_br, "%d/%m/%Y").strftime("%Y-%m-%d")
@@ -837,7 +863,6 @@ elif opcao == "RELATÓRIO":
                                     update_dict[col_banco] = None
                                     continue
                                 
-                                # REGEX ESTRITO: Valida se segue rigorosamente o padrão de texto XX:XX:XX
                                 padrao_hhmmss = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d$")
                                 
                                 if not padrao_hhmmss.match(hora_nova):
@@ -862,14 +887,11 @@ elif opcao == "RELATÓRIO":
                             else:
                                 update_dict[col_banco] = novo_valor
                         
-                        # Executa persistência caso a linha esteja válida
                         if update_dict and erros == 0:
                             try:
                                 if data_str in datas_com_registro:
-                                    # Se a data já existia no banco, atualiza dados modificados
                                     supabase.table("registro_ponto").update(update_dict).eq("email", email_busca).eq("data", data_str).execute()
                                 else:
-                                    # Se o colaborador não tinha batido ponto (linha limpa), cria o registro retroativo
                                     insert_dict = {
                                         "email": email_busca,
                                         "data": data_str,
@@ -886,10 +908,10 @@ elif opcao == "RELATÓRIO":
                         st.success(f"✅ Sucesso! Foram atualizadas as alterações de {sucessos} linha(s) para {nome_busca}.")
                         st.rerun()
         else:
-            # Se for Colaborador comum, apenas visualiza a folha com os dias vazios (sem permissão de edição)
-            st.dataframe(df_visualizacao, use_container_width=True, hide_index=True)
+            # Se for Colaborador comum, visualiza a folha travada com a ordem explícita forçada
+            st.dataframe(df_visualizacao, use_container_width=True, hide_index=True, column_order=ordem_colunas_tela)
         
-        # Botão individual de exportar atualizado com os argumentos corretos de data
+        # Botão individual de exportar atualizado
         df_exportar_ind = processar_dados_ponto(dados_pessoais, data_inicio, data_fim, incluir_usuario_info=False, formatar_data_br=True)
         dados_excel_ind = converter_para_excel_individual(df_exportar_ind)
         
@@ -929,7 +951,6 @@ elif opcao == "RELATÓRIO":
                 if not dados_gerais_banco:
                     st.warning("Não há nenhum registro de ponto de nenhum colaborador no período selecionado.")
                 else:
-                    # Relatório geral também ganha os argumentos de data necessários
                     df_geral_completo = processar_dados_ponto(dados_gerais_banco, data_inicio, data_fim, incluir_usuario_info=True, formatar_data_br=True)
                     
                     try:
