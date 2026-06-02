@@ -6,6 +6,87 @@ import hashlib
 from io import BytesIO
 from supabase import create_client, Client
 import re
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
+
+def converter_para_pdf_consolidado(df):
+    output = BytesIO()
+    # Define o documento em modo Paisagem (Landscape) para caber todas as colunas
+    doc = SimpleDocTemplate(
+        output, 
+        pagesize=landscape(A4), 
+        rightMargin=15, 
+        leftMargin=15, 
+        topMargin=15, 
+        bottomMargin=15
+    )
+    story = []
+    
+    styles = getSampleStyleSheet()
+    
+    # Estilos customizados para o PDF
+    title_style = ParagraphStyle(
+        'TituloPDF',
+        parent=styles['Heading1'],
+        fontSize=14,
+        leading=18,
+        textColor=colors.HexColor("#1E3A8A"),
+        spaceAfter=12
+    )
+    header_style = ParagraphStyle(
+        'HeaderPDF',
+        parent=styles['Normal'],
+        fontSize=6.5,
+        leading=8,
+        textColor=colors.white,
+        fontName="Helvetica-Bold"
+    )
+    cell_style = ParagraphStyle(
+        'CeluaPDF',
+        parent=styles['Normal'],
+        fontSize=6,
+        leading=8,
+        fontName="Helvetica"
+    )
+    
+    # Título do Documento
+    story.append(Paragraph("<b>Relatório Consolidado de Espelho de Ponto</b>", title_style))
+    story.append(Spacer(1, 5))
+    
+    # Montagem dos dados (Convertendo strings para Paragraph para permitir quebra automática de linha)
+    dados_tabela = []
+    
+    # Cabeçalho
+    header_row = [Paragraph(f"<b>{col}</b>", header_style) for col in df.columns]
+    dados_tabela.append(header_row)
+    
+    # Linhas de dados
+    for _, row in df.iterrows():
+        linha = [Paragraph(str(val) if val is not None else "", cell_style) for val in row]
+        dados_tabela.append(linha)
+        
+    # Criação da Tabela com larguras automáticas proporcionais
+    tabela = Table(dados_tabela, repeatRows=1)
+    
+    # Estilização visual da tabela (similar ao layout do sistema)
+    tabela.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1E3A8A")), # Azul escuro no cabeçalho
+        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#D1D5DB")), # Linhas cinzas claras
+        ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor("#F9FAFB")]), # Linhas alternadas
+        ('TOPPADDING', (0,0), (-1,-1), 4),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ('LEFTPADDING', (0,0), (-1,-1), 3),
+        ('RIGHTPADDING', (0,0), (-1,-1), 3),
+    ]))
+    
+    story.append(tabela)
+    doc.build(story)
+    output.seek(0)
+    return output.getvalue()
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Sistema de Ponto Eletrônico", page_icon="⏱️", layout="centered")
@@ -575,7 +656,6 @@ elif opcao == "RELATÓRIO":
                 nome_busca = colaborador_escolhido["nome"]
                 celula_busca = colaborador_escolhido.get("celula")
                 
-                # Exibe o campo com o rótulo exatamente conforme solicitado
                 celula_atual = celula_busca or ""
                 nova_celula = st.text_input("📍 Célula do Colaborador (Banco de Dados):", value=celula_atual)
                 if nova_celula != celula_atual:
@@ -626,14 +706,11 @@ elif opcao == "RELATÓRIO":
         st.error("Erro: A data inicial não pode ser maior que a data final.")
     else:
         def processar_dados_ponto(dados, dt_inicio, dt_fim, incluir_usuario_info=False, formatar_data_br=False):
-            # Mapeamento dos dias da semana em português
             dias_semana = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"]
             
-            # Ordem estrita das colunas desejadas para garantir posicionamento correto
             ordem_individual = ["Dia da Semana", "Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", "Hora Extra", "Justificativa Entrada", "Justificativa Saída Almoço", "Justificativa Retorno Almoço", "Justificativa Saída"]
             ordem_consolidada = ["Funcionário", "E-mail", "Dia da Semana", "Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", "Hora Extra", "Justificativa Entrada", "Justificativa Saída Almoço", "Justificativa Retorno Almoço", "Justificativa Saída"]
 
-            # Se for relatório consolidado de múltiplos usuários
             if incluir_usuario_info:
                 if not dados:
                     return pd.DataFrame()
@@ -645,7 +722,6 @@ elif opcao == "RELATÓRIO":
                     linha["E-mail"] = item.get("email", "")
                     
                     data_banco = item.get("data", "")
-                    
                     dia_semana_str = ""
                     if data_banco:
                         try:
@@ -705,7 +781,6 @@ elif opcao == "RELATÓRIO":
                 df_res = pd.DataFrame(linhas_processadas)
                 return df_res[[c for c in ordem_consolidada if c in df_res.columns]]
             
-            # Caso contrário, aplica a grade contínua para o usuário individual selecionado
             lista_datas = []
             curr_date = dt_inicio
             while curr_date <= dt_fim:
@@ -773,21 +848,15 @@ elif opcao == "RELATÓRIO":
             df_res = pd.DataFrame(linhas_processadas)
             return df_res[[c for c in ordem_individual if c in df_res.columns]]
         
-        # CORREÇÃO AQUI: Alterado de executing_query_supabase para executar_query_supabase
         dados_pessoais = executar_query_supabase("buscar_relatorio", email=email_busca, data_filtro=data_inicio, data_fim=data_fim)
-        
-        # Processa os dados garantindo a ordem no dataframe
         df_visualizacao = processar_dados_ponto(dados_pessoais, data_inicio, data_fim, incluir_usuario_info=False, formatar_data_br=True)
     
         st.markdown(f"##### 📑 Histórico de Registros ({data_inicio.strftime('%d/%m/%Y')} até {data_fim.strftime('%d/%m/%Y')})")
-        
-        # Definição explícita da sequência visual na tela
         ordem_colunas_tela = ["Dia da Semana", "Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", "Hora Extra", "Justificativa Entrada", "Justificativa Saída Almoço", "Justificativa Retorno Almoço", "Justificativa Saída"]
 
         if cargo_usuario in ["Supervisor", "Master"]:
             st.warning("⚠️ **Atenção:** Confirme as alterações antes de salvar.")
             
-            # Renderiza o editor forçando a ordem estrita através do 'column_order'
             df_editado = st.data_editor(
                 df_visualizacao, 
                 use_container_width=True, 
@@ -805,7 +874,6 @@ elif opcao == "RELATÓRIO":
                 key="editor_ponto_gestao"
             )
             
-            # --- SISTEMA DE CONFIRMAÇÃO DE SALVAMENTO ---
             col_btn, _ = st.columns([1, 1])
             with col_btn:
                 caixa_confirmacao = st.popover("💾 Salvar Alterações no Banco", use_container_width=True)
@@ -908,10 +976,8 @@ elif opcao == "RELATÓRIO":
                         st.success(f"✅ Sucesso! Foram atualizadas as alterações de {sucessos} linha(s) para {nome_busca}.")
                         st.rerun()
         else:
-            # Se for Colaborador comum, visualiza a folha travada com a ordem explícita forçada
             st.dataframe(df_visualizacao, use_container_width=True, hide_index=True, column_order=ordem_colunas_tela)
         
-        # Botão individual de exportar atualizado
         df_exportar_ind = processar_dados_ponto(dados_pessoais, data_inicio, data_fim, incluir_usuario_info=False, formatar_data_br=True)
         dados_excel_ind = converter_para_excel_individual(df_exportar_ind)
         
@@ -926,13 +992,13 @@ elif opcao == "RELATÓRIO":
         # --- SEÇÃO DE EXPORTAÇÃO CONSOLIDADA POR CARGOS GESTORES ---
         if cargo_usuario in ["Supervisor", "Master"]:
             st.write("---")
-            st.markdown("### 🗂️ Exportação Geral da Equipe (Multiabas)")
+            st.markdown("### 🗂️ Exportação Geral da Equipe (Consolidada)")
             
             opcao_consolidada = "Minha Célula"
             celulas_disponiveis = []
             
             if cargo_usuario == "Master":
-                st.caption("Escolha qual célula extrair ou se deseja consolidar todas as células em multiabas.")
+                st.caption("Escolha qual célula extrair ou se deseja consolidar todas as células.")
                 try:
                     busca_celulas = supabase.table("usuarios_ponto").select("celula").execute()
                     if busca_celulas.data:
@@ -961,14 +1027,14 @@ elif opcao == "RELATÓRIO":
         
                     if cargo_usuario == "Supervisor":
                         df_filtrado = df_geral_completo[df_geral_completo["Celula_Filtro"] == celula_usuario]
-                        nome_arquivo = f"Relatorio_Consolidado_Celula_{celula_usuario}_{data_inicio}_a_{data_fim}.xlsx"
+                        prefixo_nome = f"Relatorio_Consolidado_Celula_{celula_usuario}"
                     else:  
                         if opcao_consolidada == "Todos os Colaboradores":
                             df_filtrado = df_geral_completo.copy()
-                            nome_arquivo = f"Relatorio_Consolidado_Todos_Funcionarios_{data_inicio}_a_{data_fim}.xlsx"
+                            prefixo_nome = f"Relatorio_Consolidado_Todos_Funcionarios"
                         else:
                             df_filtrado = df_geral_completo[df_geral_completo["Celula_Filtro"] == opcao_consolidada]
-                            nome_arquivo = f"Relatorio_Consolidado_Celula_{opcao_consolidada}_{data_inicio}_a_{data_fim}.xlsx"
+                            prefixo_nome = f"Relatorio_Consolidado_Celula_{opcao_consolidada}"
                     
                     if "Celula_Filtro" in df_filtrado.columns:
                         df_filtrado = df_filtrado.drop(columns=["Celula_Filtro"])
@@ -976,12 +1042,27 @@ elif opcao == "RELATÓRIO":
                     if df_filtrado.empty:
                         st.warning("Nenhum dado localizado para os critérios selecionados.")
                     else:
+                        # GERAÇÃO DOS ARQUIVOS (EXCEL E PDF)
                         dados_excel_multiaba = converter_para_excel_multiaba(df_filtrado)
-                        st.success("✅ Relatório geral consolidado com sucesso! Clique no botão abaixo para baixar.")
-                        st.download_button(
-                            label="📥 Fazer Download do Relatório Consolidado (.xlsx)",
-                            data=dados_excel_multiaba,
-                            file_name=nome_arquivo,
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            use_container_width=True
-                        )
+                        dados_pdf_gerado = converter_para_pdf_consolidado(df_filtrado)
+                        
+                        st.success("✅ Relatórios gerados com sucesso! Escolha o formato para baixar:")
+                        
+                        # Exibe os botões de download lado a lado
+                        col_down1, col_down2 = st.columns(2)
+                        with col_down1:
+                            st.download_button(
+                                label="📥 Baixar em Excel (.xlsx)",
+                                data=dados_excel_multiaba,
+                                file_name=f"{prefixo_nome}_{data_inicio}_a_{data_fim}.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                use_container_width=True
+                            )
+                        with col_down2:
+                            st.download_button(
+                                label="📄 Baixar em PDF (.pdf)",
+                                data=dados_pdf_gerado,
+                                file_name=f"{prefixo_nome}_{data_inicio}_a_{data_fim}.pdf",
+                                mime="application/pdf",
+                                use_container_width=True
+                            )
