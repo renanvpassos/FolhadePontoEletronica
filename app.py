@@ -773,8 +773,8 @@ elif opcao == "RELATÓRIO":
             df_res = pd.DataFrame(linhas_processadas)
             return df_res[[c for c in ordem_individual if c in df_res.columns]]
         
-        # Executa a busca no banco
-        dados_pessoais = executing_query_supabase("buscar_relatorio", email=email_busca, data_filtro=data_inicio, data_fim=data_fim)
+        # CORREÇÃO AQUI: Alterado de executing_query_supabase para executar_query_supabase
+        dados_pessoais = executar_query_supabase("buscar_relatorio", email=email_busca, data_filtro=data_inicio, data_fim=data_fim)
         
         # Processa os dados garantindo a ordem no dataframe
         df_visualizacao = processar_dados_ponto(dados_pessoais, data_inicio, data_fim, incluir_usuario_info=False, formatar_data_br=True)
