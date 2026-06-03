@@ -983,7 +983,7 @@ elif opcao == "RELATÓRIO":
         
         df_exportar_ind = processar_dados_ponto(dados_pessoais, data_inicio, data_fim, incluir_usuario_info=False, formatar_data_br=True)
         dados_excel_ind = converter_para_excel_individual(df_exportar_ind)
-        dados_pdf_ind = converter_para_pdf_individual(df_exportar_ind, nome_busca)
+        dados_pdf_ind = converter_para_pdf_individual(df_exportar_ind)
         
         col_down_ind1, col_down_ind2 = st.columns(2)
         
