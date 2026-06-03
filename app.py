@@ -828,7 +828,7 @@ elif opcao == "RELATÓRIO":
     with col1:
         data_inicio = st.date_input("🗓️ Data Inicial", hoje - timedelta(days=14), format="DD/MM/YYYY")
     with col2:
-        st.date_input("🗓️ Data Final", hoje, format="DD/MM/YYYY")
+        data_fim = st.date_input("🗓️ Data Final", hoje, format="DD/MM/YYYY")  # <--- Adicione o 'data_fim = ' aqui
         
     st.write("---")
      
