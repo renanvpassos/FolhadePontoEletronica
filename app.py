@@ -61,7 +61,7 @@ def converter_para_pdf_consolidado(df):
         story.append(Paragraph(f"<b>E-mail:</b> {email}", styles['Normal']))
         
         # Adiciona a informação do total de horas extras logo abaixo do e-mail
-        story.append(Paragraph(f"<b>Total de Horas Extras no Período:</b> {total_horas_str}", total_style))
+        story.append(Paragraph(f"<b>Total de Horas Extras no Período:</b> <font color='red'>{total_horas_str}</font>", total_style))
         story.append(Spacer(1, 5))
         
         # Preparar dados da tabela (Removendo colunas de identificação para não repetir em cada linha)
