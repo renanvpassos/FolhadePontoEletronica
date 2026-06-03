@@ -11,7 +11,7 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
-def converter_para_pdf_individual(df, nome_funcionario, email, celula):
+def converter_para_pdf_individual(df, mapeamento_celulas):
     output = BytesIO()
     doc = SimpleDocTemplate(
         output, 
