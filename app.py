@@ -983,11 +983,17 @@ elif opcao == "RELATÓRIO":
         
         df_exportar_ind = processar_dados_ponto(dados_pessoais, data_inicio, data_fim, incluir_usuario_info=False, formatar_data_br=True)
         dados_excel_ind = converter_para_excel_individual(df_exportar_ind)
-
-        df_para_pdf_ind = processar_dados_ponto(dados_pessoais, data_inicio, data_fim, incluir_usuario_info=True, formatar_data_br=True)
-
-        mapeamento_fake = {email_busca: (celula_usuario or "Sem Célula")}
         
+        # 2. Geramos um DF temporário com "incluir_usuario_info=True" exigido pela sua função de PDF
+        df_para_pdf_ind = processar_dados_ponto(dados_pessoais, data_inicio, data_fim, incluir_usuario_info=True, formatar_data_br=True)
+        
+        # 3. Montamos o dicionário de mapeamento para o colaborador atual
+        mapeamento_ind = {email_busca: celula_usuario or "Não Informada"}
+        
+        # 4. Reutilizamos a sua função de PDF consolidado!
+        dados_pdf_ind = converter_para_pdf_consolidado(df_para_pdf_ind, mapeamento_ind)
+        
+        # Exibe os botões de download individuais lado a lado
         col_down_ind1, col_down_ind2 = st.columns(2)
         
         with col_down_ind1:
