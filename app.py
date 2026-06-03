@@ -27,6 +27,11 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     header_style = ParagraphStyle('HeaderPDF', parent=styles['Normal'], fontSize=6.5, textColor=colors.white, fontName="Helvetica-Bold")
     cell_style = ParagraphStyle('CeluaPDF', parent=styles['Normal'], fontSize=6, fontName="Helvetica")
     total_style = ParagraphStyle('TotalPDF', parent=styles['Normal'], fontSize=10, fontName="Helvetica-Bold", textColor=colors.HexColor("#1E3A8A"), spaceBefore=5, spaceAfter=10)
+    erro_style = ParagraphStyle('ErroStyle', parent=styles['Normal'], fontSize=8, textColor=colors.red, fontName="Helvetica-Bold")
+    
+    # --- VERIFICAÇÃO DA LOGO NO REPOSITÓRIO (Igual ao Consolidado) ---
+    caminho_logo = "logoMult.png"
+    logo_existe = os.path.exists(caminho_logo)
     
     def _extrair_minutos(val):
         try:
@@ -49,6 +54,19 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     # BUSCA DA CÉLULA: Idêntica à lógica do consolidado utilizando o e-mail como chave
     celula = mapeamento_celulas.get(email, "Não Informada")
     
+    # --- INSERÇÃO DA LOGO ACIMA DO TÍTULO ---
+    if logo_existe:
+        try:
+            logo_flowable = Image(caminho_logo, width=75, height=25)
+            logo_flowable.hAlign = 'LEFT'
+            story.append(logo_flowable)
+            story.append(Spacer(1, 8)) # Pequeno espaço entre a logo e o título
+        except Exception as img_err:
+            story.append(Paragraph(f"[ERRO DE RENDERIZAÇÃO: {img_err}]", erro_style))
+    else:
+        story.append(Paragraph("[AVISO: Adicione o arquivo logoMult.png no seu GitHub]", erro_style))
+        story.append(Spacer(1, 8))
+        
     # Cabeçalho estruturado com as informações tratadas
     story.append(Paragraph(f"Relatório de Ponto: <font color='red'>{nome_funcionario}</font>", title_style))
     story.append(Paragraph(f"<b>E-mail:</b> {email}", styles['Normal']))
@@ -80,7 +98,7 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     doc.build(story)
     output.seek(0)
     return output.getvalue()
-
+    
 def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim):
     output = BytesIO()
     
