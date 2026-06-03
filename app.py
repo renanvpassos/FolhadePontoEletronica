@@ -7,10 +7,9 @@ from io import BytesIO
 from supabase import create_client, Client
 import re
 from reportlab.lib.pagesizes import A4, landscape
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak, Image
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
-from reportlab.lib.utils import ImageReader
 
 def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celulas):
     output = BytesIO()
@@ -84,11 +83,11 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
 def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim):
     output = BytesIO()
     
-    # Ajustamos o topMargin para 50 para acomodar perfeitamente a logo minimalista no topo
+    # Retornamos a margem para um tamanho padrão equilibrado
     doc = SimpleDocTemplate(
         output, 
         pagesize=landscape(A4), 
-        rightMargin=15, leftMargin=15, topMargin=50, bottomMargin=15
+        rightMargin=20, leftMargin=20, topMargin=20, bottomMargin=20
     )
     story = []
     styles = getSampleStyleSheet()
@@ -98,35 +97,20 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
     cell_style = ParagraphStyle('CeluaPDF', parent=styles['Normal'], fontSize=6, fontName="Helvetica")
     total_style = ParagraphStyle('TotalPDF', parent=styles['Normal'], fontSize=10, fontName="Helvetica-Bold", textColor=colors.HexColor("#1E3A8A"), spaceBefore=5, spaceAfter=10)
     
-    # --- CORREÇÃO DO DOWNLOAD: Adicionado Headers para evitar bloqueio do site ---
-    url_logo = "https://imgur.com/5QRo3f2"
+    # --- DOWNLOAD DOS BYTES DA LOGO (Feito uma única vez para performance) ---
+    url_logo = "https://i.ibb.co/C53b92rs/logoMult.png"
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
     }
+    
+    logo_bytes = None
     try:
         response = requests.get(url_logo, headers=headers, timeout=10)
-        response.raise_for_status() # Garante que o download foi feito com sucesso (Status 200)
-        logo_img = ImageReader(BytesIO(response.content))
+        response.raise_for_status()
+        logo_bytes = response.content
     except Exception as e:
-        print(f"Aviso: Não foi possível baixar a logo devido ao erro: {e}")
-        logo_img = None
+        print(f"Aviso: Não foi possível baixar a logo da URL. Erro: {e}")
 
-    # --- AJUSTE: Logo posicionada de forma minimalista no canto superior direito ---
-    def adicionar_logo(canvas, doc):
-        if logo_img:
-            canvas.saveState()
-            
-            # Dimensões bem discretas e minimalistas
-            largura_logo = 60  
-            altura_logo = 20   
-            
-            # Afastamento seguro de 22 pixels das bordas da página (A4 Landscape: 842 x 595)
-            x = 842 - 22 - largura_logo  
-            y = 595 - 22 - altura_logo   
-            
-            canvas.drawImage(logo_img, x, y, width=largura_logo, height=altura_logo, mask='auto')
-            canvas.restoreState()
-    
     def _extrair_minutos(val):
         try:
             if pd.isna(val) or str(val).strip() == "" or ":" not in str(val):
@@ -168,6 +152,18 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         minutos = total_mins % 60
         total_horas_str = f"{horas:02d}:{minutos:02d}"
         
+        # --- BLOCO DA LOGO: Inserida de forma minimalista acima do título ---
+        if logo_bytes:
+            try:
+                # Cria o elemento de imagem interpretando os bytes salvos
+                logo_flowable = Image(BytesIO(logo_bytes), width=75, height=25)
+                logo_flowable.hAlign = 'LEFT'  # Mantém alinhado à esquerda junto com o texto
+                story.append(logo_flowable)
+                story.append(Spacer(1, 8))     # Pequeno espaço entre a logo e o título
+            except Exception as img_err:
+                print(f"Erro ao inserir imagem no relatório de {nome_funcionario}: {img_err}")
+        
+        # Informações do cabeçalho do funcionário
         story.append(Paragraph(f"Relatório de Ponto: <font color='red'>{nome_funcionario}</font>", title_style))
         story.append(Paragraph(f"<b>Período:</b> {min_data.strftime('%d/%m/%Y')} até {max_data.strftime('%d/%m/%Y')}", styles['Normal']))
         story.append(Paragraph(f"<b>E-mail:</b> {email}", styles['Normal']))
@@ -175,6 +171,7 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         story.append(Paragraph(f"<b>Total de Horas Extras no Período:</b> <font color='red'>{total_horas_str}</font>", total_style))
         story.append(Spacer(1, 5))
         
+        # Garante o preenchimento visual de todos os dias do intervalo no PDF
         df_base_periodo = pd.DataFrame({'Data_Datetime': periodo_completo})
         df_funcionario_completo = pd.merge(df_base_periodo, df_funcionario, on='Data_Datetime', how='left')
         
@@ -211,7 +208,8 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         if i < len(usuarios) - 1:
             story.append(PageBreak())
     
-    doc.build(story, onFirstPage=adicionar_logo, onLaterPages=adicionar_logo)
+    # O build agora volta a ser simples, pois a imagem já faz parte da estrutura do 'story'
+    doc.build(story)
     output.seek(0)
     return output.getvalue()
 
