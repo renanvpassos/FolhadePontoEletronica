@@ -828,7 +828,7 @@ elif opcao == "RELATÓRIO":
     with col1:
         data_inicio = st.date_input("🗓️ Data Inicial", hoje - timedelta(days=14), format="DD/MM/YYYY")
     with col2:
-        data_fim = st.date_input("🗓️ Data Final", hoje, format="DD/MM/YYYY")
+        st.date_input("🗓️ Data Final", hoje, format="DD/MM/YYYY")
         
     st.write("---")
      
@@ -844,7 +844,7 @@ elif opcao == "RELATÓRIO":
             if incluir_usuario_info:
                 if not dados:
                     return pd.DataFrame()
-                dados_ordenados = sorted(dados, key=lambda x: x.get("data", ""))
+                dados_ordenados = sorted(dados, key=lambda x: str(x.get("data", "")))
                 linhas_processadas = []
                 for item in dados_ordenados:
                     linha = {}
@@ -855,7 +855,12 @@ elif opcao == "RELATÓRIO":
                     dia_semana_str = ""
                     if data_banco:
                         try:
-                            dt_obj = datetime.strptime(data_banco, "%Y-%m-%d")
+                            if isinstance(data_banco, str):
+                                dt_obj = datetime.strptime(data_banco[:10], "%Y-%m-%d")
+                            elif hasattr(data_banco, "weekday"):
+                                dt_obj = data_banco
+                            else:
+                                dt_obj = datetime.strptime(str(data_banco)[:10], "%Y-%m-%d")
                             dia_semana_str = dias_semana[dt_obj.weekday()]
                         except Exception:
                             pass
@@ -864,11 +869,22 @@ elif opcao == "RELATÓRIO":
                     
                     if formatar_data_br and data_banco:
                         try:
-                            linha["Data"] = datetime.strptime(data_banco, "%Y-%m-%d").strftime("%d/%m/%Y")
+                            if isinstance(data_banco, str):
+                                dt_obj_for = datetime.strptime(data_banco[:10], "%Y-%m-%d")
+                            elif hasattr(data_banco, "strftime"):
+                                dt_obj_for = data_banco
+                            else:
+                                dt_obj_for = datetime.strptime(str(data_banco)[:10], "%Y-%m-%d")
+                            linha["Data"] = dt_obj_for.strftime("%d/%m/%Y")
                         except Exception:
-                            linha["Data"] = data_banco
+                            linha["Data"] = str(data_banco)
                     else:
-                        linha["Data"] = data_banco
+                        if isinstance(data_banco, str):
+                            linha["Data"] = data_banco[:10]
+                        elif hasattr(data_banco, "strftime"):
+                            linha["Data"] = data_banco.strftime("%Y-%m-%d")
+                        else:
+                            linha["Data"] = str(data_banco)[:10] if data_banco else ""
 
                     dt_entrada, dt_saida = None, None
                     for col_banco, col_df in [
@@ -922,7 +938,13 @@ elif opcao == "RELATÓRIO":
                 for item in dados:
                     dt_banco = item.get("data")
                     if dt_banco:
-                        dados_por_data[dt_banco] = item
+                        if isinstance(dt_banco, str):
+                            dt_key = dt_banco[:10]
+                        elif hasattr(dt_banco, "strftime"):
+                            dt_key = dt_banco.strftime("%Y-%m-%d")
+                        else:
+                            dt_key = str(dt_banco)[:10]
+                        dados_por_data[dt_key] = item
 
             linhas_processadas = []
             for dt in lista_datas:
@@ -1097,7 +1119,6 @@ elif opcao == "RELATÓRIO":
                                     }
                                     insert_dict.update(update_dict)
                                     supabase.table("registro_ponto").insert(insert_dict).execute()
-                                # Incrementa o contador de sucessos de forma correta por operação realizada
                                 sucessos += 1
                             except Exception as e:
                                 st.error(f"Erro ao salvar alteração de {nome_busca} (Linha {idx_linha + 1}): {e}")
@@ -1110,16 +1131,10 @@ elif opcao == "RELATÓRIO":
             st.dataframe(df_visualizacao, use_container_width=True, hide_index=True, column_order=ordem_colunas_tela)
         
         # --- PROCESSAMENTO E EXPORTAÇÃO INDIVIDUAL ---
-        # 1. Geramos o DataFrame do ponto (limpo e formatado)
         df_exportar_ind = processar_dados_ponto(dados_pessoais, data_inicio, data_fim, incluir_usuario_info=False, formatar_data_br=True)
-        
-        # 2. Geramos o arquivo Excel
         dados_excel_ind = converter_para_excel_individual(df_exportar_ind)
-        
-        # 3. Chamamos a nova função individual enviando todos os parâmetros requeridos de forma limpa!
         dados_pdf_ind = converter_para_pdf_individual(df_exportar_ind, nome_busca, email_busca, mapeamento_celulas)
         
-        # Exibe os botões de download individuais lado a lado
         col_down_ind1, col_down_ind2 = st.columns(2)
         
         with col_down_ind1:
@@ -1160,7 +1175,7 @@ elif opcao == "RELATÓRIO":
                 opcoes_master = ["Todos os Colaboradores"] + celulas_disponiveis
                 opcao_consolidada = st.selectbox("Selecione o Relatório Desejado:", options=opcoes_master)
             else:
-                st.caption(f"Gera o arquivo contendo os espelhos de ponto consolidados de sua célula ativa: **{celula_usuario}**")
+                st.caption(f"Gera o arquivo contendo os espelhos de ponto consolidados de sua célula activa: **{celula_usuario}**")
         
             if st.button("📊 Gerar Relatório Consolidado", use_container_width=True, type="primary"):
                 dados_gerais_banco = executar_query_supabase("buscar_relatorio_geral", data_filtro=data_inicio, data_fim=data_fim)
@@ -1170,7 +1185,6 @@ elif opcao == "RELATÓRIO":
                 else:
                     df_geral_completo = processar_dados_ponto(dados_gerais_banco, data_inicio, data_fim, incluir_usuario_info=True, formatar_data_br=True)
 
-                    # Vincula a coluna de filtro usando o mapeamento global centralizado
                     df_geral_completo["Celula_Filtro"] = df_geral_completo["E-mail"].map(mapeamento_celulas)
         
                     if cargo_usuario == "Supervisor":
@@ -1197,7 +1211,6 @@ elif opcao == "RELATÓRIO":
                                 kind="mergesort"
                             )
 
-                        # GERAÇÃO DOS ARQUIVOS (EXCEL E PDF)
                         dados_excel_multiaba = converter_para_excel_multiaba(df_filtrado)
                         
                         def _extrair_minutos(val):
@@ -1210,12 +1223,10 @@ elif opcao == "RELATÓRIO":
                         total_mins = df_filtrado["Hora Extra"].apply(_extrair_minutos).sum()
                         total_horas_extras_str = f"{total_mins // 60:02d}:{total_mins % 60:02d}"
                         
-                        # Enviando o mapeamento centralizado de células para o PDF Consolidado
                         dados_pdf_gerado = converter_para_pdf_consolidado(df_filtrado, mapeamento_celulas)
                         
                         st.success("✅ Relatórios gerados com sucesso! Escolha o formato para baixar:")
                         
-                        # Exibe os botões de download lado a lado
                         col_down1, col_down2 = st.columns(2)
                         with col_down1:
                             st.download_button(
