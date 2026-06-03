@@ -95,29 +95,12 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
     header_style = ParagraphStyle('HeaderPDF', parent=styles['Normal'], fontSize=6.5, textColor=colors.white, fontName="Helvetica-Bold")
     cell_style = ParagraphStyle('CeluaPDF', parent=styles['Normal'], fontSize=6, fontName="Helvetica")
     total_style = ParagraphStyle('TotalPDF', parent=styles['Normal'], fontSize=10, fontName="Helvetica-Bold", textColor=colors.HexColor("#1E3A8A"), spaceBefore=5, spaceAfter=10)
-    
-    # Estilo temporário para avisar se o download falhou
     erro_style = ParagraphStyle('ErroStyle', parent=styles['Normal'], fontSize=8, textColor=colors.red, fontName="Helvetica-Bold")
 
-    # --- TENTATIVA DE DOWNLOAD ---
-    url_logo = "https://imgur.com/5QRo3f2"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    
-    logo_source = None
-    erro_download_msg = None
-
-    try:
-        # Se você preferir usar o arquivo baixado localmente (RECOMENDADO), 
-        # basta descomentar a linha abaixo e colocar o caminho da imagem:
-        # logo_source = "logoMult.png" 
-        
-        if not logo_source:
-            response = requests.get(url_logo, headers=headers, timeout=5)
-            response.raise_for_status()
-            logo_source = BytesIO(response.content)
-            
-    except Exception as e:
-        erro_download_msg = f"[LOGO NÃO ENCONTRADA - ERRO: {str(e)[:30]}]"
+    # --- CAMINHO DA LOGO NO GITHUB/STREAMLIT ---
+    # Como o arquivo estará na raiz do seu repositório, o Streamlit acha ele direto pelo nome
+    caminho_logo = "logoMult.png"
+    logo_existe = os.path.exists(caminho_logo)
 
     def _extrair_minutos(val):
         try:
@@ -160,21 +143,19 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         minutos = total_mins % 60
         total_horas_str = f"{horas:02d}:{minutos:02d}"
         
-        # --- EXIBIÇÃO DA LOGO OU DO ERRO NO PDF ---
-        if logo_source:
+        # --- POSICIONAMENTO DA LOGO REPOSITÓRIO ---
+        if logo_existe:
             try:
-                logo_flowable = Image(logo_source, width=75, height=25)
+                logo_flowable = Image(caminho_logo, width=75, height=25)
                 logo_flowable.hAlign = 'LEFT'
                 story.append(logo_flowable)
                 story.append(Spacer(1, 8))
             except Exception as img_err:
-                story.append(Paragraph(f"[ERRO AO RENDERIZAR IMAGEM: {img_err}]", erro_style))
+                story.append(Paragraph(f"[ERRO DE RENDERIZAÇÃO: {img_err}]", erro_style))
         else:
-            # Se não aparecer a imagem, ISSO AQUI vai aparecer no PDF te dizendo o motivo
-            story.append(Paragraph(erro_download_msg, erro_style))
+            story.append(Paragraph("[AVISO: Adicione o arquivo logoMult.png no seu GitHub]", erro_style))
             story.append(Spacer(1, 8))
         
-        # Informações do cabeçalho
         story.append(Paragraph(f"Relatório de Ponto: <font color='red'>{nome_funcionario}</font>", title_style))
         story.append(Paragraph(f"<b>Período:</b> {min_data.strftime('%d/%m/%Y')} até {max_data.strftime('%d/%m/%Y')}", styles['Normal']))
         story.append(Paragraph(f"<b>E-mail:</b> {email}", styles['Normal']))
