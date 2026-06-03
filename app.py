@@ -99,7 +99,7 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
     total_style = ParagraphStyle('TotalPDF', parent=styles['Normal'], fontSize=10, fontName="Helvetica-Bold", textColor=colors.HexColor("#1E3A8A"), spaceBefore=5, spaceAfter=10)
     
     # --- CORREÇÃO DO DOWNLOAD: Adicionado Headers para evitar bloqueio do site ---
-    url_logo = "https://i.ibb.co/C53b92rs/logoMult.png"
+    url_logo = "https://imgur.com/5QRo3f2"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36"
     }
