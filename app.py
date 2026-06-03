@@ -797,8 +797,8 @@ elif opcao == "LOG INTERNO":
                 dt_alteracao = datetime.fromisoformat(log["data_alteracao"]).astimezone(fuso_br).strftime("%d/%m/%Y %H:%M:%S")
                 
                 html_log_interno = (
-                    f'<div class="card-log" style="border-left: 4px solid #1E3A8A; background-color: #f8fafc; padding: 12px; margin-bottom: 8px; border-radius: 4px;">'
-                    f'<span style="float: right; color: #64748b; font-size: 0.85em;">📅 {dt_alteracao}</span>'
+                    f'<div class="card-log" style="border-left: 4px solid #1E3A8A; background-color: #ff4141; padding: 12px; margin-bottom: 8px; border-radius: 4px;">'
+                    f'<span style="float: right; color: #000000; font-size: 0.85em;">📅 {dt_alteracao}</span>'
                     f'🛠️ <b>Gestor:</b> {log["quem_alterou"]}<br>'
                     f'👤 <b>Alvo:</b> {log["usuario_afetado"]} (<span style="color:#64748b;">{log["email_afetado"]}</span>)<br>'
                     f'📝 <b>Operação:</b> <span style="color: #0f172a; font-family: monospace; background: #e2e8f0; padding: 2px 6px; border-radius: 4px;">{log["descricao"]}</span>'
