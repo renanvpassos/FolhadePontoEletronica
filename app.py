@@ -983,7 +983,10 @@ elif opcao == "RELATÓRIO":
         
         df_exportar_ind = processar_dados_ponto(dados_pessoais, data_inicio, data_fim, incluir_usuario_info=False, formatar_data_br=True)
         dados_excel_ind = converter_para_excel_individual(df_exportar_ind)
-        dados_pdf_ind = converter_para_pdf_individual(df_exportar_ind)
+
+        df_para_pdf_ind = processar_dados_ponto(dados_pessoais, data_inicio, data_fim, incluir_usuario_info=True, formatar_data_br=True)
+
+        mapeamento_fake = {email_busca: (celula_usuario or "Sem Célula")}
         
         col_down_ind1, col_down_ind2 = st.columns(2)
         
@@ -1004,7 +1007,7 @@ elif opcao == "RELATÓRIO":
                 mime="application/pdf",
                 use_container_width=True
             )
-
+            
         # --- SEÇÃO DE EXPORTAÇÃO CONSOLIDADA POR CARGOS GESTORES ---
         if cargo_usuario in ["Supervisor", "Master"]:
             st.write("---")
