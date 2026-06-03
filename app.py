@@ -106,22 +106,19 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio=None, dat
             return 0
             
     # =========================================================================
-    # AJUSTE 1: Garantir a criação da coluna e identificar o período completo
+    # AJUSTE 1: Forçar normalização para evitar incompatibilidade no Merge
     # =========================================================================
     df_copy = df.copy()
     coluna_data = 'Data'  
     
-    # CRUCIAL: Garante que a coluna datetime sempre exista no df_copy para o merge funcionar
+    # CRUCIAL: Converte e ZERA as horas/minutos (.dt.normalize()), garantindo o cruzamento perfeito
     if coluna_data in df_copy.columns:
-        if not pd.api.types.is_datetime64_any_dtype(df_copy[coluna_data]):
-            df_copy['Data_Datetime'] = pd.to_datetime(df_copy[coluna_data], errors='coerce')
-        else:
-            df_copy['Data_Datetime'] = df_copy[coluna_data]
+        df_copy['Data_Datetime'] = pd.to_datetime(df_copy[coluna_data], errors='coerce').dt.normalize()
     
-    # Define o período com base nos parâmetros ou nos dados disponíveis
+    # Define o período limpando qualquer resíduo de horário dos parâmetros
     if data_inicio is not None and data_fim is not None:
-        min_data = pd.to_datetime(data_inicio)
-        max_data = pd.to_datetime(data_fim)
+        min_data = pd.to_datetime(data_inicio).floor('D')
+        max_data = pd.to_datetime(data_fim).floor('D')
         periodo_completo = pd.date_range(start=min_data, end=max_data, freq='D')
     else:
         if coluna_data in df_copy.columns:
