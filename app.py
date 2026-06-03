@@ -80,7 +80,7 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     output.seek(0)
     return output.getvalue()
 
-def converter_para_pdf_consolidado(df, nome_funcionario, email, mapeamento_celulas):
+def converter_para_pdf_consolidado(df, nome_funcionario, email, mapeamento_celulas, data_inicio, data_fim):
     output = BytesIO()
     doc = SimpleDocTemplate(
         output, 
