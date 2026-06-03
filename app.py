@@ -11,7 +11,7 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
-def converter_para_pdf_consolidado(df):
+def converter_para_pdf_consolidado(df, mapeamento_celulas):
     output = BytesIO()
     doc = SimpleDocTemplate(
         output, 
@@ -25,11 +25,8 @@ def converter_para_pdf_consolidado(df):
     title_style = ParagraphStyle('TituloPDF', parent=styles['Heading1'], fontSize=14, textColor=colors.HexColor("#1E3A8A"), spaceAfter=10)
     header_style = ParagraphStyle('HeaderPDF', parent=styles['Normal'], fontSize=6.5, textColor=colors.white, fontName="Helvetica-Bold")
     cell_style = ParagraphStyle('CeluaPDF', parent=styles['Normal'], fontSize=6, fontName="Helvetica")
-    
-    # Novo estilo para destacar o total de horas extras de cada funcionário
     total_style = ParagraphStyle('TotalPDF', parent=styles['Normal'], fontSize=10, fontName="Helvetica-Bold", textColor=colors.HexColor("#1E3A8A"), spaceBefore=5, spaceAfter=10)
     
-    # Função interna auxiliar para converter HH:MM em minutos puros
     def _extrair_minutos(val):
         try:
             if pd.isna(val) or str(val).strip() == "" or ":" not in str(val):
@@ -39,15 +36,17 @@ def converter_para_pdf_consolidado(df):
         except:
             return 0
             
-    # 1. Agrupar os dados por funcionário (usando E-mail como chave única)
     usuarios = df['E-mail'].unique()
     
     for i, email in enumerate(usuarios):
         df_funcionario = df[df['E-mail'] == email]
         nome_funcionario = df_funcionario['Funcionário'].iloc[0]
-        celula = df_filtrado['celula'].iloc[0]
         
-        # === CÁLCULO DE HORAS EXTRAS DO FUNCIONÁRIO ATUAL ===
+        # CORREÇÃO AQUI: Busca a célula no dicionário usando o e-mail como chave
+        # Se não encontrar o e-mail no dicionário, ele exibe "Não Informada"
+        celula = mapeamento_celulas.get(email, "Não Informada")
+        
+        # === CÁLCULO DE HORAS EXTRAS ===
         total_mins = 0
         if "Hora Extra" in df_funcionario.columns:
             total_mins = df_funcionario["Hora Extra"].apply(_extrair_minutos).sum()
@@ -55,18 +54,15 @@ def converter_para_pdf_consolidado(df):
         horas = total_mins // 60
         minutos = total_mins % 60
         total_horas_str = f"{horas:02d}:{minutos:02d}"
-        # ===================================================
         
         # Título da página do funcionário
         story.append(Paragraph(f"Relatório de Ponto: {nome_funcionario}", title_style))
         story.append(Paragraph(f"<b>E-mail:</b> {email}", styles['Normal']))
         story.append(Paragraph(f"<b>Célula:</b> {celula}", styles['Normal']))
         
-        # Adiciona a informação do total de horas extras logo abaixo do e-mail
         story.append(Paragraph(f"<b>Total de Horas Extras no Período:</b> <font color='red'>{total_horas_str}</font>", total_style))
         story.append(Spacer(1, 5))
         
-        # Preparar dados da tabela (Removendo colunas de identificação para não repetir em cada linha)
         df_tabela = df_funcionario.drop(columns=["Funcionário", "E-mail"]) 
         
         dados_tabela = []
@@ -88,7 +84,6 @@ def converter_para_pdf_consolidado(df):
         
         story.append(tabela)
         
-        # 2. Adicionar quebra de página, exceto no último funcionário
         if i < len(usuarios) - 1:
             story.append(PageBreak())
     
