@@ -56,7 +56,7 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas):
         total_horas_str = f"{horas:02d}:{minutos:02d}"
         
         # Título da página do funcionário
-        story.append(Paragraph(f"Relatório de Ponto: {nome_funcionario}", title_style))
+        story.append(Paragraph(f"Relatório de Ponto: <font color='red'>{nome_funcionario}</font>", title_style))
         story.append(Paragraph(f"<b>E-mail:</b> {email}", styles['Normal']))
         story.append(Paragraph(f"<b>Célula:</b> {celula}", styles['Normal']))
         
