@@ -80,7 +80,6 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     output.seek(0)
     return output.getvalue()
 
-
 def converter_para_pdf_consolidado(df, mapeamento_celulas):
     output = BytesIO()
     doc = SimpleDocTemplate(
@@ -110,10 +109,11 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas):
     # AJUSTE 1: Identificar o período completo selecionado no DataFrame total
     # =========================================================================
     df_copy = df.copy()
-    coluna_data = 'Data'  # <--- Altere aqui se o nome da sua coluna de data for diferente
+    coluna_data = 'Data'  
+    min_data = None
+    max_data = None
     
     if coluna_data in df_copy.columns:
-        # Garante a conversão para datetime para encontrar os limites do período
         if not pd.api.types.is_datetime64_any_dtype(df_copy[coluna_data]):
             df_copy['Data_Datetime'] = pd.to_datetime(df_copy[coluna_data], errors='coerce')
         else:
@@ -136,11 +136,9 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas):
         df_funcionario = df_copy[df_copy['E-mail'] == email]
         nome_funcionario = df_funcionario['Funcionário'].iloc[0]
         
-        # Busca a célula no dicionário usando o e-mail como chave
         celula = mapeamento_celulas.get(email, "Não Informada")
         
         # === CÁLCULO DE HORAS EXTRAS ===
-        # Calculado antes do preenchimento de datas para não afetar a soma
         total_mins = 0
         if "Hora Extra" in df_funcionario.columns:
             total_mins = df_funcionario["Hora Extra"].apply(_extrair_minutos).sum()
@@ -151,6 +149,13 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas):
         
         # Título da página do funcionário
         story.append(Paragraph(f"Relatório de Ponto: <font color='red'>{nome_funcionario}</font>", title_style))
+        
+        # Exibe o período selecionado de Início e Fim se as datas forem válidas
+        if pd.notna(min_data) and pd.notna(max_data):
+            data_ini_br = min_data.strftime('%d/%m/%Y')
+            data_fim_br = max_data.strftime('%d/%m/%Y')
+            story.append(Paragraph(f"<b>Período:</b> {data_ini_br} até {data_fim_br}", styles['Normal']))
+            
         story.append(Paragraph(f"<b>E-mail:</b> {email}", styles['Normal']))
         story.append(Paragraph(f"<b>Célula:</b> {celula}", styles['Normal']))
         
@@ -162,17 +167,22 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas):
         # =========================================================================
         if len(periodo_completo) > 0:
             df_base_periodo = pd.DataFrame({'Data_Datetime': periodo_completo})
-            # Força o cruzamento trazendo todas as datas possíveis do período
             df_funcionario_completo = pd.merge(df_base_periodo, df_funcionario, on='Data_Datetime', how='left')
             
             # Reconstrói a coluna de Data visual para as linhas que estavam ausentes
             if pd.api.types.is_datetime64_any_dtype(df[coluna_data]):
                 df_funcionario_completo[coluna_data] = df_funcionario_completo['Data_Datetime']
             else:
-                # Tenta identificar e manter o formato original de string (Ex: DD/MM/AAAA ou AAAA-MM-DD)
                 amostra = str(df[coluna_data].dropna().iloc[0]) if not df[coluna_data].dropna().empty else ""
                 fmt = "%Y-%m-%d" if '-' in amostra else "%d/%m/%Y"
                 df_funcionario_completo[coluna_data] = df_funcionario_completo['Data_Datetime'].dt.strftime(fmt)
+            
+            # CORREÇÃO: Garante o preenchimento dos dias da semana em todas as linhas (mesmo as vazias)
+            if "Dia da Semana" in df.columns:
+                dias_semana_pt = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"]
+                df_funcionario_completo["Dia da Semana"] = df_funcionario_completo['Data_Datetime'].dt.weekday.map(
+                    lambda x: dias_semana_pt[int(x)] if pd.notna(x) else ""
+                )
             
             # Remove as colunas de controle e mantém a ordem original das colunas do relatório
             colunas_exibicao = [col for col in df.columns if col not in ["Funcionário", "E-mail", "Data_Datetime"]]
@@ -186,7 +196,6 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas):
         dados_tabela.append(header_row)
         
         for _, row in df_tabela.iterrows():
-            # O pd.isna(val) garante que as novas linhas com valores nulos (NaN) fiquem vazias ""
             linha = [Paragraph(str(val) if val is not None and not pd.isna(val) else "", cell_style) for val in row]
             dados_tabela.append(linha)
             
