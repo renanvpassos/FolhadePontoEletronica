@@ -80,7 +80,7 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     output.seek(0)
     return output.getvalue()
 
-def converter_para_pdf_consolidado(df, mapeamento_celulas):
+def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio=None, data_fim=None):
     output = BytesIO()
     doc = SimpleDocTemplate(
         output, 
@@ -106,28 +106,34 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas):
             return 0
             
     # =========================================================================
-    # AJUSTE 1: Identificar o período completo selecionado no DataFrame total
+    # AJUSTE 1: Identificar o período baseado nos parâmetros recebidos
     # =========================================================================
     df_copy = df.copy()
     coluna_data = 'Data'  
-    min_data = None
-    max_data = None
     
-    if coluna_data in df_copy.columns:
-        if not pd.api.types.is_datetime64_any_dtype(df_copy[coluna_data]):
-            df_copy['Data_Datetime'] = pd.to_datetime(df_copy[coluna_data], errors='coerce')
-        else:
-            df_copy['Data_Datetime'] = df_copy[coluna_data]
-        
-        min_data = df_copy['Data_Datetime'].min()
-        max_data = df_copy['Data_Datetime'].max()
-        
-        if pd.notna(min_data) and pd.notna(max_data):
-            periodo_completo = pd.date_range(start=min_data, end=max_data, freq='D')
-        else:
-            periodo_completo = []
+    # Se as datas de início e fim foram passadas na chamada da função, usamos elas diretamente
+    if data_inicio is not None and data_fim is not None:
+        min_data = pd.to_datetime(data_inicio)
+        max_data = pd.to_datetime(data_fim)
+        periodo_completo = pd.date_range(start=min_data, end=max_data, freq='D')
     else:
-        periodo_completo = []
+        # Fallback: Caso não existam os parâmetros, tenta descobrir pelas datas do DataFrame
+        if coluna_data in df_copy.columns:
+            if not pd.api.types.is_datetime64_any_dtype(df_copy[coluna_data]):
+                df_copy['Data_Datetime'] = pd.to_datetime(df_copy[coluna_data], errors='coerce')
+            else:
+                df_copy['Data_Datetime'] = df_copy[coluna_data]
+            
+            min_data = df_copy['Data_Datetime'].min()
+            max_data = df_copy['Data_Datetime'].max()
+            
+            if pd.notna(min_data) and pd.notna(max_data):
+                periodo_completo = pd.date_range(start=min_data, end=max_data, freq='D')
+            else:
+                periodo_completo = []
+        else:
+            min_data, max_data = None, None
+            periodo_completo = []
     # =========================================================================
 
     usuarios = df['E-mail'].unique()
@@ -150,7 +156,7 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas):
         # Título da página do funcionário
         story.append(Paragraph(f"Relatório de Ponto: <font color='red'>{nome_funcionario}</font>", title_style))
         
-        # Exibe o período selecionado de Início e Fim se as datas forem válidas
+        # Exibe o período selecionado de Início e Fim
         if pd.notna(min_data) and pd.notna(max_data):
             data_ini_br = min_data.strftime('%d/%m/%Y')
             data_fim_br = max_data.strftime('%d/%m/%Y')
@@ -177,7 +183,7 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas):
                 fmt = "%Y-%m-%d" if '-' in amostra else "%d/%m/%Y"
                 df_funcionario_completo[coluna_data] = df_funcionario_completo['Data_Datetime'].dt.strftime(fmt)
             
-            # CORREÇÃO: Garante o preenchimento dos dias da semana em todas as linhas (mesmo as vazias)
+            # Garante o preenchimento dos dias da semana em todas as linhas
             if "Dia da Semana" in df.columns:
                 dias_semana_pt = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"]
                 df_funcionario_completo["Dia da Semana"] = df_funcionario_completo['Data_Datetime'].dt.weekday.map(
