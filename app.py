@@ -157,7 +157,7 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
             try:
                 # Cria o elemento de imagem interpretando os bytes salvos
                 logo_flowable = Image(BytesIO(logo_bytes), width=75, height=25)
-                logo_flowable.hAlign = 'LEFT'  # Mantém alinhado à esquerda junto com o texto
+                logo_flowable.hAlign = 'RIGHT'
                 story.append(logo_flowable)
                 story.append(Spacer(1, 8))     # Pequeno espaço entre a logo e o título
             except Exception as img_err:
