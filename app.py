@@ -106,16 +106,41 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas):
         except:
             return 0
             
+    # =========================================================================
+    # AJUSTE 1: Identificar o período completo selecionado no DataFrame total
+    # =========================================================================
+    df_copy = df.copy()
+    coluna_data = 'Data'  # <--- Altere aqui se o nome da sua coluna de data for diferente
+    
+    if coluna_data in df_copy.columns:
+        # Garante a conversão para datetime para encontrar os limites do período
+        if not pd.api.types.is_datetime64_any_dtype(df_copy[coluna_data]):
+            df_copy['Data_Datetime'] = pd.to_datetime(df_copy[coluna_data], errors='coerce')
+        else:
+            df_copy['Data_Datetime'] = df_copy[coluna_data]
+        
+        min_data = df_copy['Data_Datetime'].min()
+        max_data = df_copy['Data_Datetime'].max()
+        
+        if pd.notna(min_data) and pd.notna(max_data):
+            periodo_completo = pd.date_range(start=min_data, end=max_data, freq='D')
+        else:
+            periodo_completo = []
+    else:
+        periodo_completo = []
+    # =========================================================================
+
     usuarios = df['E-mail'].unique()
     
     for i, email in enumerate(usuarios):
-        df_funcionario = df[df['E-mail'] == email]
+        df_funcionario = df_copy[df_copy['E-mail'] == email]
         nome_funcionario = df_funcionario['Funcionário'].iloc[0]
         
         # Busca a célula no dicionário usando o e-mail como chave
         celula = mapeamento_celulas.get(email, "Não Informada")
         
         # === CÁLCULO DE HORAS EXTRAS ===
+        # Calculado antes do preenchimento de datas para não afetar a soma
         total_mins = 0
         if "Hora Extra" in df_funcionario.columns:
             total_mins = df_funcionario["Hora Extra"].apply(_extrair_minutos).sum()
@@ -132,13 +157,36 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas):
         story.append(Paragraph(f"<b>Total de Horas Extras no Período:</b> <font color='red'>{total_horas_str}</font>", total_style))
         story.append(Spacer(1, 5))
         
-        df_tabela = df_funcionario.drop(columns=["Funcionário", "E-mail"]) 
+        # =========================================================================
+        # AJUSTE 2: Reindexar a tabela do funcionário para conter todo o período
+        # =========================================================================
+        if len(periodo_completo) > 0:
+            df_base_periodo = pd.DataFrame({'Data_Datetime': periodo_completo})
+            # Força o cruzamento trazendo todas as datas possíveis do período
+            df_funcionario_completo = pd.merge(df_base_periodo, df_funcionario, on='Data_Datetime', how='left')
+            
+            # Reconstrói a coluna de Data visual para as linhas que estavam ausentes
+            if pd.api.types.is_datetime64_any_dtype(df[coluna_data]):
+                df_funcionario_completo[coluna_data] = df_funcionario_completo['Data_Datetime']
+            else:
+                # Tenta identificar e manter o formato original de string (Ex: DD/MM/AAAA ou AAAA-MM-DD)
+                amostra = str(df[coluna_data].dropna().iloc[0]) if not df[coluna_data].dropna().empty else ""
+                fmt = "%Y-%m-%d" if '-' in amostra else "%d/%m/%Y"
+                df_funcionario_completo[coluna_data] = df_funcionario_completo['Data_Datetime'].dt.strftime(fmt)
+            
+            # Remove as colunas de controle e mantém a ordem original das colunas do relatório
+            colunas_exibicao = [col for col in df.columns if col not in ["Funcionário", "E-mail", "Data_Datetime"]]
+            df_tabela = df_funcionario_completo[colunas_exibicao]
+        else:
+            df_tabela = df_funcionario.drop(columns=["Funcionário", "E-mail"]) 
+        # =========================================================================
         
         dados_tabela = []
         header_row = [Paragraph(f"<b>{col}</b>", header_style) for col in df_tabela.columns]
         dados_tabela.append(header_row)
         
         for _, row in df_tabela.iterrows():
+            # O pd.isna(val) garante que as novas linhas com valores nulos (NaN) fiquem vazias ""
             linha = [Paragraph(str(val) if val is not None and not pd.isna(val) else "", cell_style) for val in row]
             dados_tabela.append(linha)
             
