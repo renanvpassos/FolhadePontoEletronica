@@ -1046,6 +1046,15 @@ elif opcao == "RELATÓRIO":
                     if df_filtrado.empty:
                         st.warning("Nenhum dado localizado para os critérios selecionados.")
                     else:
+                        # === ALTERAÇÃO AQUI: Ordena o DataFrame em ordem alfabética pelo nome do Funcionário ===
+                        if "Funcionário" in df_filtrado.columns:
+                            df_filtrado = df_filtrado.sort_values(
+                                by="Funcionário", 
+                                key=lambda col: col.str.lower(),
+                                kind="mergesort"  # Garante estabilidade para manter as datas ordenadas por funcionário
+                            )
+                        # ======================================================================================
+
                         # GERAÇÃO DOS ARQUIVOS (EXCEL E PDF)
                         dados_excel_multiaba = converter_para_excel_multiaba(df_filtrado)
                         
@@ -1061,7 +1070,7 @@ elif opcao == "RELATÓRIO":
                         total_horas_extras_str = f"{total_mins // 60:02d}:{total_mins % 60:02d}"
                         # ===============================================================
                         
-                        # Enviando a string calculada para a função do PDF
+                        # Enviando a string calculada para a função do PDF (Agora ordenado alfabeticamente)
                         dados_pdf_gerado = converter_para_pdf_consolidado(df_filtrado, mapeamento_usuarios)
                         
                         st.success("✅ Relatórios gerados com sucesso! Escolha o formato para baixar:")
