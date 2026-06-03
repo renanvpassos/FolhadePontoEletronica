@@ -1021,7 +1021,8 @@ elif opcao == "RELATÓRIO":
                     st.warning("Não há nenhum registro de ponto de nenhum colaborador no período selecionado.")
                 else:
                     df_geral_completo = processar_dados_ponto(dados_gerais_banco, data_inicio, data_fim, incluir_usuario_info=True, formatar_data_br=True)
-                    
+
+                    mapeamento_usuarios = {}
                     try:
                         mapeamento_usuarios = {u['email']: u.get('celula') for u in supabase.table("usuarios_ponto").select("email, celula").execute().data or []}
                         df_geral_completo["Celula_Filtro"] = df_geral_completo["E-mail"].map(mapeamento_usuarios)
