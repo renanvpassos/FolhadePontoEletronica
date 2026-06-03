@@ -801,7 +801,7 @@ elif opcao == "LOG INTERNO":
                     f'<span style="float: right; color: #64748b; font-size: 0.85em;">📅 {dt_alteracao}</span>'
                     f'🛠️ <span style="color:#ffffff;"><b>Gestor:</b> {log["quem_alterou"]}</span><br>'
                     f'👤 <span style="color:#ffffff;"><b>Alvo:</b> {log["usuario_afetado"]} (<span>{log["email_afetado"]}</span>)</span><br>'
-                    f'📝 <b>Operação:</b> <span style="color: #0f172a; font-family: monospace; background: #e2e8f0; padding: 2px 6px; border-radius: 4px;">{log["descricao"]}</span>'
+                    f'📝 <b>Operação:</b> <span style="color: #0043e1; font-family: monospace; background: #e2e8f0; padding: 2px 6px; border-radius: 4px;">{log["descricao"]}</span>'
                     f'</div>'
                 )
                 st.markdown(html_log_interno, unsafe_allow_html=True)
