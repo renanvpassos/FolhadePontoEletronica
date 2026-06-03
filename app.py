@@ -106,27 +106,27 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio=None, dat
             return 0
             
     # =========================================================================
-    # AJUSTE 1: Identificar o período baseado nos parâmetros recebidos
+    # AJUSTE 1: Garantir a criação da coluna e identificar o período completo
     # =========================================================================
     df_copy = df.copy()
     coluna_data = 'Data'  
     
-    # Se as datas de início e fim foram passadas na chamada da função, usamos elas diretamente
+    # CRUCIAL: Garante que a coluna datetime sempre exista no df_copy para o merge funcionar
+    if coluna_data in df_copy.columns:
+        if not pd.api.types.is_datetime64_any_dtype(df_copy[coluna_data]):
+            df_copy['Data_Datetime'] = pd.to_datetime(df_copy[coluna_data], errors='coerce')
+        else:
+            df_copy['Data_Datetime'] = df_copy[coluna_data]
+    
+    # Define o período com base nos parâmetros ou nos dados disponíveis
     if data_inicio is not None and data_fim is not None:
         min_data = pd.to_datetime(data_inicio)
         max_data = pd.to_datetime(data_fim)
         periodo_completo = pd.date_range(start=min_data, end=max_data, freq='D')
     else:
-        # Fallback: Caso não existam os parâmetros, tenta descobrir pelas datas do DataFrame
         if coluna_data in df_copy.columns:
-            if not pd.api.types.is_datetime64_any_dtype(df_copy[coluna_data]):
-                df_copy['Data_Datetime'] = pd.to_datetime(df_copy[coluna_data], errors='coerce')
-            else:
-                df_copy['Data_Datetime'] = df_copy[coluna_data]
-            
             min_data = df_copy['Data_Datetime'].min()
             max_data = df_copy['Data_Datetime'].max()
-            
             if pd.notna(min_data) and pd.notna(max_data):
                 periodo_completo = pd.date_range(start=min_data, end=max_data, freq='D')
             else:
