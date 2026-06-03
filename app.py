@@ -117,7 +117,6 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
     erro_style = ParagraphStyle('ErroStyle', parent=styles['Normal'], fontSize=8, textColor=colors.red, fontName="Helvetica-Bold")
 
     # --- CAMINHO DA LOGO NO GITHUB/STREAMLIT ---
-    # Como o arquivo estará na raiz do seu repositório, o Streamlit acha ele direto pelo nome
     caminho_logo = "logoMult.png"
     logo_existe = os.path.exists(caminho_logo)
 
@@ -285,6 +284,13 @@ def executar_query_supabase(operacao, data_dict=None, email=None, data_filtro=No
     elif operacao == "buscar_relatorio_geral":
         res = supabase.table("registro_ponto").select("nome_completo, email, data, horario_entrada, saida_almoco, retorno_almoco, horario_saida, justificativa_entrada, justificativa_saida_almoco, justificativa_retorno_almoco, justificativa_saida").gte("data", str(data_filtro)).lte("data", str(data_fim)).order("nome_completo", desc=False).order("data", desc=True).execute()
         return res.data
+    
+    elif operacao == "salvar_log_interno":
+        supabase.table("log_interno").insert(data_dict).execute()
+        
+    elif operacao == "buscar_logs_internos":
+        res = supabase.table("log_interno").select("*").order("data_alteracao", desc=True).execute()
+        return res.data
 
 # --- FUNÇÕES AUXILIARES PARA GERAR EXCEL ---
 def converter_para_excel_individual(df_dados):
@@ -368,6 +374,17 @@ user_name = user_info.get("name", "Colaborador")
 hoje = obter_hoje_br() 
 agora_br = obter_agora_br() 
 
+# --- DETECÇÃO PRÉVIA DO CARGO DO USUÁRIO LOGADO ---
+cargo_usuario = "Colaborador"
+celula_usuario = None
+try:
+    dados_usuario_logado = supabase.table("usuarios_ponto").select("cargo, celula").eq("email", user_email).execute()
+    if dados_usuario_logado.data:
+        cargo_usuario = dados_usuario_logado.data[0].get("cargo", "Colaborador")
+        celula_usuario = dados_usuario_logado.data[0].get("celula")
+except Exception:
+    pass
+
 # --- INTERFACE / MENU LATERAL ---
 st.sidebar.markdown(f"### 👤 Usuário Ativo")
 st.sidebar.write(f"Olá, **{user_name}**")
@@ -375,7 +392,13 @@ st.sidebar.caption(user_email)
 st.sidebar.markdown("---")
 
 st.sidebar.markdown("### 📋 Navegação")
-opcao = st.sidebar.radio("Selecione a ação:", ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA", "LOG", "RELATÓRIO"], label_visibility="collapsed")
+
+# Definição dinâmica das opções com base nas permissões do cargo Master
+opcoes_menu = ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA", "LOG", "RELATÓRIO"]
+if cargo_usuario == "Master":
+    opcoes_menu.insert(opcoes_menu.index("LOG") + 1, "LOG INTERNO")
+
+opcao = st.sidebar.radio("Selecione a ação:", opcoes_menu, label_visibility="collapsed")
 
 st.sidebar.markdown("---")
 if st.sidebar.button("🚪 Sair / Desconectar", use_container_width=True, type="secondary"):
@@ -489,10 +512,7 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                     # --- REGRAS DE OBRIGATORIEDADE E TRAVAS ---
                     if not erro_validacao:
                         if opcao == "ENTRADA":
-                            # Define a tolerância de 10 minutos somada ao horário informado
                             horario_com_tolerancia = horario_final_gravacao + timedelta(minutes=10)
-                            
-                            # Se o horário atual passou da tolerância, a justificativa vira obrigatória
                             if horario_com_tolerancia < agora_br_sem_segundos:
                                 justificativa_obrigatoria = True
                                 
@@ -588,7 +608,6 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                         st.error("🛑 Erro: Corrija as inconsistências de fluxo ou horário antes de confirmar.")
                         
                     else:
-                        # MAPEAMENTO DE GRAVAÇÃO DO SISTEMA
                         mapeamento_registro_sistema = {
                             "ENTRADA": "data_registro_horario_entrada",
                             "SAÍDA ALMOÇO": "data_saida_almoco",
@@ -596,7 +615,6 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                             "SAÍDA": "data_horario_saida"
                         }
 
-                        # AJUSTE FIEL: Avaliação da variável dinâmica corrigida (removido as aspas literais)
                         dados_ponto = {
                             "email": user_email,
                             "nome_completo": user_name,
@@ -756,25 +774,46 @@ elif opcao == "LOG":
                 """,
                 height=0
             )
-            
+
+# =====================================================================
+# --- MENU: LOG INTERNO (EXCLUSIVO MASTER) ---
+# =====================================================================
+elif opcao == "LOG INTERNO":
+    if cargo_usuario != "Master":
+        st.error("Acesso negado. Apenas usuários com nível Master possuem acesso a esta tela.")
+        st.stop()
+        
+    st.title("🔒 Log Interno de Auditoria")
+    st.caption("Monitoramento detalhado de alterações e correções feitas manualmente nos registros de ponto.")
+    st.write("---")
+    
+    logs_internos = executar_query_supabase("buscar_logs_internos")
+    
+    if not logs_internos:
+        st.info("Nenhuma alteração manual registrada até o momento.")
+    else:
+        with st.container(height=500):
+            for log in logs_internos:
+                dt_alteracao = datetime.fromisoformat(log["data_alteracao"]).astimezone(fuso_br).strftime("%d/%m/%Y %H:%M:%S")
+                
+                html_log_interno = (
+                    f'<div class="card-log" style="border-left: 4px solid #1E3A8A; background-color: #f8fafc; padding: 12px; margin-bottom: 8px; border-radius: 4px;">'
+                    f'<span style="float: right; color: #64748b; font-size: 0.85em;">📅 {dt_alteracao}</span>'
+                    f'🛠️ <b>Gestor:</b> {log["quem_alterou"]}<br>'
+                    f'👤 <b>Alvo:</b> {log["usuario_afetado"]} (<span style="color:#64748b;">{log["email_afetado"]}</span>)<br>'
+                    f'📝 <b>Operação:</b> <span style="color: #0f172a; font-family: monospace; background: #e2e8f0; padding: 2px 6px; border-radius: 4px;">{log["descricao"]}</span>'
+                    f'</div>'
+                )
+                st.markdown(html_log_interno, unsafe_allow_html=True)
+
+# =====================================================================
 # --- MENU: RELATÓRIO ---
+# =====================================================================
 elif opcao == "RELATÓRIO":
     st.title("📊 Espelho de Ponto Pessoal")
     email_busca = user_email
     nome_busca = user_name
     
-    cargo_usuario = "Colaborador"
-    celula_usuario = None
-    try:
-        dados_usuario_logado = supabase.table("usuarios_ponto").select("cargo, celula").eq("email", user_email).execute()
-        if dados_usuario_logado.data:
-            cargo_usuario = dados_usuario_logado.data[0].get("cargo", "Colaborador")
-            celula_usuario = dados_usuario_logado.data[0].get("celula")
-    except Exception:
-        st.error("Erro ao verificar nível de acesso do usuário.")
-
-    # === ALINHAMENTO CENTRAL DE CÉLULAS ===
-    # Cria o mapeamento oficial e-mail -> célula logo no início para ser usado em todo o escopo do menu
     mapeamento_celulas = {}
     try:
         busca_mapeamento = supabase.table("usuarios_ponto").select("email, celula").execute()
@@ -785,7 +824,6 @@ elif opcao == "RELATÓRIO":
 
     lista_todos_usuarios = []
     
-    # Lógica de Filtragem de Usuários por Cargo
     if cargo_usuario == "Master":
         st.markdown("### 🔑 Painel de Gestão (Master)")
         try:
@@ -842,7 +880,7 @@ elif opcao == "RELATÓRIO":
     with col1:
         data_inicio = st.date_input("🗓️ Data Inicial", hoje - timedelta(days=14), format="DD/MM/YYYY")
     with col2:
-        data_fim = st.date_input("🗓️ Data Final", hoje, format="DD/MM/YYYY")  # <--- Adicione o 'data_fim = ' aqui
+        data_fim = st.date_input("🗓️ Data Final", hoje, format="DD/MM/YYYY")
         
     st.write("---")
      
@@ -1047,7 +1085,6 @@ elif opcao == "RELATÓRIO":
                 confirmou_salvar = caixa_confirmacao.button("Sim, confirmar e salvar", type="primary", use_container_width=True)
             
             if confirmou_salvar:
-                import re
                 alteracoes = st.session_state.get("editor_ponto_gestao", {}).get("edited_rows", {})
                 
                 if not alteracoes:
@@ -1081,20 +1118,31 @@ elif opcao == "RELATÓRIO":
                             continue
                             
                         update_dict = {}
+                        logs_internos_para_salvar = []
+                        
                         for col_df, novo_valor in colunas_alteradas.items():
                             col_banco = mapeamento_colunas_db.get(col_df)
                             if not col_banco:
                                 continue
                             
+                            # Obtendo o valor anterior para auditoria
+                            valor_antigo = df_visualizacao.iloc[idx_linha].get(col_df, "")
+                            if pd.isna(valor_antigo) or valor_antigo is None:
+                                valor_antigo = "--:--:--"
+                            
                             if col_banco in ["horario_entrada", "saida_almoco", "retorno_almoco", "horario_saida"]:
                                 if novo_valor is None:
                                     update_dict[col_banco] = None
+                                    descricao_log = f'Limpou o campo "{col_df}" do dia {data_br} (Valor antigo era {valor_antigo})'
+                                    logs_internos_para_salvar.append(descricao_log)
                                     continue
                                     
                                 hora_nova = str(novo_valor).strip()
                                 
                                 if hora_nova == "" or hora_nova.lower() == "none":
                                     update_dict[col_banco] = None
+                                    descricao_log = f'Limpou o campo "{col_df}" do dia {data_br} (Valor antigo era {valor_antigo})'
+                                    logs_internos_para_salvar.append(descricao_log)
                                     continue
                                 
                                 padrao_hhmmss = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d$")
@@ -1115,11 +1163,16 @@ elif opcao == "RELATÓRIO":
                                     dt_fuso = dt_combinado.replace(tzinfo=fuso_br)
                                     update_dict[col_banco] = dt_fuso.isoformat()
                                     
+                                    descricao_log = f'Alterou a informação "{col_df}" do dia {data_br} de: {valor_antigo} para {hora_nova}.'
+                                    logs_internos_para_salvar.append(descricao_log)
+                                    
                                 except Exception as e:
                                     st.error(f"❌ Erro na linha {idx_linha + 1}, coluna '{col_df}': {str(e)}")
                                     erros += 1
                             else:
                                 update_dict[col_banco] = novo_valor
+                                descricao_log = f'Alterou a "{col_df}" do dia {data_br} de: "{valor_antigo}" para "{novo_valor}".'
+                                logs_internos_para_salvar.append(descricao_log)
                         
                         if update_dict and erros == 0:
                             try:
@@ -1133,6 +1186,17 @@ elif opcao == "RELATÓRIO":
                                     }
                                     insert_dict.update(update_dict)
                                     supabase.table("registro_ponto").insert(insert_dict).execute()
+                                
+                                # Grava as atividades geradas no log de auditoria interno
+                                for desc_ativ in logs_internos_para_salvar:
+                                    dados_log_auditoria = {
+                                        "quem_alterou": user_name,
+                                        "usuario_afetado": nome_busca,
+                                        "email_afetado": email_busca,
+                                        "descricao": desc_ativ
+                                    }
+                                    executar_query_supabase("salvar_log_interno", data_dict=dados_log_auditoria)
+                                    
                                 sucessos += 1
                             except Exception as e:
                                 st.error(f"Erro ao salvar alteração de {nome_busca} (Linha {idx_linha + 1}): {e}")
