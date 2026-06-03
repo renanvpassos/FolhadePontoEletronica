@@ -981,16 +981,22 @@ elif opcao == "RELATÓRIO":
         else:
             st.dataframe(df_visualizacao, use_container_width=True, hide_index=True, column_order=ordem_colunas_tela)
         
+        # --- PROCESSAMENTO E EXPORTAÇÃO INDIVIDUAL ---
+        # 1. Geramos o DataFrame base (com todos os dias do calendário certinhos)
         df_exportar_ind = processar_dados_ponto(dados_pessoais, data_inicio, data_fim, incluir_usuario_info=False, formatar_data_br=True)
+        
+        # 2. Geramos o arquivo Excel a partir da base
         dados_excel_ind = converter_para_excel_individual(df_exportar_ind)
         
-        # 2. Geramos um DF temporário com "incluir_usuario_info=True" exigido pela sua função de PDF
-        df_para_pdf_ind = processar_dados_ponto(dados_pessoais, data_inicio, data_fim, incluir_usuario_info=True, formatar_data_br=True)
+        # 3. Criamos uma cópia exclusiva para o PDF e injetamos os dados corretos manualmente
+        df_para_pdf_ind = df_exportar_ind.copy()
+        df_para_pdf_ind["Funcionário"] = nome_busca
+        df_para_pdf_ind["E-mail"] = email_busca
         
-        # 3. Montamos o dicionário de mapeamento para o colaborador atual
+        # 4. Montamos o mapeamento da célula usando as variáveis locais da tela
         mapeamento_ind = {email_busca: celula_usuario or "Não Informada"}
         
-        # 4. Reutilizamos a sua função de PDF consolidado!
+        # 5. Chamamos a sua função de PDF com as colunas garantidas!
         dados_pdf_ind = converter_para_pdf_consolidado(df_para_pdf_ind, mapeamento_ind)
         
         # Exibe os botões de download individuais lado a lado
