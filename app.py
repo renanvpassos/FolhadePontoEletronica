@@ -148,7 +148,7 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         if logo_existe:
             try:
                 logo_flowable = Image(caminho_logo, width=75, height=25)
-                logo_flowable.hAlign = 'LEFT'
+                logo_flowable.hAlign = 'RIGHT'
                 story.append(logo_flowable)
                 story.append(Spacer(1, 8))
             except Exception as img_err:
