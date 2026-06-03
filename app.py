@@ -100,7 +100,7 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
     erro_style = ParagraphStyle('ErroStyle', parent=styles['Normal'], fontSize=8, textColor=colors.red, fontName="Helvetica-Bold")
 
     # --- TENTATIVA DE DOWNLOAD ---
-    url_logo = "https://i.ibb.co/C53b92rs/logoMult.png"
+    url_logo = "https://imgur.com/5QRo3f2"
     headers = {"User-Agent": "Mozilla/5.0"}
     
     logo_source = None
