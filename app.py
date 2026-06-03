@@ -10,6 +10,7 @@ from reportlab.lib.pagesizes import A4, landscape
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
+from reportlab.lib.utils import ImageReader
 
 def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celulas):
     output = BytesIO()
@@ -82,10 +83,13 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
 
 def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim):
     output = BytesIO()
+    
+    # CORREÇÃO/AJUSTE: Aumentamos o topMargin de 15 para 45 para que o texto do 
+    # story não fique em cima da logo que será desenhada no cabeçalho.
     doc = SimpleDocTemplate(
         output, 
         pagesize=landscape(A4), 
-        rightMargin=15, leftMargin=15, topMargin=15, bottomMargin=15
+        rightMargin=15, leftMargin=15, topMargin=45, bottomMargin=15
     )
     story = []
     styles = getSampleStyleSheet()
@@ -94,6 +98,30 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
     header_style = ParagraphStyle('HeaderPDF', parent=styles['Normal'], fontSize=6.5, textColor=colors.white, fontName="Helvetica-Bold")
     cell_style = ParagraphStyle('CeluaPDF', parent=styles['Normal'], fontSize=6, fontName="Helvetica")
     total_style = ParagraphStyle('TotalPDF', parent=styles['Normal'], fontSize=10, fontName="Helvetica-Bold", textColor=colors.HexColor("#1E3A8A"), spaceBefore=5, spaceAfter=10)
+    
+    # --- Download e conversão da logo a partir da URL ---
+    url_logo = "https://i.ibb.co/C53b92rs/logoMult.png"
+    try:
+        response = requests.get(url_logo, timeout=5)
+        logo_img = ImageReader(BytesIO(response.content))
+    except Exception:
+        logo_img = None # Caso o link falhe ou esteja sem internet, o PDF ainda gera sem quebrar o código
+
+    # --- Função que desenha a logo no topo da folha ---
+    def adicionar_logo(canvas, doc):
+        if logo_img:
+            canvas.saveState()
+            # Dimensões da folha A4 em modo Paisagem (Landscape): 842 de largura x 595 de altura
+            largura_logo = 90
+            altura_logo = 30
+            
+            # Posicionamento no canto superior direito
+            x = 842 - 15 - largura_logo  # Largura total - Margem Direita - Largura do Elemento
+            y = 595 - 12 - altura_logo   # Altura total - Margem Superior - Altura do Elemento
+            
+            canvas.drawImage(logo_img, x, y, width=largura_logo, height=altura_logo, mask='auto')
+            canvas.restoreState()
+    # --------------------------------------------------------------
     
     def _extrair_minutos(val):
         try:
@@ -181,7 +209,8 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         if i < len(usuarios) - 1:
             story.append(PageBreak())
     
-    doc.build(story)
+    # Função 'adicionar_logo' para os parâmetros do build
+    doc.build(story, onFirstPage=adicionar_logo, onLaterPages=adicionar_logo)
     output.seek(0)
     return output.getvalue()
 
@@ -1170,7 +1199,7 @@ elif opcao == "RELATÓRIO":
                     else:  
                         if opcao_consolidada == "Todos os Colaboradores":
                             df_filtrado = df_geral_completo.copy()
-                            prefixo_nome = f"Relatorio_Consolidado_Todos_Funcionarios"
+                            prefixo_nome = f"Relatorio_Consolidado_Todos_Colaboradores"
                         else:
                             df_filtrado = df_geral_completo[df_geral_completo["Celula_Filtro"] == opcao_consolidada]
                             prefixo_nome = f"Relatorio_Consolidado_Celula_{opcao_consolidada}"
