@@ -1062,7 +1062,7 @@ elif opcao == "RELATÓRIO":
                         # ===============================================================
                         
                         # Enviando a string calculada para a função do PDF
-                        dados_pdf_gerado = converter_para_pdf_consolidado(df_filtrado)
+                        dados_pdf_gerado = converter_para_pdf_consolidado(df_filtrado, mapeamento_usuarios)
                         
                         st.success("✅ Relatórios gerados com sucesso! Escolha o formato para baixar:")
                         
