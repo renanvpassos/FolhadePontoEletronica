@@ -988,15 +988,30 @@ elif opcao == "RELATÓRIO":
         # 2. Geramos o arquivo Excel a partir da base
         dados_excel_ind = converter_para_excel_individual(df_exportar_ind)
         
-        # 3. Criamos uma cópia exclusiva para o PDF e injetamos os dados corretos manualmente
+        # 3. Criamos uma cópia exclusiva para o PDF e injetamos os dados do funcionário
         df_para_pdf_ind = df_exportar_ind.copy()
         df_para_pdf_ind["Funcionário"] = nome_busca
         df_para_pdf_ind["E-mail"] = email_busca
         
-        # 4. Montamos o mapeamento da célula usando as variáveis locais da tela
-        mapeamento_ind = {email_busca: celula or "Não Informada"}
+        # 4. CAPTURA DA CÉLULA DIRETO DO BANCO DE DADOS (Coluna 'celula')
+        celula_banco = None
         
-        # 5. Chamamos a sua função de PDF com as colunas garantidas!
+        if hasattr(dados_pessoais, "columns") and "celula" in dados_pessoais.columns:
+            # Se dados_pessoais for um DataFrame do Pandas
+            if not dados_pessoais.empty:
+                celula_banco = dados_pessoais["celula"].iloc[0]
+        elif isinstance(dados_pessoais, list) and len(dados_pessoais) > 0:
+            # Se dados_pessoais for uma lista de dicionários (retorno padrão de query)
+            celula_banco = dados_pessoais[0].get("celula")
+            
+        # Tratamento caso o campo venha nulo ou vazio do banco de dados
+        if pd.isna(celula_banco) or celula_banco is None or str(celula_banco).strip() == "":
+            celula_banco = "Não Informada"
+        
+        # Montamos o mapeamento com a célula real recuperada do banco
+        mapeamento_ind = {email_busca: celula_banco}
+        
+        # 5. Chamamos a sua função de PDF consolidado
         dados_pdf_ind = converter_para_pdf_consolidado(df_para_pdf_ind, mapeamento_ind)
         
         # Exibe os botões de download individuais lado a lado
@@ -1019,6 +1034,9 @@ elif opcao == "RELATÓRIO":
                 mime="application/pdf",
                 use_container_width=True
             )
+
+        # --- SEÇÃO DE EXPORTAÇÃO CONSOLIDADA POR CARGOS GESTORES ---
+        if cargo_usuario in ["Supervisor", "Master"]:
             
         # --- SEÇÃO DE EXPORTAÇÃO CONSOLIDADA POR CARGOS GESTORES ---
         if cargo_usuario in ["Supervisor", "Master"]:
