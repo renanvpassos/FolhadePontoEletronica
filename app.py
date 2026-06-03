@@ -80,7 +80,7 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     output.seek(0)
     return output.getvalue()
 
-def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio=None, data_fim=None):
+def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim):
     output = BytesIO()
     doc = SimpleDocTemplate(
         output, 
@@ -107,31 +107,26 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio=None, dat
     df_copy = df.copy()
     coluna_data = 'Data'  
     
-    if coluna_data in df_copy.columns:
-        df_copy['Data_Datetime'] = pd.to_datetime(df_copy[coluna_data], errors='coerce').dt.normalize()
-    
-    if data_inicio is not None and data_fim is not None:
-        min_data = pd.to_datetime(data_inicio).floor('D')
-        max_data = pd.to_datetime(data_fim).floor('D')
-        periodo_completo = pd.date_range(start=min_data, end=max_data, freq='D')
-    else:
-        if coluna_data in df_copy.columns:
-            min_data = df_copy['Data_Datetime'].min()
-            max_data = df_copy['Data_Datetime'].max()
-            if pd.notna(min_data) and pd.notna(max_data):
-                periodo_completo = pd.date_range(start=min_data, end=max_data, freq='D')
-            else:
-                periodo_completo = []
+    # CORREÇÃO: Força a leitura correta do formato DD/MM/YYYY se houver barras na data
+    if coluna_data in df_copy.columns and not df_copy[coluna_data].empty:
+        amostra = str(df_copy[coluna_data].dropna().iloc[0])
+        if "/" in amostra:
+            df_copy['Data_Datetime'] = pd.to_datetime(df_copy[coluna_data], format='%d/%m/%Y', errors='coerce').dt.normalize()
         else:
-            min_data, max_data = None, None
-            periodo_completo = []
+            df_copy['Data_Datetime'] = pd.to_datetime(df_copy[coluna_data], errors='coerce').dt.normalize()
+    
+    min_data = pd.to_datetime(data_inicio).floor('D')
+    max_data = pd.to_datetime(data_fim).floor('D')
+    periodo_completo = pd.date_range(start=min_data, end=max_data, freq='D')
 
-    usuarios = df['E-mail'].unique()
+    usuarios = df['E-mail'].unique() if 'E-mail' in df.columns else []
     
     for i, email in enumerate(usuarios):
         df_funcionario = df_copy[df_copy['E-mail'] == email]
+        if df_funcionario.empty:
+            continue
+            
         nome_funcionario = df_funcionario['Funcionário'].iloc[0]
-        
         celula = mapeamento_celulas.get(email, "Não Informada")
         
         total_mins = 0
@@ -143,46 +138,33 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio=None, dat
         total_horas_str = f"{horas:02d}:{minutos:02d}"
         
         story.append(Paragraph(f"Relatório de Ponto: <font color='red'>{nome_funcionario}</font>", title_style))
-        
-        if pd.notna(min_data) and pd.notna(max_data):
-            data_ini_br = min_data.strftime('%d/%m/%Y')
-            data_fim_br = max_data.strftime('%d/%m/%Y')
-            story.append(Paragraph(f"<b>Período:</b> {data_ini_br} até {data_fim_br}", styles['Normal']))
-            
+        story.append(Paragraph(f"<b>Período:</b> {min_data.strftime('%d/%m/%Y')} até {max_data.strftime('%d/%m/%Y')}", styles['Normal']))
         story.append(Paragraph(f"<b>E-mail:</b> {email}", styles['Normal']))
         story.append(Paragraph(f"<b>Célula:</b> {celula}", styles['Normal']))
-        
         story.append(Paragraph(f"<b>Total de Horas Extras no Período:</b> <font color='red'>{total_horas_str}</font>", total_style))
         story.append(Spacer(1, 5))
         
-        if len(periodo_completo) > 0:
-            df_base_periodo = pd.DataFrame({'Data_Datetime': periodo_completo})
-            df_funcionario_completo = pd.merge(df_base_periodo, df_funcionario, on='Data_Datetime', how='left')
-            
-            if pd.api.types.is_datetime64_any_dtype(df[coluna_data]):
-                df_funcionario_completo[coluna_data] = df_funcionario_completo['Data_Datetime']
-            else:
-                amostra = str(df[coluna_data].dropna().iloc[0]) if not df[coluna_data].dropna().empty else ""
-                fmt = "%Y-%m-%d" if '-' in amostra else "%d/%m/%Y"
-                df_funcionario_completo[coluna_data] = df_funcionario_completo['Data_Datetime'].dt.strftime(fmt)
-            
-            if "Dia da Semana" in df.columns:
-                dias_semana_pt = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"]
-                df_funcionario_completo["Dia da Semana"] = df_funcionario_completo['Data_Datetime'].dt.weekday.map(
-                    lambda x: dias_semana_pt[int(x)] if pd.notna(x) else ""
-                )
-            
-            colunas_exibicao = [col for col in df.columns if col not in ["Funcionário", "E-mail", "Data_Datetime"]]
-            df_tabela = df_funcionario_completo[colunas_exibicao]
-        else:
-            df_tabela = df_funcionario.drop(columns=["Funcionário", "E-mail"]) 
+        # Garante o preenchimento visual de todos os dias do intervalo no PDF
+        df_base_periodo = pd.DataFrame({'Data_Datetime': periodo_completo})
+        df_funcionario_completo = pd.merge(df_base_periodo, df_funcionario, on='Data_Datetime', how='left')
+        
+        df_funcionario_completo[coluna_data] = df_funcionario_completo['Data_Datetime'].dt.strftime('%d/%m/%Y')
+        
+        if "Dia da Semana" in df.columns:
+            dias_semana_pt = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"]
+            df_funcionario_completo["Dia da Semana"] = df_funcionario_completo['Data_Datetime'].dt.weekday.map(
+                lambda x: dias_semana_pt[int(x)] if pd.notna(x) else ""
+            )
+        
+        colunas_exibicao = [col for col in df.columns if col not in ["Funcionário", "E-mail", "Data_Datetime"]]
+        df_tabela = df_funcionario_completo[colunas_exibicao].fillna("")
         
         dados_tabela = []
         header_row = [Paragraph(f"<b>{col}</b>", header_style) for col in df_tabela.columns]
         dados_tabela.append(header_row)
         
         for _, row in df_tabela.iterrows():
-            linha = [Paragraph(str(val) if val is not None and not pd.isna(val) else "", cell_style) for val in row]
+            linha = [Paragraph(str(val).strip() if val != "" else "", cell_style) for val in row]
             dados_tabela.append(linha)
             
         tabela = Table(dados_tabela, repeatRows=1)
