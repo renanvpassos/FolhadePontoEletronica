@@ -84,12 +84,11 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
 def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim):
     output = BytesIO()
     
-    # CORREÇÃO/AJUSTE: Aumentamos o topMargin de 15 para 45 para que o texto do 
-    # story não fique em cima da logo que será desenhada no cabeçalho.
+    # Ajustamos o topMargin para 50 para acomodar perfeitamente a logo minimalista no topo
     doc = SimpleDocTemplate(
         output, 
         pagesize=landscape(A4), 
-        rightMargin=15, leftMargin=15, topMargin=45, bottomMargin=15
+        rightMargin=15, leftMargin=15, topMargin=50, bottomMargin=15
     )
     story = []
     styles = getSampleStyleSheet()
@@ -99,29 +98,34 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
     cell_style = ParagraphStyle('CeluaPDF', parent=styles['Normal'], fontSize=6, fontName="Helvetica")
     total_style = ParagraphStyle('TotalPDF', parent=styles['Normal'], fontSize=10, fontName="Helvetica-Bold", textColor=colors.HexColor("#1E3A8A"), spaceBefore=5, spaceAfter=10)
     
-    # --- Download e conversão da logo a partir da URL ---
+    # --- CORREÇÃO DO DOWNLOAD: Adicionado Headers para evitar bloqueio do site ---
     url_logo = "https://i.ibb.co/C53b92rs/logoMult.png"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36"
+    }
     try:
-        response = requests.get(url_logo, timeout=5)
+        response = requests.get(url_logo, headers=headers, timeout=10)
+        response.raise_for_status() # Garante que o download foi feito com sucesso (Status 200)
         logo_img = ImageReader(BytesIO(response.content))
-    except Exception:
-        logo_img = None # Caso o link falhe ou esteja sem internet, o PDF ainda gera sem quebrar o código
+    except Exception as e:
+        print(f"Aviso: Não foi possível baixar a logo devido ao erro: {e}")
+        logo_img = None
 
-    # --- Função que desenha a logo no topo da folha ---
+    # --- AJUSTE: Logo posicionada de forma minimalista no canto superior direito ---
     def adicionar_logo(canvas, doc):
         if logo_img:
             canvas.saveState()
-            # Dimensões da folha A4 em modo Paisagem (Landscape): 842 de largura x 595 de altura
-            largura_logo = 90
-            altura_logo = 30
             
-            # Posicionamento no canto superior direito
-            x = 842 - 15 - largura_logo  # Largura total - Margem Direita - Largura do Elemento
-            y = 595 - 12 - altura_logo   # Altura total - Margem Superior - Altura do Elemento
+            # Dimensões bem discretas e minimalistas
+            largura_logo = 60  
+            altura_logo = 20   
+            
+            # Afastamento seguro de 22 pixels das bordas da página (A4 Landscape: 842 x 595)
+            x = 842 - 22 - largura_logo  
+            y = 595 - 22 - altura_logo   
             
             canvas.drawImage(logo_img, x, y, width=largura_logo, height=altura_logo, mask='auto')
             canvas.restoreState()
-    # --------------------------------------------------------------
     
     def _extrair_minutos(val):
         try:
@@ -135,7 +139,6 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
     df_copy = df.copy()
     coluna_data = 'Data'  
     
-    # CORREÇÃO: Força a leitura correta do formato DD/MM/YYYY se houver barras na data
     if coluna_data in df_copy.columns and not df_copy[coluna_data].empty:
         amostra = str(df_copy[coluna_data].dropna().iloc[0])
         if "/" in amostra:
@@ -172,7 +175,6 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         story.append(Paragraph(f"<b>Total de Horas Extras no Período:</b> <font color='red'>{total_horas_str}</font>", total_style))
         story.append(Spacer(1, 5))
         
-        # Garante o preenchimento visual de todos os dias do intervalo no PDF
         df_base_periodo = pd.DataFrame({'Data_Datetime': periodo_completo})
         df_funcionario_completo = pd.merge(df_base_periodo, df_funcionario, on='Data_Datetime', how='left')
         
@@ -209,7 +211,6 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         if i < len(usuarios) - 1:
             story.append(PageBreak())
     
-    # Função 'adicionar_logo' para os parâmetros do build
     doc.build(story, onFirstPage=adicionar_logo, onLaterPages=adicionar_logo)
     output.seek(0)
     return output.getvalue()
