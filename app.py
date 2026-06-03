@@ -45,6 +45,7 @@ def converter_para_pdf_consolidado(df):
     for i, email in enumerate(usuarios):
         df_funcionario = df[df['E-mail'] == email]
         nome_funcionario = df_funcionario['Funcionário'].iloc[0]
+        celula = df_filtrado['Nome_Da_Coluna_Aqui'].iloc[0]
         
         # === CÁLCULO DE HORAS EXTRAS DO FUNCIONÁRIO ATUAL ===
         total_mins = 0
