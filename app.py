@@ -1064,7 +1064,7 @@ elif opcao == "RELATÓRIO":
                         # ===============================================================
                         
                         # Enviando a string calculada para a função do PDF
-                        dados_pdf_gerado = converter_para_pdf_consolidado(df_filtrado, total_horas_extras_str)
+                        dados_pdf_gerado = converter_para_pdf_consolidado(df_filtra
                         
                         st.success("✅ Relatórios gerados com sucesso! Escolha o formato para baixar:")
                         
