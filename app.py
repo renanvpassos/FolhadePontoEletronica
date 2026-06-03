@@ -1223,7 +1223,7 @@ elif opcao == "RELATÓRIO":
                         total_mins = df_filtrado["Hora Extra"].apply(_extrair_minutos).sum()
                         total_horas_extras_str = f"{total_mins // 60:02d}:{total_mins % 60:02d}"
                         
-                        dados_pdf_gerado = converter_para_pdf_consolidado(df_filtrado, mapeamento_celulas)
+                        dados_pdf_gerado = converter_para_pdf_consolidado(df_filtrado, mapeamento_celulas, data_inicio, data_fim)
                         
                         st.success("✅ Relatórios gerados com sucesso! Escolha o formato para baixar:")
                         
