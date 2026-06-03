@@ -11,7 +11,7 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
-def converter_para_pdf_individual(df, mapeamento_celulas):
+def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celulas):
     output = BytesIO()
     doc = SimpleDocTemplate(
         output, 
@@ -45,10 +45,14 @@ def converter_para_pdf_individual(df, mapeamento_celulas):
     minutos = total_mins % 60
     total_horas_str = f"{horas:02d}:{minutos:02d}"
     
-    # Cabeçalho estruturado com os parâmetros diretos
+    # BUSCA DA CÉLULA: Idêntica à lógica do consolidado utilizando o e-mail como chave
+    celula = mapeamento_celulas.get(email, "Não Informada")
+    
+    # Cabeçalho estruturado com as informações tratadas
     story.append(Paragraph(f"Relatório de Ponto: <font color='red'>{nome_funcionario}</font>", title_style))
     story.append(Paragraph(f"<b>E-mail:</b> {email}", styles['Normal']))
     story.append(Paragraph(f"<b>Célula:</b> {celula}", styles['Normal']))
+    
     story.append(Paragraph(f"<b>Total de Horas Extras no Período:</b> <font color='red'>{total_horas_str}</font>", total_style))
     story.append(Spacer(1, 5))
     
@@ -75,6 +79,7 @@ def converter_para_pdf_individual(df, mapeamento_celulas):
     doc.build(story)
     output.seek(0)
     return output.getvalue()
+
 
 def converter_para_pdf_consolidado(df, mapeamento_celulas):
     output = BytesIO()
@@ -107,8 +112,7 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas):
         df_funcionario = df[df['E-mail'] == email]
         nome_funcionario = df_funcionario['Funcionário'].iloc[0]
         
-        # CORREÇÃO AQUI: Busca a célula no dicionário usando o e-mail como chave
-        # Se não encontrar o e-mail no dicionário, ele exibe "Não Informada"
+        # Busca a célula no dicionário usando o e-mail como chave
         celula = mapeamento_celulas.get(email, "Não Informada")
         
         # === CÁLCULO DE HORAS EXTRAS ===
@@ -707,6 +711,16 @@ elif opcao == "RELATÓRIO":
     except Exception:
         st.error("Erro ao verificar nível de acesso do usuário.")
 
+    # === ALINHAMENTO CENTRAL DE CÉLULAS ===
+    # Cria o mapeamento oficial e-mail -> célula logo no início para ser usado em todo o escopo do menu
+    mapeamento_celulas = {}
+    try:
+        busca_mapeamento = supabase.table("usuarios_ponto").select("email, celula").execute()
+        if busca_mapeamento.data:
+            mapeamento_celulas = {u['email']: u.get('celula') for u in busca_mapeamento.data}
+    except Exception:
+        st.warning("Não foi possível carregar o mapeamento completo de células.")
+
     lista_todos_usuarios = []
     
     # Lógica de Filtragem de Usuários por Cargo
@@ -958,7 +972,7 @@ elif opcao == "RELATÓRIO":
                     sucessos = 0
                     erros = 0
                     
-                    mapeamento_colunas = {
+                    mapeamento_colunas_db = {
                         "Entrada": "horario_entrada",
                         "Justificativa Entrada": "justificativa_entrada",
                         "Saída Almoço": "saida_almoco",
@@ -984,7 +998,7 @@ elif opcao == "RELATÓRIO":
                             
                         update_dict = {}
                         for col_df, novo_valor in colunas_alteradas.items():
-                            col_banco = mapeamento_colunas.get(col_df)
+                            col_banco = mapeamento_colunas_db.get(col_df)
                             if not col_banco:
                                 continue
                             
@@ -1035,6 +1049,7 @@ elif opcao == "RELATÓRIO":
                                     }
                                     insert_dict.update(update_dict)
                                     supabase.table("registro_ponto").insert(insert_dict).execute()
+                                # Incrementa o contador de sucessos de forma correta por operação realizada
                                 sucessos += 1
                             except Exception as e:
                                 st.error(f"Erro ao salvar alteração de {nome_busca} (Linha {idx_linha + 1}): {e}")
@@ -1053,12 +1068,8 @@ elif opcao == "RELATÓRIO":
         # 2. Geramos o arquivo Excel
         dados_excel_ind = converter_para_excel_individual(df_exportar_ind)
         
-        # 3. Identificamos a célula correta do usuário logado/buscado
-        # (Usando a variável 'celula_usuario' que você já validou na tela do Streamlit)
-        celula_atual = celula_usuario or "Não Informada"
-        
-        # 4. Chamamos a nova função individual sem gambiarras!
-        dados_pdf_ind = converter_para_pdf_individual(df_exportar_ind, mapeamento_celulas)
+        # 3. Chamamos a nova função individual enviando todos os parâmetros requeridos de forma limpa!
+        dados_pdf_ind = converter_para_pdf_individual(df_exportar_ind, nome_busca, email_busca, mapeamento_celulas)
         
         # Exibe os botões de download individuais lado a lado
         col_down_ind1, col_down_ind2 = st.columns(2)
@@ -1111,12 +1122,8 @@ elif opcao == "RELATÓRIO":
                 else:
                     df_geral_completo = processar_dados_ponto(dados_gerais_banco, data_inicio, data_fim, incluir_usuario_info=True, formatar_data_br=True)
 
-                    mapeamento_usuarios = {}
-                    try:
-                        mapeamento_usuarios = {u['email']: u.get('celula') for u in supabase.table("usuarios_ponto").select("email, celula").execute().data or []}
-                        df_geral_completo["Celula_Filtro"] = df_geral_completo["E-mail"].map(mapeamento_usuarios)
-                    except Exception:
-                        df_geral_completo["Celula_Filtro"] = None
+                    # Vincula a coluna de filtro usando o mapeamento global centralizado
+                    df_geral_completo["Celula_Filtro"] = df_geral_completo["E-mail"].map(mapeamento_celulas)
         
                     if cargo_usuario == "Supervisor":
                         df_filtrado = df_geral_completo[df_geral_completo["Celula_Filtro"] == celula_usuario]
@@ -1135,19 +1142,16 @@ elif opcao == "RELATÓRIO":
                     if df_filtrado.empty:
                         st.warning("Nenhum dado localizado para os critérios selecionados.")
                     else:
-                        # === ALTERAÇÃO AQUI: Ordena o DataFrame em ordem alfabética pelo nome do Funcionário ===
                         if "Funcionário" in df_filtrado.columns:
                             df_filtrado = df_filtrado.sort_values(
                                 by="Funcionário", 
                                 key=lambda col: col.str.lower(),
-                                kind="mergesort"  # Garante estabilidade para manter as datas ordenadas por funcionário
+                                kind="mergesort"
                             )
-                        # ======================================================================================
 
                         # GERAÇÃO DOS ARQUIVOS (EXCEL E PDF)
                         dados_excel_multiaba = converter_para_excel_multiaba(df_filtrado)
                         
-                        # === LÓGICA ADICIONADA: CÁLCULO DO SOMATÓRIO DAS HORAS EXTRAS ===
                         def _extrair_minutos(val):
                             try:
                                 h, m = map(int, str(val).split(':'))
@@ -1157,10 +1161,9 @@ elif opcao == "RELATÓRIO":
                         
                         total_mins = df_filtrado["Hora Extra"].apply(_extrair_minutos).sum()
                         total_horas_extras_str = f"{total_mins // 60:02d}:{total_mins % 60:02d}"
-                        # ===============================================================
                         
-                        # Enviando a string calculada para a função do PDF (Agora ordenado alfabeticamente)
-                        dados_pdf_gerado = converter_para_pdf_consolidado(df_filtrado, mapeamento_usuarios)
+                        # Enviando o mapeamento centralizado de células para o PDF Consolidado
+                        dados_pdf_gerado = converter_para_pdf_consolidado(df_filtrado, mapeamento_celulas)
                         
                         st.success("✅ Relatórios gerados com sucesso! Escolha o formato para baixar:")
                         
