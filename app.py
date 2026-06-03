@@ -188,7 +188,7 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         df_funcionario_completo[coluna_data] = df_funcionario_completo['Data_Datetime'].dt.strftime('%d/%m/%Y')
         
         if "Dia da Semana" in df.columns:
-            dias_semana_pt = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "<b>Sábado</b>", "<b>Domingo<b>"]
+            dias_semana_pt = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"]
             df_funcionario_completo["Dia da Semana"] = df_funcionario_completo['Data_Datetime'].dt.weekday.map(
                 lambda x: dias_semana_pt[int(x)] if pd.notna(x) else ""
             )
@@ -850,7 +850,7 @@ elif opcao == "RELATÓRIO":
         st.error("Erro: A data inicial não pode ser maior que a data final.")
     else:
         def processar_dados_ponto(dados, dt_inicio, dt_fim, incluir_usuario_info=False, formatar_data_br=False):
-            dias_semana = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "<b>Sábado</b>", "<b>Domingo<b>"]
+            dias_semana = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"]
             
             ordem_individual = ["Dia da Semana", "Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", "Hora Extra", "Justificativa Entrada", "Justificativa Saída Almoço", "Justificativa Retorno Almoço", "Justificativa Saída"]
             ordem_consolidada = ["Funcionário", "E-mail", "Dia da Semana", "Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", "Hora Extra", "Justificativa Entrada", "Justificativa Saída Almoço", "Justificativa Retorno Almoço", "Justificativa Saída"]
