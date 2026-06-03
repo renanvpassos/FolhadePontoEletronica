@@ -26,6 +26,19 @@ def converter_para_pdf_consolidado(df):
     header_style = ParagraphStyle('HeaderPDF', parent=styles['Normal'], fontSize=6.5, textColor=colors.white, fontName="Helvetica-Bold")
     cell_style = ParagraphStyle('CeluaPDF', parent=styles['Normal'], fontSize=6, fontName="Helvetica")
     
+    # Novo estilo para destacar o total de horas extras de cada funcionário
+    total_style = ParagraphStyle('TotalPDF', parent=styles['Normal'], fontSize=10, fontName="Helvetica-Bold", textColor=colors.HexColor("#1E3A8A"), spaceBefore=5, spaceAfter=10)
+    
+    # Função interna auxiliar para converter HH:MM em minutos puros
+    def _extrair_minutos(val):
+        try:
+            if pd.isna(val) or str(val).strip() == "" or ":" not in str(val):
+                return 0
+            h, m = map(int, str(val).split(':'))
+            return h * 60 + m
+        except:
+            return 0
+            
     # 1. Agrupar os dados por funcionário (usando E-mail como chave única)
     usuarios = df['E-mail'].unique()
     
@@ -33,13 +46,25 @@ def converter_para_pdf_consolidado(df):
         df_funcionario = df[df['E-mail'] == email]
         nome_funcionario = df_funcionario['Funcionário'].iloc[0]
         
+        # === CÁLCULO DE HORAS EXTRAS DO FUNCIONÁRIO ATUAL ===
+        total_mins = 0
+        if "Hora Extra" in df_funcionario.columns:
+            total_mins = df_funcionario["Hora Extra"].apply(_extrair_minutos).sum()
+        
+        horas = total_mins // 60
+        minutos = total_mins % 60
+        total_horas_str = f"{horas:02d}:{minutos:02d}"
+        # ===================================================
+        
         # Título da página do funcionário
         story.append(Paragraph(f"Relatório de Ponto: {nome_funcionario}", title_style))
-        story.append(Paragraph(f"E-mail: {email}", styles['Normal']))
-        story.append(Spacer(1, 10))
+        story.append(Paragraph(f"<b>E-mail:</b> {email}", styles['Normal']))
+        
+        # Adiciona a informação do total de horas extras logo abaixo do e-mail
+        story.append(Paragraph(f"<b>Total de Horas Extras no Período:</b> {total_horas_str}", total_style))
+        story.append(Spacer(1, 5))
         
         # Preparar dados da tabela (Removendo colunas de identificação para não repetir em cada linha)
-        # Se quiser manter as colunas Nome/Email na tabela, pule o .drop abaixo
         df_tabela = df_funcionario.drop(columns=["Funcionário", "E-mail"]) 
         
         dados_tabela = []
@@ -47,7 +72,7 @@ def converter_para_pdf_consolidado(df):
         dados_tabela.append(header_row)
         
         for _, row in df_tabela.iterrows():
-            linha = [Paragraph(str(val) if val is not None else "", cell_style) for val in row]
+            linha = [Paragraph(str(val) if val is not None and not pd.isna(val) else "", cell_style) for val in row]
             dados_tabela.append(linha)
             
         tabela = Table(dados_tabela, repeatRows=1)
