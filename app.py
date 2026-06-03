@@ -1025,7 +1025,21 @@ elif opcao == "RELATÓRIO":
                     else:
                         # GERAÇÃO DOS ARQUIVOS (EXCEL E PDF)
                         dados_excel_multiaba = converter_para_excel_multiaba(df_filtrado)
-                        dados_pdf_gerado = converter_para_pdf_consolidado(df_filtrado)
+                        
+                        # === LÓGICA ADICIONADA: CÁLCULO DO SOMATÓRIO DAS HORAS EXTRAS ===
+                        def _extrair_minutos(val):
+                            try:
+                                h, m = map(int, str(val).split(':'))
+                                return h * 60 + m
+                            except:
+                                return 0
+                        
+                        total_mins = df_filtrado["Hora Extra"].apply(_extrair_minutos).sum()
+                        total_horas_extras_str = f"{total_mins // 60:02d}:{total_mins % 60:02d}"
+                        # ===============================================================
+                        
+                        # Enviando a string calculada para a função do PDF
+                        dados_pdf_gerado = converter_para_pdf_consolidado(df_filtrado, total_horas_extras_str)
                         
                         st.success("✅ Relatórios gerados com sucesso! Escolha o formato para baixar:")
                         
