@@ -1037,9 +1037,6 @@ elif opcao == "RELATÓRIO":
 
         # --- SEÇÃO DE EXPORTAÇÃO CONSOLIDADA POR CARGOS GESTORES ---
         if cargo_usuario in ["Supervisor", "Master"]:
-            
-        # --- SEÇÃO DE EXPORTAÇÃO CONSOLIDADA POR CARGOS GESTORES ---
-        if cargo_usuario in ["Supervisor", "Master"]:
             st.write("---")
             st.markdown("### 🗂️ Exportação Geral da Equipe (Consolidada)")
             
