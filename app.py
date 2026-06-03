@@ -983,14 +983,27 @@ elif opcao == "RELATÓRIO":
         
         df_exportar_ind = processar_dados_ponto(dados_pessoais, data_inicio, data_fim, incluir_usuario_info=False, formatar_data_br=True)
         dados_excel_ind = converter_para_excel_individual(df_exportar_ind)
+        dados_pdf_ind = converter_para_pdf_individual(df_exportar_ind, nome_busca)
         
-        st.download_button(
-            label="📥 Baixar Espelho de Ponto (Excel)",
-            data=dados_excel_ind,
-            file_name=f"Espelho_Ponto_{nome_busca.replace(' ', '_')}_{data_inicio}_a_{data_fim}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
-        )
+        col_down_ind1, col_down_ind2 = st.columns(2)
+        
+        with col_down_ind1:
+            st.download_button(
+                label="📥 Baixar Espelho de Ponto (Excel)",
+                data=dados_excel_ind,
+                file_name=f"Espelho_Ponto_{nome_busca.replace(' ', '_')}_{data_inicio}_a_{data_fim}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+            
+        with col_down_ind2:
+            st.download_button(
+                label="📄 Baixar Espelho de Ponto (PDF)",
+                data=dados_pdf_ind,
+                file_name=f"Espelho_Ponto_{nome_busca.replace(' ', '_')}_{data_inicio}_a_{data_fim}.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
 
         # --- SEÇÃO DE EXPORTAÇÃO CONSOLIDADA POR CARGOS GESTORES ---
         if cargo_usuario in ["Supervisor", "Master"]:
