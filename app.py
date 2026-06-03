@@ -1058,7 +1058,7 @@ elif opcao == "RELATÓRIO":
         celula_atual = celula_usuario or "Não Informada"
         
         # 4. Chamamos a nova função individual sem gambiarras!
-        dados_pdf_ind = converter_para_pdf_individual(df_exportar_ind, nome_busca, email_busca, celula_atual)
+        dados_pdf_ind = converter_para_pdf_individual(df_exportar_ind, mapeamento_celulas)
         
         # Exibe os botões de download individuais lado a lado
         col_down_ind1, col_down_ind2 = st.columns(2)
