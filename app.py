@@ -11,6 +11,71 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
+def converter_para_pdf_individual(df, nome_funcionario, email, celula):
+    output = BytesIO()
+    doc = SimpleDocTemplate(
+        output, 
+        pagesize=landscape(A4), 
+        rightMargin=15, leftMargin=15, topMargin=15, bottomMargin=15
+    )
+    story = []
+    styles = getSampleStyleSheet()
+    
+    # Mantém o mesmo padrão visual do consolidado
+    title_style = ParagraphStyle('TituloPDF', parent=styles['Heading1'], fontSize=14, textColor=colors.HexColor("#1E3A8A"), spaceAfter=10)
+    header_style = ParagraphStyle('HeaderPDF', parent=styles['Normal'], fontSize=6.5, textColor=colors.white, fontName="Helvetica-Bold")
+    cell_style = ParagraphStyle('CeluaPDF', parent=styles['Normal'], fontSize=6, fontName="Helvetica")
+    total_style = ParagraphStyle('TotalPDF', parent=styles['Normal'], fontSize=10, fontName="Helvetica-Bold", textColor=colors.HexColor("#1E3A8A"), spaceBefore=5, spaceAfter=10)
+    
+    def _extrair_minutos(val):
+        try:
+            if pd.isna(val) or str(val).strip() == "" or ":" not in str(val):
+                return 0
+            h, m = map(int, str(val).split(':'))
+            return h * 60 + m
+        except:
+            return 0
+            
+    # === CÁLCULO DE HORAS EXTRAS ===
+    total_mins = 0
+    if "Hora Extra" in df.columns:
+        total_mins = df["Hora Extra"].apply(_extrair_minutos).sum()
+    
+    horas = total_mins // 60
+    minutos = total_mins % 60
+    total_horas_str = f"{horas:02d}:{minutos:02d}"
+    
+    # Cabeçalho estruturado com os parâmetros diretos
+    story.append(Paragraph(f"Relatório de Ponto: <font color='red'>{nome_funcionario}</font>", title_style))
+    story.append(Paragraph(f"<b>E-mail:</b> {email}", styles['Normal']))
+    story.append(Paragraph(f"<b>Célula:</b> {celula}", styles['Normal']))
+    story.append(Paragraph(f"<b>Total de Horas Extras no Período:</b> <font color='red'>{total_horas_str}</font>", total_style))
+    story.append(Spacer(1, 5))
+    
+    # Montagem da tabela (o DF aqui já vem limpo, sem colunas repetidas de Nome/Email)
+    dados_tabela = []
+    header_row = [Paragraph(f"<b>{col}</b>", header_style) for col in df.columns]
+    dados_tabela.append(header_row)
+    
+    for _, row in df.iterrows():
+        linha = [Paragraph(str(val) if val is not None and not pd.isna(val) else "", cell_style) for val in row]
+        dados_tabela.append(linha)
+        
+    tabela = Table(dados_tabela, repeatRows=1)
+    tabela.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1E3A8A")),
+        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#D1D5DB")),
+        ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor("#F9FAFB")]),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+    ]))
+    
+    story.append(tabela)
+    
+    doc.build(story)
+    output.seek(0)
+    return output.getvalue()
+
 def converter_para_pdf_consolidado(df, mapeamento_celulas):
     output = BytesIO()
     doc = SimpleDocTemplate(
@@ -982,37 +1047,18 @@ elif opcao == "RELATÓRIO":
             st.dataframe(df_visualizacao, use_container_width=True, hide_index=True, column_order=ordem_colunas_tela)
         
         # --- PROCESSAMENTO E EXPORTAÇÃO INDIVIDUAL ---
-        # 1. Geramos o DataFrame base (com todos os dias do calendário certinhos)
+        # 1. Geramos o DataFrame do ponto (limpo e formatado)
         df_exportar_ind = processar_dados_ponto(dados_pessoais, data_inicio, data_fim, incluir_usuario_info=False, formatar_data_br=True)
         
-        # 2. Geramos o arquivo Excel a partir da base
+        # 2. Geramos o arquivo Excel
         dados_excel_ind = converter_para_excel_individual(df_exportar_ind)
         
-        # 3. Criamos uma cópia exclusiva para o PDF e injetamos os dados do funcionário
-        df_para_pdf_ind = df_exportar_ind.copy()
-        df_para_pdf_ind["Funcionário"] = nome_busca
-        df_para_pdf_ind["E-mail"] = email_busca
+        # 3. Identificamos a célula correta do usuário logado/buscado
+        # (Usando a variável 'celula_usuario' que você já validou na tela do Streamlit)
+        celula_atual = celula_usuario or "Não Informada"
         
-        # 4. CAPTURA DA CÉLULA DIRETO DO BANCO DE DADOS (Coluna 'celula')
-        celula_banco = None
-        
-        if hasattr(dados_pessoais, "columns") and "celula" in dados_pessoais.columns:
-            # Se dados_pessoais for um DataFrame do Pandas
-            if not dados_pessoais.empty:
-                celula_banco = dados_pessoais["celula"].iloc[0]
-        elif isinstance(dados_pessoais, list) and len(dados_pessoais) > 0:
-            # Se dados_pessoais for uma lista de dicionários (retorno padrão de query)
-            celula_banco = dados_pessoais[0].get("celula")
-            
-        # Tratamento caso o campo venha nulo ou vazio do banco de dados
-        if pd.isna(celula_banco) or celula_banco is None or str(celula_banco).strip() == "":
-            celula_banco = "Não Informada"
-        
-        # Montamos o mapeamento com a célula real recuperada do banco
-        mapeamento_ind = {email_busca: celula_banco}
-        
-        # 5. Chamamos a sua função de PDF consolidado
-        dados_pdf_ind = converter_para_pdf_consolidado(df_para_pdf_ind, mapeamento_ind)
+        # 4. Chamamos a nova função individual sem gambiarras!
+        dados_pdf_ind = converter_para_pdf_individual(df_exportar_ind, nome_busca, email_busca, celula_atual)
         
         # Exibe os botões de download individuais lado a lado
         col_down_ind1, col_down_ind2 = st.columns(2)
