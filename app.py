@@ -83,7 +83,6 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
 def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim):
     output = BytesIO()
     
-    # Retornamos a margem para um tamanho padrão equilibrado
     doc = SimpleDocTemplate(
         output, 
         pagesize=landscape(A4), 
@@ -97,19 +96,28 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
     cell_style = ParagraphStyle('CeluaPDF', parent=styles['Normal'], fontSize=6, fontName="Helvetica")
     total_style = ParagraphStyle('TotalPDF', parent=styles['Normal'], fontSize=10, fontName="Helvetica-Bold", textColor=colors.HexColor("#1E3A8A"), spaceBefore=5, spaceAfter=10)
     
-    # --- DOWNLOAD DOS BYTES DA LOGO (Feito uma única vez para performance) ---
+    # Estilo temporário para avisar se o download falhou
+    erro_style = ParagraphStyle('ErroStyle', parent=styles['Normal'], fontSize=8, textColor=colors.red, fontName="Helvetica-Bold")
+
+    # --- TENTATIVA DE DOWNLOAD ---
     url_logo = "https://i.ibb.co/C53b92rs/logoMult.png"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
-    }
+    headers = {"User-Agent": "Mozilla/5.0"}
     
-    logo_bytes = None
+    logo_source = None
+    erro_download_msg = None
+
     try:
-        response = requests.get(url_logo, headers=headers, timeout=10)
-        response.raise_for_status()
-        logo_bytes = response.content
+        # Se você preferir usar o arquivo baixado localmente (RECOMENDADO), 
+        # basta descomentar a linha abaixo e colocar o caminho da imagem:
+        # logo_source = "logoMult.png" 
+        
+        if not logo_source:
+            response = requests.get(url_logo, headers=headers, timeout=5)
+            response.raise_for_status()
+            logo_source = BytesIO(response.content)
+            
     except Exception as e:
-        print(f"Aviso: Não foi possível baixar a logo da URL. Erro: {e}")
+        erro_download_msg = f"[LOGO NÃO ENCONTRADA - ERRO: {str(e)[:30]}]"
 
     def _extrair_minutos(val):
         try:
@@ -152,18 +160,21 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         minutos = total_mins % 60
         total_horas_str = f"{horas:02d}:{minutos:02d}"
         
-        # --- BLOCO DA LOGO: Inserida de forma minimalista acima do título ---
-        if logo_bytes:
+        # --- EXIBIÇÃO DA LOGO OU DO ERRO NO PDF ---
+        if logo_source:
             try:
-                # Cria o elemento de imagem interpretando os bytes salvos
-                logo_flowable = Image(BytesIO(logo_bytes), width=75, height=25)
-                logo_flowable.hAlign = 'RIGHT'
+                logo_flowable = Image(logo_source, width=75, height=25)
+                logo_flowable.hAlign = 'LEFT'
                 story.append(logo_flowable)
-                story.append(Spacer(1, 8))     # Pequeno espaço entre a logo e o título
+                story.append(Spacer(1, 8))
             except Exception as img_err:
-                print(f"Erro ao inserir imagem no relatório de {nome_funcionario}: {img_err}")
+                story.append(Paragraph(f"[ERRO AO RENDERIZAR IMAGEM: {img_err}]", erro_style))
+        else:
+            # Se não aparecer a imagem, ISSO AQUI vai aparecer no PDF te dizendo o motivo
+            story.append(Paragraph(erro_download_msg, erro_style))
+            story.append(Spacer(1, 8))
         
-        # Informações do cabeçalho do funcionário
+        # Informações do cabeçalho
         story.append(Paragraph(f"Relatório de Ponto: <font color='red'>{nome_funcionario}</font>", title_style))
         story.append(Paragraph(f"<b>Período:</b> {min_data.strftime('%d/%m/%Y')} até {max_data.strftime('%d/%m/%Y')}", styles['Normal']))
         story.append(Paragraph(f"<b>E-mail:</b> {email}", styles['Normal']))
@@ -171,7 +182,6 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         story.append(Paragraph(f"<b>Total de Horas Extras no Período:</b> <font color='red'>{total_horas_str}</font>", total_style))
         story.append(Spacer(1, 5))
         
-        # Garante o preenchimento visual de todos os dias do intervalo no PDF
         df_base_periodo = pd.DataFrame({'Data_Datetime': periodo_completo})
         df_funcionario_completo = pd.merge(df_base_periodo, df_funcionario, on='Data_Datetime', how='left')
         
@@ -208,7 +218,6 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         if i < len(usuarios) - 1:
             story.append(PageBreak())
     
-    # O build agora volta a ser simples, pois a imagem já faz parte da estrutura do 'story'
     doc.build(story)
     output.seek(0)
     return output.getvalue()
