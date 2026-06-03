@@ -994,7 +994,7 @@ elif opcao == "RELATÓRIO":
         df_para_pdf_ind["E-mail"] = email_busca
         
         # 4. Montamos o mapeamento da célula usando as variáveis locais da tela
-        mapeamento_ind = {email_busca: celula_usuario or "Não Informada"}
+        mapeamento_ind = {email_busca: celula or "Não Informada"}
         
         # 5. Chamamos a sua função de PDF com as colunas garantidas!
         dados_pdf_ind = converter_para_pdf_consolidado(df_para_pdf_ind, mapeamento_ind)
