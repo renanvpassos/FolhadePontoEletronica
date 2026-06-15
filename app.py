@@ -143,16 +143,17 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
     doc = SimpleDocTemplate(
         output, 
         pagesize=landscape(A4), 
-        rightMargin=15, leftMargin=15, topMargin=10, bottomMargin=10  # Margens ligeiramente reduzidas para dar mais margem vertical
+        rightMargin=15, leftMargin=15, topMargin=10, bottomMargin=10
     )
     story = []
     styles = getSampleStyleSheet()
     
-    # --- AJUSTE FINO: Pequena redução para garantir o 15º dia sem quebras ---
     title_style = ParagraphStyle('TituloPDF', parent=styles['Heading1'], fontSize=13, textColor=colors.HexColor("#1E3A8A"), spaceAfter=4)
-    
     header_style = ParagraphStyle('HeaderPDF', parent=styles['Normal'], fontSize=9.5, leading=12, textColor=colors.white, fontName="Helvetica-Bold", alignment=1)
+    
+    # --- ESTILOS DAS CÉLULAS (Normal e Negrito) ---
     cell_style = ParagraphStyle('CeluaPDF', parent=styles['Normal'], fontSize=8.5, leading=11, fontName="Helvetica", alignment=1)
+    cell_bold_style = ParagraphStyle('CelulaNegritoPDF', parent=styles['Normal'], fontSize=8.5, leading=11, fontName="Helvetica-Bold", alignment=1)
     
     total_style = ParagraphStyle('TotalPDF', parent=styles['Normal'], fontSize=9.5, fontName="Helvetica-Bold", textColor=colors.HexColor("#1E3A8A"), spaceBefore=2, spaceAfter=2)
     erro_style = ParagraphStyle('ErroStyle', parent=styles['Normal'], fontSize=8, textColor=colors.red, fontName="Helvetica-Bold")
@@ -302,7 +303,11 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
                 if col_name == "Hora Extra" and val_str == "00:00":
                     val_str = ""
                 
-                linha.append(Paragraph(val_str, cell_style))
+                # --- APLICANDO NEGRITO NAS COLUNAS ESPECÍFICAS ---
+                if col_name in ["Dia / Data", "Hora Extra"]:
+                    linha.append(Paragraph(val_str, cell_bold_style))
+                else:
+                    linha.append(Paragraph(val_str, cell_style))
                 
             dados_tabela.append(linha)
             
@@ -331,7 +336,6 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         tabela = Table(dados_tabela, repeatRows=1)
         tabela.hAlign = 'CENTER'
         
-        # --- AJUSTE FINO: Padding reduzido para 3.0 para travar tudo em 1 página com segurança ---
         estilos_base = [
             ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1E3A8A")),
             ('ALIGN', (0,0), (-1,-1), 'CENTER'),
