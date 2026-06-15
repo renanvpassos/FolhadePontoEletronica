@@ -148,11 +148,11 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
     story = []
     styles = getSampleStyleSheet()
     
-    # --- AJUSTE: Fontes e espaçamentos aumentados em 50% conforme solicitado ---
+    # --- Fontes e espaçamentos ---
     title_style = ParagraphStyle('TituloPDF', parent=styles['Heading1'], fontSize=18, textColor=colors.HexColor("#1E3A8A"), spaceAfter=6)
     
-    header_style = ParagraphStyle('HeaderPDF', parent=styles['Normal'], fontSize=12, leading=15, textColor=colors.white, fontName="Helvetica-Bold", alignment=1)
-    cell_style = ParagraphStyle('CeluaPDF', parent=styles['Normal'], fontSize=11, leading=14, fontName="Helvetica", alignment=1)
+    header_style = ParagraphStyle('HeaderPDF', parent=styles['Normal'], fontSize=10, leading=15, textColor=colors.white, fontName="Helvetica-Bold", alignment=1)
+    cell_style = ParagraphStyle('CeluaPDF', parent=styles['Normal'], fontSize=9, leading=14, fontName="Helvetica", alignment=1)
     
     total_style = ParagraphStyle('TotalPDF', parent=styles['Normal'], fontSize=12, fontName="Helvetica-Bold", textColor=colors.HexColor("#1E3A8A"), spaceBefore=3, spaceAfter=3)
     erro_style = ParagraphStyle('ErroStyle', parent=styles['Normal'], fontSize=9, textColor=colors.red, fontName="Helvetica-Bold")
