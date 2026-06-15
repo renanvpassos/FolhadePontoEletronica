@@ -101,18 +101,36 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     header_row = [Paragraph(f"<b>{col}</b>", header_style) for col in df.columns]
     dados_tabela.append(header_row)
     
-    for _, row in df.iterrows():
+    # --- Identificação da coluna e mapeamento de cores ---
+    idx_hora_extra = list(df.columns).index("Hora Extra") if "Hora Extra" in df.columns else -1
+    estilos_celulas_amarelas = []
+    
+    # Percorre as linhas rastreando o índice físico da tabela (começando em 1 por causa do cabeçalho)
+    for r_idx, (_, row) in enumerate(df.iterrows(), start=1):
         linha = [Paragraph(str(val) if val is not None and not pd.isna(val) else "", cell_style) for val in row]
         dados_tabela.append(linha)
         
+        # Verifica se o valor da linha atual na coluna Hora Extra necessita de destaque
+        if idx_hora_extra != -1:
+            val_hora_extra = str(row.iloc[idx_hora_extra]).strip()
+            if val_hora_extra != "" and val_hora_extra != "00:00":
+                # Armazena o comando de background amarelo pastel para esta coordenada (coluna, linha)
+                estilos_celulas_amarelas.append(('BACKGROUND', (idx_hora_extra, r_idx), (idx_hora_extra, r_idx), colors.HexColor("#FEF08A")))
+        
     tabela = Table(dados_tabela, repeatRows=1)
-    tabela.setStyle(TableStyle([
+    
+    # Estilos básicos estruturais da tabela
+    estilos_base = [
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1E3A8A")),
         ('ALIGN', (0,0), (-1,-1), 'LEFT'),
         ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#D1D5DB")),
         ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor("#F9FAFB")]),
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-    ]))
+    ]
+    
+    # Injeta os destaques amarelos calculados no estilo base da tabela
+    estilos_base.extend(estilos_celulas_amarelas)
+    tabela.setStyle(TableStyle(estilos_base))
     
     story.append(tabela)
     
