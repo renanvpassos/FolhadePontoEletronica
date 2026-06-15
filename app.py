@@ -148,13 +148,15 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
     story = []
     styles = getSampleStyleSheet()
     
-    title_style = ParagraphStyle('TituloPDF', parent=styles['Heading1'], fontSize=14, textColor=colors.HexColor("#1E3A8A"), spaceAfter=10)
+    # Reduzido levemente o espaço do título e espaçamentos superiores para otimizar a página
+    title_style = ParagraphStyle('TituloPDF', parent=styles['Heading1'], fontSize=13, textColor=colors.HexColor("#1E3A8A"), spaceAfter=6)
     
-    # Cabeçalho e células configurados com alignment=1 (Centro)
-    header_style = ParagraphStyle('HeaderPDF', parent=styles['Normal'], fontSize=11.7, leading=14, textColor=colors.white, fontName="Helvetica-Bold", alignment=1)
-    cell_style = ParagraphStyle('CeluaPDF', parent=styles['Normal'], fontSize=16.2, leading=20, fontName="Helvetica", alignment=1)
+    # --- AJUSTE CRÍTICO DE FONTES: Otimizadas para caber os 15 dias em 1 única página ---
+    header_style = ParagraphStyle('HeaderPDF', parent=styles['Normal'], fontSize=9, leading=11, textColor=colors.white, fontName="Helvetica-Bold", alignment=1)
+    cell_style = ParagraphStyle('CeluaPDF', parent=styles['Normal'], fontSize=8.5, leading=10.5, fontName="Helvetica", alignment=1)
     
-    total_style = ParagraphStyle('TotalPDF', parent=styles['Normal'], fontSize=10, fontName="Helvetica-Bold", textColor=colors.HexColor("#1E3A8A"), spaceBefore=5, spaceAfter=5)
+    # Reduzido o spaceBefore/After dos totais para liberar espaço vertical para a tabela
+    total_style = ParagraphStyle('TotalPDF', parent=styles['Normal'], fontSize=9, fontName="Helvetica-Bold", textColor=colors.HexColor("#1E3A8A"), spaceBefore=2, spaceAfter=2)
     erro_style = ParagraphStyle('ErroStyle', parent=styles['Normal'], fontSize=8, textColor=colors.red, fontName="Helvetica-Bold")
 
     caminho_logo = "logoMult.png"
@@ -241,22 +243,21 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         
         if logo_existe:
             try:
-                logo_flowable = Image(caminho_logo, width=75, height=25)
+                logo_flowable = Image(caminho_logo, width=70, height=22)
                 logo_flowable.hAlign = 'RIGHT'
                 story.append(logo_flowable)
-                story.append(Spacer(1, 8))
+                story.append(Spacer(1, 4))
             except Exception as img_err:
                 story.append(Paragraph(f"[ERRO DE RENDERIZAÇÃO: {img_err}]", erro_style))
         else:
             story.append(Paragraph("[AVISO: Adicione o arquivo logoMult.png no seu GitHub]", erro_style))
-            story.append(Spacer(1, 8))
+            story.append(Spacer(1, 4))
         
         story.append(Paragraph(f"Relatório de Ponto: <font color='red'>{nome_funcionario}</font>", title_style))
-        story.append(Paragraph(f"<b>E-mail:</b> {email}", styles['Normal']))
-        story.append(Paragraph(f"<b>Célula:</b> {celula}", styles['Normal']))
+        story.append(Paragraph(f"<b>E-mail:</b> {email} | <b>Célula:</b> {celula}", styles['Normal']))
         story.append(Paragraph(f"<b>Total de Horas Extras no Período:</b> <font color='red'>{total_horas_str}</font>", total_style))
         story.append(Paragraph(f"<b>Total de Horas Trabalhadas no Período:</b> <font color='green'>{total_horas_trab_str}</font>", total_style))
-        story.append(Spacer(1, 5))
+        story.append(Spacer(1, 4))
         
         colunas_remover = ['funcionário', 'funcionario', 'e-mail', 'email', 'celula', 'célula']
         colunas_exibicao = [
@@ -303,7 +304,6 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
                 if col_name == "Hora Extra" and val_str == "00:00":
                     val_str = ""
                 
-                # Todas as células agora adotam o padrão centralizado
                 linha.append(Paragraph(val_str, cell_style))
                 
             dados_tabela.append(linha)
@@ -333,15 +333,15 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         tabela = Table(dados_tabela, repeatRows=1)
         tabela.hAlign = 'CENTER'
         
-        # O ALIGN agora foi definido globalmente de (0,0) até (-1,-1) como 'CENTER'
+        # --- AJUSTE DE PADDING: Reduzido para 4.5 para comprimir a altura total da tabela na página ---
         estilos_base = [
             ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1E3A8A")),
             ('ALIGN', (0,0), (-1,-1), 'CENTER'),
             ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#D1D5DB")),
             ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor("#F9FAFB")]),
             ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-            ('TOPPADDING', (0,0), (-1,-1), 12),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 12),
+            ('TOPPADDING', (0,0), (-1,-1), 4.5),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 4.5),
         ]
         
         estilos_base.extend(estilos_celulas_dinamicos)
