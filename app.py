@@ -1381,7 +1381,7 @@ elif opcao == "RELATÓRIO":
                 df_geral_completo["Celula_Filtro"] = df_geral_completo["E-mail"].astype(str).str.strip().str.lower().map(mapeamento_celulas_db)
                 
                 # Atualiza também as colunas padrões que a função interna de PDF/Excel usa para agrupar as datas
-                if "Célula" in df_geral_completo.columns:
+                if "Celula" in df_geral_completo.columns:
                     df_geral_completo["Célula"] = df_geral_completo["Celula_Filtro"]
                 if "Celula" in df_geral_completo.columns:
                     df_geral_completo["Celula"] = df_geral_completo["Celula_Filtro"]
