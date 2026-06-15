@@ -173,15 +173,19 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
     max_data = pd.to_datetime(data_fim).floor('D')
     periodo_completo = pd.date_range(start=min_data, end=max_data, freq='D')
 
+    # Normalização de segurança para o mapeamento interno
+    mapeamento_normalizado = {str(k).strip().lower(): v for k, v in mapeamento_celulas.items()}
+
     usuarios = df['E-mail'].unique() if 'E-mail' in df.columns else []
     
     for i, email in enumerate(usuarios):
-        df_funcionario = df_copy[df_copy['E-mail'] == email]
+        # Filtro tolerante a variações de caixa alta/baixa
+        df_funcionario = df_copy[df_copy['E-mail'].astype(str).str.strip().str.lower() == str(email).strip().lower()]
         if df_funcionario.empty:
             continue
             
         nome_funcionario = df_funcionario['Funcionário'].iloc[0]
-        celula = mapeamento_celulas.get(email, "Não Informada")
+        celula = mapeamento_normalizado.get(str(email).strip().lower(), "Não Informada")
         
         # === CÁLCULO DE HORAS EXTRAS ===
         total_mins = 0
@@ -192,7 +196,7 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         minutos = total_mins % 60
         total_horas_str = f"{horas:02d}:{minutos:02d}"
 
-        # === CÁLCULO DE HORAS TRABALHADAS ===
+        # === CÁLCULO DE HORAS TRABALHADAS (Com Fallback de Segurança) ===
         total_mins_trab = 0
         if "Horas Trabalhadas" in df_funcionario.columns and df_funcionario["Horas Trabalhadas"].apply(_extrair_minutos).sum() > 0:
             total_mins_trab = df_funcionario["Horas Trabalhadas"].apply(_extrair_minutos).sum()
@@ -213,7 +217,7 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
             except Exception as img_err:
                 story.append(Paragraph(f"[ERRO DE RENDERIZAÇÃO: {img_err}]", erro_style))
         else:
-            story.append(Paragraph("[AVISO: Adicione o arquivo logoMult.png no mesmo diretório]", erro_style))
+            story.append(Paragraph("[AVISO: Adicione o arquivo logoMult.png no seu GitHub]", erro_style))
             story.append(Spacer(1, 8))
         
         story.append(Paragraph(f"Relatório de Ponto: <font color='red'>{nome_funcionario}</font>", title_style))
@@ -849,9 +853,7 @@ elif opcao == "LOG INTERNO":
                 )
                 st.markdown(html_log_interno, unsafe_allow_html=True)
 
-# =====================================================================
 # --- MENU: RELATÓRIO ---
-# =====================================================================
 elif opcao == "RELATÓRIO":
     st.title("📊 Espelho de Ponto Pessoal")
     email_busca = user_email
@@ -861,7 +863,8 @@ elif opcao == "RELATÓRIO":
     try:
         busca_mapeamento = supabase.table("usuarios_ponto").select("email, celula").execute()
         if busca_mapeamento.data:
-            mapeamento_celulas = {u['email']: u.get('celula') for u in busca_mapeamento.data}
+            # Correção: força minúsculo e remove espaços nas pontas dos e-mails mapeados
+            mapeamento_celulas = {str(u['email']).strip().lower(): u.get('celula') for u in busca_mapeamento.data}
     except Exception:
         st.warning("Não foi possível carregar o mapeamento completo de células.")
 
@@ -927,10 +930,8 @@ elif opcao == "RELATÓRIO":
 
     # --- NOVO BLOCO: CÁLCULO E EXIBIÇÃO DE TOTAIS EM TEMPO REAL ---
     if data_inicio <= data_fim:
-        # Buscamos os dados aqui temporariamente apenas para calcular os indicadores visuais
         dados_pessoais_indicadores = executar_query_supabase("buscar_relatorio", email=email_busca, data_filtro=data_inicio, data_fim=data_fim)
         
-        # Helper para recalcular horas trabalhadas do dia no formato hh:mm
         def_total_minutos_trabalhados = 0
         def_total_minutos_extras = 0
 
@@ -940,6 +941,7 @@ elif opcao == "RELATÓRIO":
                 val_sai = item.get("horario_saida")
                 if val_ent and val_sai:
                     try:
+                        st.write()
                         dt_ent = datetime.fromisoformat(val_ent).astimezone(fuso_br)
                         dt_sai = datetime.fromisoformat(val_sai).astimezone(fuso_br)
                         segundos_trab = int((dt_sai - dt_ent).total_seconds())
@@ -948,21 +950,17 @@ elif opcao == "RELATÓRIO":
                             jornada_limite = 9 * 3600  # 9 horas em segundos
                             
                             if segundos_trab > jornada_limite:
-                                # Se passou de 9h: garante os 540 min da jornada + o excedente convertido em minutos
                                 minutos_excedentes = (segundos_trab - jornada_limite) // 60
                                 def_total_minutos_trabalhados += (jornada_limite // 60) + minutos_excedentes
                                 def_total_minutos_extras += minutos_excedentes
                             else:
-                                # Se não bateu 9h, soma apenas o tempo real trabalhado convertido em minutos
                                 def_total_minutos_trabalhados += segundos_trab // 60
                     except:
                         pass
 
-        # Formatação das strings de horas totais
         horas_trab_totais = f"{def_total_minutos_trabalhados // 60:02d}h {def_total_minutos_trabalhados % 60:02d}m"
         horas_ext_totais = f"{def_total_minutos_extras // 60:02d}h {def_total_minutos_extras % 60:02d}m"
 
-        # Exibição dos cards logo abaixo do container de datas
         st.write("")
         col_tot1, col_tot2 = st.columns(2)
         with col_tot1:
@@ -1351,7 +1349,8 @@ elif opcao == "RELATÓRIO":
                 else:
                     df_geral_completo = processar_dados_ponto(dados_gerais_banco, data_inicio, data_fim, incluir_usuario_info=True, formatar_data_br=True)
 
-                    df_geral_completo["Celula_Filtro"] = df_geral_completo["E-mail"].map(mapeamento_celulas)
+                    # Correção: força minúsculo e limpa espaços ao mapear para a comparação funcionar perfeitamente
+                    df_geral_completo["Celula_Filtro"] = df_geral_completo["E-mail"].astype(str).str.strip().str.lower().map(mapeamento_celulas)
         
                     if cargo_usuario == "Supervisor":
                         df_filtrado = df_geral_completo[df_geral_completo["Celula_Filtro"] == celula_usuario]
