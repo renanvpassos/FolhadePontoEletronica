@@ -22,14 +22,12 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     story = []
     styles = getSampleStyleSheet()
     
-    # Mantém o mesmo padrão visual do consolidado
     title_style = ParagraphStyle('TituloPDF', parent=styles['Heading1'], fontSize=14, textColor=colors.HexColor("#1E3A8A"), spaceAfter=10)
     header_style = ParagraphStyle('HeaderPDF', parent=styles['Normal'], fontSize=6.5, textColor=colors.white, fontName="Helvetica-Bold")
     cell_style = ParagraphStyle('CeluaPDF', parent=styles['Normal'], fontSize=9, fontName="Helvetica")
     total_style = ParagraphStyle('TotalPDF', parent=styles['Normal'], fontSize=10, fontName="Helvetica-Bold", textColor=colors.HexColor("#1E3A8A"), spaceBefore=5, spaceAfter=5)
     erro_style = ParagraphStyle('ErroStyle', parent=styles['Normal'], fontSize=8, textColor=colors.red, fontName="Helvetica-Bold")
     
-    # --- VERIFICAÇÃO DA LOGO NO REPOSITÓRIO (Igual ao Consolidado) ---
     caminho_logo = "logoMult.png"
     logo_existe = os.path.exists(caminho_logo)
     
@@ -37,8 +35,20 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
         try:
             if pd.isna(val) or str(val).strip() == "" or ":" not in str(val):
                 return 0
-            h, m = map(int, str(val).split(':'))
+            partes = str(val).strip().split(':')
+            h, m = int(partes[0]), int(partes[1])
             return h * 60 + m
+        except:
+            return 0
+
+    def _calcular_minutos_entre_horas(h1, h2):
+        try:
+            if pd.isna(h1) or pd.isna(h2) or not h1 or not h2:
+                return 0
+            # Converte HH:MM:SS ou HH:MM para minutos totais desde o início do dia
+            t1 = sum(x * int(t) for x, t in zip([60, 1, 0], str(h1).strip().split(':')))
+            t2 = sum(x * int(t) for x, t in zip([60, 1, 0], str(h2).strip().split(':')))
+            return max(0, t2 - t1)
         except:
             return 0
             
@@ -51,32 +61,34 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     minutos = total_mins % 60
     total_horas_str = f"{horas:02d}:{minutos:02d}"
 
-    # === CÁLCULO DE HORAS TRABALHADAS ===
+    # === CÁLCULO DE HORAS TRABALHADAS (Com Fallback de Segurança) ===
     total_mins_trab = 0
-    if "Horas Trabalhadas" in df.columns:
+    # 1ª Tentativa: Pela coluna direta
+    if "Horas Trabalhadas" in df.columns and df["Horas Trabalhadas"].apply(_extrair_minutos).sum() > 0:
         total_mins_trab = df["Horas Trabalhadas"].apply(_extrair_minutos).sum()
+    # 2ª Tentativa (Fallback): Se a coluna falhar, calcula direto da Entrada -> Saída por linha
+    elif "Entrada" in df.columns and "Saída" in df.columns:
+        for _, r in df.iterrows():
+            total_mins_trab += _calcular_minutos_entre_horas(r.get("Entrada"), r.get("Saída"))
     
     horas_trab = total_mins_trab // 60
     minutos_trab = total_mins_trab % 60
     total_horas_trab_str = f"{horas_trab:02d}:{minutos_trab:02d}"
     
-    # BUSCA DA CÉLULA: Idêntica à lógica do consolidado utilizando o e-mail como chave
     celula = mapeamento_celulas.get(email, "Não Informada")
     
-    # --- INSERÇÃO DA LOGO ACIMA DO TÍTULO ---
     if logo_existe:
         try:
             logo_flowable = Image(caminho_logo, width=75, height=25)
             logo_flowable.hAlign = 'RIGHT'
             story.append(logo_flowable)
-            story.append(Spacer(1, 8)) # Pequeno espaço entre a logo e o título
+            story.append(Spacer(1, 8))
         except Exception as img_err:
             story.append(Paragraph(f"[ERRO DE RENDERIZAÇÃO: {img_err}]", erro_style))
     else:
         story.append(Paragraph("[AVISO: Adicione o arquivo logoMult.png no seu GitHub]", erro_style))
         story.append(Spacer(1, 8))
         
-    # Cabeçalho estruturado com as informações tratadas
     story.append(Paragraph(f"Relatório de Ponto: <font color='red'>{nome_funcionario}</font>", title_style))
     story.append(Paragraph(f"<b>E-mail:</b> {email}", styles['Normal']))
     story.append(Paragraph(f"<b>Célula:</b> {celula}", styles['Normal']))
@@ -85,7 +97,6 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     story.append(Paragraph(f"<b>Total de Horas Trabalhadas no Período:</b> <font color='green'>{total_horas_trab_str}</font>", total_style))
     story.append(Spacer(1, 5))
     
-    # Montagem da tabela (o DF aqui já vem limpo, sem colunas repetidas de Nome/Email)
     dados_tabela = []
     header_row = [Paragraph(f"<b>{col}</b>", header_style) for col in df.columns]
     dados_tabela.append(header_row)
@@ -111,7 +122,6 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     
 def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim):
     output = BytesIO()
-    
     doc = SimpleDocTemplate(
         output, 
         pagesize=landscape(A4), 
@@ -126,7 +136,6 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
     total_style = ParagraphStyle('TotalPDF', parent=styles['Normal'], fontSize=10, fontName="Helvetica-Bold", textColor=colors.HexColor("#1E3A8A"), spaceBefore=5, spaceAfter=5)
     erro_style = ParagraphStyle('ErroStyle', parent=styles['Normal'], fontSize=8, textColor=colors.red, fontName="Helvetica-Bold")
 
-    # --- CAMINHO DA LOGO NO GITHUB/STREAMLIT ---
     caminho_logo = "logoMult.png"
     logo_existe = os.path.exists(caminho_logo)
 
@@ -134,8 +143,19 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         try:
             if pd.isna(val) or str(val).strip() == "" or ":" not in str(val):
                 return 0
-            h, m = map(int, str(val).split(':'))
+            partes = str(val).strip().split(':')
+            h, m = int(partes[0]), int(partes[1])
             return h * 60 + m
+        except:
+            return 0
+
+    def _calcular_minutos_entre_horas(h1, h2):
+        try:
+            if pd.isna(h1) or pd.isna(h2) or not h1 or not h2:
+                return 0
+            t1 = sum(x * int(t) for x, t in zip([60, 1, 0], str(h1).strip().split(':')))
+            t2 = sum(x * int(t) for x, t in zip([60, 1, 0], str(h2).strip().split(':')))
+            return max(0, t2 - t1)
         except:
             return 0
             
@@ -172,16 +192,18 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         minutos = total_mins % 60
         total_horas_str = f"{horas:02d}:{minutos:02d}"
 
-        # === CÁLCULO DE HORAS TRABALHADAS ===
+        # === CÁLCULO DE HORAS TRABALHADAS (Com Fallback de Segurança) ===
         total_mins_trab = 0
-        if "Horas Trabalhadas" in df_funcionario.columns:
+        if "Horas Trabalhadas" in df_funcionario.columns and df_funcionario["Horas Trabalhadas"].apply(_extrair_minutos).sum() > 0:
             total_mins_trab = df_funcionario["Horas Trabalhadas"].apply(_extrair_minutos).sum()
+        elif "Entrada" in df_funcionario.columns and "Saída" in df_funcionario.columns:
+            for _, r in df_funcionario.iterrows():
+                total_mins_trab += _calcular_minutos_entre_horas(r.get("Entrada"), r.get("Saída"))
         
         horas_trab = total_mins_trab // 60
         minutos_trab = total_mins_trab % 60
         total_horas_trab_str = f"{horas_trab:02d}:{minutos_trab:02d}"
         
-        # --- POSICIONAMENTO DA LOGO REPOSITÓRIO ---
         if logo_existe:
             try:
                 logo_flowable = Image(caminho_logo, width=75, height=25)
