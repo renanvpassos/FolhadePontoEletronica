@@ -148,10 +148,14 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
     story = []
     styles = getSampleStyleSheet()
     
-    # --- AJUSTE 1: Dobrado o tamanho das fontes e ajustado o leading para evitar sobreposição ---
     title_style = ParagraphStyle('TituloPDF', parent=styles['Heading1'], fontSize=14, textColor=colors.HexColor("#1E3A8A"), spaceAfter=10)
-    header_style = ParagraphStyle('HeaderPDF', parent=styles['Normal'], fontSize=13, leading=16, textColor=colors.white, fontName="Helvetica-Bold")
-    cell_style = ParagraphStyle('CeluaPDF', parent=styles['Normal'], fontSize=18, leading=22, fontName="Helvetica")
+    
+    # --- AJUSTE 4: Redução de 10% no tamanho das fontes e adequação do leading ---
+    header_style = ParagraphStyle('HeaderPDF', parent=styles['Normal'], fontSize=11.7, leading=14, textColor=colors.white, fontName="Helvetica-Bold", alignment=1)
+    cell_style = ParagraphStyle('CeluaPDF', parent=styles['Normal'], fontSize=16.2, leading=20, fontName="Helvetica")
+    # Estilo específico para centralizar valores dentro da célula
+    center_cell_style = ParagraphStyle('CentroCeluaPDF', parent=cell_style, alignment=1)
+    
     total_style = ParagraphStyle('TotalPDF', parent=styles['Normal'], fontSize=10, fontName="Helvetica-Bold", textColor=colors.HexColor("#1E3A8A"), spaceBefore=5, spaceAfter=5)
     erro_style = ParagraphStyle('ErroStyle', parent=styles['Normal'], fontSize=8, textColor=colors.red, fontName="Helvetica-Bold")
 
@@ -177,7 +181,6 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         except:
             return 0
             
-    # Função auxiliar para extrair apenas o dia numérico da Data
     def _extrair_apenas_o_dia(val):
         if pd.isna(val) or str(val).strip() == "":
             return ""
@@ -215,11 +218,9 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         nome_funcionario = df_funcionario['Funcionário'].iloc[0] if 'Funcionário' in df_funcionario.columns else "Colaborador"
         celula = mapeamento_celulas.get(str(email).strip().lower(), "Não Informada")
         
-        # === AJUSTE 5: Sábado e Domingo não contam no somatório de hora extra ===
         total_mins = 0
         if "Hora Extra" in df_funcionario.columns:
             if "Dia da Semana" in df_funcionario.columns:
-                # Filtra apenas dias que NÃO são Sábado ou Domingo
                 filtro_uteis = ~df_funcionario["Dia da Semana"].astype(str).str.strip().str.lower().isin(["sábado", "sabado", "domingo"])
                 total_mins = df_funcionario[filtro_uteis]["Hora Extra"].apply(_extrair_minutos).sum()
             else:
@@ -259,14 +260,12 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         story.append(Paragraph(f"<b>Total de Horas Trabalhadas no Período:</b> <font color='green'>{total_horas_trab_str}</font>", total_style))
         story.append(Spacer(1, 5))
         
-        # --- AJUSTE 2: Filtragem para não mostrar colunas de justificativa ---
         colunas_remover = ['funcionário', 'funcionario', 'e-mail', 'email', 'celula', 'célula']
         colunas_exibicao = [
             col for col in df_funcionario.columns 
             if col.lower().strip() not in colunas_remover and 'justificativa' not in col.lower().strip()
         ]
         
-        # Identifica a presença de 'Dia da Semana' e 'Data' para a unificação
         tem_dia_semana = "Dia da Semana" in colunas_exibicao
         tem_data = "Data" in colunas_exibicao
         
@@ -275,7 +274,6 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
             
         df_tabela = df_funcionario[colunas_exibicao].fillna("").copy()
         
-        # --- AJUSTE 3: Unificação das colunas Dia da Semana e Data ---
         if tem_dia_semana or tem_data:
             coluna_combinada = []
             for _, row in df_funcionario.iterrows():
@@ -298,47 +296,62 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         estilos_celulas_dinamicos = []
 
         for r_idx, (_, row) in enumerate(df_tabela.iterrows(), start=1):
-            linha = [Paragraph(str(val) if val is not None and not pd.isna(val) and str(val).strip() != "" else "", cell_style) for val in row]
+            linha = []
+            for col_name in df_tabela.columns:
+                val = row[col_name]
+                val_str = str(val) if val is not None and not pd.isna(val) else ""
+                val_str = val_str.strip()
+                
+                # --- AJUSTE 3: Se o valor da coluna 'Hora Extra' for "00:00" deixa em branco ---
+                if col_name == "Hora Extra" and val_str == "00:00":
+                    val_str = ""
+                
+                # --- AJUSTE 2: Alinha os valores da coluna 'Hora Extra' no centro ---
+                atual_style = center_cell_style if col_name == "Hora Extra" else cell_style
+                linha.append(Paragraph(val_str, atual_style))
+                
             dados_tabela.append(linha)
             
-            # Recupera as informações originais do dia para aplicar as regras de coloração
             orig_row = df_funcionario.iloc[r_idx - 1]
             dia_sem_orig = str(orig_row.get("Dia da Semana", "")).strip().lower()
             is_fim_de_semana = dia_sem_orig in ["sábado", "sabado", "domingo"]
             
             if is_fim_de_semana:
-                # --- AJUSTE 5: Verifica se há qualquer informação preenchida na linha (além do Dia/Data) ---
                 tem_informacao = False
                 for col_name in df_tabela.columns:
-                    if col_name != "Dia / Data" and str(row[col_name]).strip() != "":
+                    val_f = str(row[col_name]).strip()
+                    if col_name == "Hora Extra" and val_f == "00:00":
+                        continue
+                    if col_name != "Dia / Data" and val_f != "":
                         tem_informacao = True
                         break
                 
                 if tem_informacao:
-                    # Pinta todas as células daquela linha de amarelo
                     estilos_celulas_dinamicos.append(('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor("#FEF08A")))
             else:
-                # Regra padrão para dias úteis: destaca a célula de Hora Extra se houver valor
                 if idx_hora_extra != -1:
                     val_hora_extra = str(row.iloc[idx_hora_extra]).strip()
                     if val_hora_extra != "" and val_hora_extra != "00:00":
                         estilos_celulas_dinamicos.append(('BACKGROUND', (idx_hora_extra, r_idx), (idx_hora_extra, r_idx), colors.HexColor("#FEF08A")))
             
         tabela = Table(dados_tabela, repeatRows=1)
-        
-        # --- AJUSTE 4: Alinha a tabela horizontalmente no Centro da página ---
         tabela.hAlign = 'CENTER'
         
-        # --- AJUSTE 1: Inclusão de TOPPADDING e BOTTOMPADDING para dobrar a altura das células ---
+        # --- AJUSTE 1 & 2: Alinhamentos estruturais da tabela via TableStyle ---
         estilos_base = [
             ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1E3A8A")),
-            ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+            ('ALIGN', (0,0), (-1,0), 'CENTER'),    # Centraliza horizontalmente todos os Headers
+            ('ALIGN', (0,1), (-1,-1), 'LEFT'),      # Mantém alinhamento à esquerda padrão para o corpo
             ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#D1D5DB")),
             ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor("#F9FAFB")]),
             ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
             ('TOPPADDING', (0,0), (-1,-1), 12),
             ('BOTTOMPADDING', (0,0), (-1,-1), 12),
         ]
+        
+        # Força o alinhamento da coluna Hora Extra no TableStyle caso ela exista
+        if idx_hora_extra != -1:
+            estilos_base.append(('ALIGN', (idx_hora_extra, 1), (idx_hora_extra, -1), 'CENTER'))
         
         estilos_base.extend(estilos_celulas_dinamicos)
         tabela.setStyle(TableStyle(estilos_base))
