@@ -143,20 +143,19 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
     doc = SimpleDocTemplate(
         output, 
         pagesize=landscape(A4), 
-        rightMargin=15, leftMargin=15, topMargin=10, bottomMargin=10  # Margens reduzidas para ganho vertical
+        rightMargin=15, leftMargin=15, topMargin=12, bottomMargin=12
     )
     story = []
     styles = getSampleStyleSheet()
     
-    # Título e cabeçalhos mais compactos para forçar tudo em uma única página
-    title_style = ParagraphStyle('TituloPDF', parent=styles['Heading1'], fontSize=12, textColor=colors.HexColor("#1E3A8A"), spaceAfter=4)
+    # --- AJUSTE: Fontes e espaçamentos aumentados em 50% conforme solicitado ---
+    title_style = ParagraphStyle('TituloPDF', parent=styles['Heading1'], fontSize=18, textColor=colors.HexColor("#1E3A8A"), spaceAfter=6)
     
-    # --- REDUÇÃO ADICIONAL DE FONTES E LEADING ---
-    header_style = ParagraphStyle('HeaderPDF', parent=styles['Normal'], fontSize=8, leading=10, textColor=colors.white, fontName="Helvetica-Bold", alignment=1)
-    cell_style = ParagraphStyle('CeluaPDF', parent=styles['Normal'], fontSize=7.5, leading=9, fontName="Helvetica", alignment=1)
+    header_style = ParagraphStyle('HeaderPDF', parent=styles['Normal'], fontSize=12, leading=15, textColor=colors.white, fontName="Helvetica-Bold", alignment=1)
+    cell_style = ParagraphStyle('CeluaPDF', parent=styles['Normal'], fontSize=11, leading=14, fontName="Helvetica", alignment=1)
     
-    total_style = ParagraphStyle('TotalPDF', parent=styles['Normal'], fontSize=8, fontName="Helvetica-Bold", textColor=colors.HexColor("#1E3A8A"), spaceBefore=1, spaceAfter=1)
-    erro_style = ParagraphStyle('ErroStyle', parent=styles['Normal'], fontSize=7, textColor=colors.red, fontName="Helvetica-Bold")
+    total_style = ParagraphStyle('TotalPDF', parent=styles['Normal'], fontSize=12, fontName="Helvetica-Bold", textColor=colors.HexColor("#1E3A8A"), spaceBefore=3, spaceAfter=3)
+    erro_style = ParagraphStyle('ErroStyle', parent=styles['Normal'], fontSize=9, textColor=colors.red, fontName="Helvetica-Bold")
 
     caminho_logo = "logoMult.png"
     logo_existe = os.path.exists(caminho_logo)
@@ -242,21 +241,21 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         
         if logo_existe:
             try:
-                logo_flowable = Image(caminho_logo, width=65, height=18)
+                logo_flowable = Image(caminho_logo, width=98, height=27)
                 logo_flowable.hAlign = 'RIGHT'
                 story.append(logo_flowable)
-                story.append(Spacer(1, 2))
+                story.append(Spacer(1, 3))
             except Exception as img_err:
                 story.append(Paragraph(f"[ERRO DE RENDERIZAÇÃO: {img_err}]", erro_style))
         else:
             story.append(Paragraph("[AVISO: Adicione o arquivo logoMult.png no seu GitHub]", erro_style))
-            story.append(Spacer(1, 2))
+            story.append(Spacer(1, 3))
         
         story.append(Paragraph(f"Relatório de Ponto: <font color='red'>{nome_funcionario}</font>", title_style))
         story.append(Paragraph(f"<b>E-mail:</b> {email} | <b>Célula:</b> {celula}", styles['Normal']))
         story.append(Paragraph(f"<b>Total de Horas Extras no Período:</b> <font color='red'>{total_horas_str}</font>", total_style))
         story.append(Paragraph(f"<b>Total de Horas Trabalhadas no Período:</b> <font color='green'>{total_horas_trab_str}</font>", total_style))
-        story.append(Spacer(1, 2))
+        story.append(Spacer(1, 3))
         
         colunas_remover = ['funcionário', 'funcionario', 'e-mail', 'email', 'celula', 'célula']
         colunas_exibicao = [
@@ -332,15 +331,15 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         tabela = Table(dados_tabela, repeatRows=1)
         tabela.hAlign = 'CENTER'
         
-        # --- COMPACTAÇÃO DE PADDING PARA 2.5 ---
+        # --- AJUSTE: Padding aumentado de 2.5 para 4.0 para melhor leitura ---
         estilos_base = [
             ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1E3A8A")),
             ('ALIGN', (0,0), (-1,-1), 'CENTER'),
             ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#D1D5DB")),
             ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor("#F9FAFB")]),
             ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-            ('TOPPADDING', (0,0), (-1,-1), 2.5),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 2.5),
+            ('TOPPADDING', (0,0), (-1,-1), 4.0),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 4.0),
         ]
         
         estilos_base.extend(estilos_celulas_dinamicos)
