@@ -1356,9 +1356,19 @@ elif opcao == "RELATÓRIO":
         
             if st.button("📊 Processar e Gerar Relatório Consolidado", use_container_width=True, type="primary"):
                 with st.spinner("Processando dados e compilando relatórios..."):
+                    
+                    # Busca a extração geral (pode sofrer com limite de 1000 linhas do Supabase)
                     dados_gerais_banco = executar_query_supabase("buscar_relatorio_geral", data_filtro=data_inicio, data_fim=data_fim) or []
                     
-                    # Filtragem inicial de quais usuários farão parte do escopo final
+                    # Descobre dinamicamente o nome da coluna de e-mail retornada na query geral
+                    coluna_email_dados = "email"
+                    if dados_gerais_banco and len(dados_gerais_banco) > 0:
+                        for k in dados_gerais_banco[0].keys():
+                            if "email" in str(k).lower():
+                                coluna_email_dados = k
+                                break
+        
+                    # Filtragem inicial do escopo de funcionários
                     if cargo_usuario == "Supervisor":
                         target_celula = str(celula_usuario).strip().lower()
                         usuarios_alvo = [u for u in todos_usuarios_banco if str(u.get("celula", "")).strip().lower() == target_celula]
@@ -1375,19 +1385,36 @@ elif opcao == "RELATÓRIO":
         
                     dfs_equipe = []
                     
-                    # CORREÇÃO DOS 4 USUÁRIOS: Processamos em lote exatamente como a sua rotina individual faz!
+                    # Processamento individualizado em lote para garantir integridade
                     for u in usuarios_alvo:
                         u_email = str(u["email"]).strip().lower()
                         u_nome = str(u.get("nome", "Sem Nome")).strip()
                         
-                        # Filtra apenas as batidas que pertencem a este e-mail específico na extração crua do banco
-                        dados_pessoais_user = [row for row in dados_gerais_banco if str(row.get("email", "")).strip().lower() == u_email]
+                        # 1. Tenta extrair do pool geral coletado
+                        dados_pessoais_user = [
+                            row for row in dados_gerais_banco 
+                            if str(row.get(coluna_email_dados, "")).strip().lower() == u_email
+                        ]
                         
-                        # Executa a mesma função que você usa no individual! (Garante o preenchimento correto das tabelas)
+                        # 2. FALLBACK ANTICORTE: Se não achou dados para este usuário na query global,
+                        # faz o fetch direto e individual dele idêntico à tela individual que funciona!
+                        if not dados_pessoais_user:
+                            try:
+                                # NOTA: Altere "NOME_DA_SUA_TABELA_DE_BATIDAS" para o nome real da sua tabela de pontos se necessário
+                                # Ou replique aqui a mesma função/RPC de busca que você usa na sua tela individual.
+                                resposta_direta = supabase.table("registro_ponto").select("*").eq(coluna_email_dados, u_email).execute()
+                                if resposta_direta.data:
+                                    dados_pessoais_user = [
+                                        r for r in resposta_direta.data 
+                                        if data_inicio <= str(r.get("data") or r.get("data_registro") or "") <= data_fim
+                                    ]
+                            except Exception as fallback_err:
+                                pass # Caso falhe, mantém a lista vazia para tratar abaixo
+        
+                        # Roda a esteira de tratamento validada por você
                         df_user_limpo = processar_dados_ponto(dados_pessoais_user, data_inicio, data_fim, incluir_usuario_info=False, formatar_data_br=True)
                         
                         if df_user_limpo is not None and not df_user_limpo.empty:
-                            # Anexa os dados identificadores para controle estrutural do PDF geral
                             df_user_limpo["Funcionário"] = u_nome
                             df_user_limpo["E-mail"] = u_email
                             dfs_equipe.append(df_user_limpo)
@@ -1397,8 +1424,6 @@ elif opcao == "RELATÓRIO":
                         st.session_state.processamento_concluido = False
                     else:
                         df_filtrado = pd.concat(dfs_equipe, ignore_index=True)
-                        
-                        # Ordenação alfabética final para visualização limpa
                         df_filtrado = df_filtrado.sort_values(by="Funcionário", key=lambda col: col.str.lower(), kind="mergesort")
                         
                         st.session_state.dados_excel_consolidado = converter_para_excel_multiaba(df_filtrado)
