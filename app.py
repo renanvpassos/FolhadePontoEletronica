@@ -1339,7 +1339,7 @@ elif opcao == "RELATÓRIO":
                     pass
                 
                 opcoes_master = ["Todos os Colaboradores"] + celulas_disponiveis
-                opcao_consolidada = st.selectbox("Selecione o Relatório Desejado:", options=opcoes_master)
+                opcao_consolidada = st.selectbox("Selecione abaixo a célula desejada ou o relatório consolidado de todos os funcionários por ordem alfabética:", options=opcoes_master)
             else:
                 st.caption(f"Gera o arquivo contendo os espelhos de ponto consolidados de sua célula activa: **{celula_usuario}**")
         
