@@ -881,6 +881,48 @@ elif opcao == "RELATÓRIO":
         data_inicio = st.date_input("🗓️ Data Inicial", hoje - timedelta(days=14), format="DD/MM/YYYY")
     with col2:
         data_fim = st.date_input("🗓️ Data Final", hoje, format="DD/MM/YYYY")
+
+    # --- NOVO BLOCO: CÁLCULO E EXIBIÇÃO DE TOTAIS EM TEMPO REAL ---
+    if data_inicio <= data_fim:
+        # Buscamos os dados aqui temporariamente apenas para calcular os indicadores visuais
+        dados_pessoais_indicadores = executar_query_supabase("buscar_relatorio", email=email_busca, data_filtro=data_inicio, data_fim=data_fim)
+        
+        # Helper para recalcular horas trabalhadas do dia no formato hh:mm
+        def_total_minutos_trabalhados = 0
+        def_total_minutos_extras = 0
+
+        if dados_pessoais_indicadores:
+            for item in dados_pessoais_indicadores:
+                val_ent = item.get("horario_entrada")
+                val_sai = item.get("horario_saida")
+                if val_ent and val_sai:
+                    try:
+                        dt_ent = datetime.fromisoformat(val_ent).astimezone(fuso_br)
+                        dt_sai = datetime.fromisoformat(val_sai).astimezone(fuso_br)
+                        segundos_trab = int((dt_sai - dt_ent).total_seconds())
+                        if segundos_trab > 0:
+                            def_total_minutos_trabalhados += segundos_trab // 60
+                            
+                            # Lógica idêntica ao seu processamento para horas extras
+                            jornada_limite = 9 * 3600
+                            if segundos_trab > jornada_limite:
+                                def_total_minutos_extras += (segundos_trab - jornada_limite) // 60
+                    except:
+                        pass
+
+        # Formatação das strings de horas totais
+        horas_trab_totais = f"{def_total_minutos_trabalhados // 60:02d}h {def_total_minutos_trabalhados % 60:02d}m"
+        horas_ext_totais = f"{def_total_minutos_extras // 60:02d}h {def_total_minutos_extras % 60:02d}m"
+
+        # Exibição dos cards logo abaixo do container de datas
+        st.write("")
+        col_tot1, col_tot2 = st.columns(2)
+        with col_tot1:
+            st.metric(label="⏱️ Total de Horas Trabalhadas no Período", value=horas_trab_totais)
+        with col_tot2:
+            st.metric(label="🚀 Total de Horas Extras no Período", value=horas_ext_totais, 
+                      delta=horas_ext_totais if def_total_minutos_extras > 0 else None, delta_color="normal")
+    # --- FIM DO NOVO BLOCO ---
         
     st.write("---")
      
@@ -1125,7 +1167,6 @@ elif opcao == "RELATÓRIO":
                             if not col_banco:
                                 continue
                             
-                            # Obtendo o valor anterior para auditoria
                             valor_antigo = df_visualizacao.iloc[idx_linha].get(col_df, "")
                             if pd.isna(valor_antigo) or valor_antigo is None:
                                 valor_antigo = "--:--:--"
@@ -1187,7 +1228,6 @@ elif opcao == "RELATÓRIO":
                                     insert_dict.update(update_dict)
                                     supabase.table("registro_ponto").insert(insert_dict).execute()
                                 
-                                # Grava as atividades geradas no log de auditoria interno
                                 for desc_ativ in logs_internos_para_salvar:
                                     dados_log_auditoria = {
                                         "quem_alterou": user_name,
