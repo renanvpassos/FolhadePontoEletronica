@@ -1392,19 +1392,23 @@ elif opcao == "RELATÓRIO":
                         
                         dados_pessoais_user = []
                         try:
-                            # 🚨 ATENÇÃO AQUI: Substitua "registro_ponto" pelo nome REAL da sua tabela ou view de batidas de ponto.
-                            # Mude também o campo "email" caso sua coluna se chame "email_usuario", etc.
                             resposta_direta = supabase.table("registro_ponto").select("*").eq("email", u_email).execute()
                             
                             if resposta_direta.data:
-                                # Filtra apenas as datas do período selecionado. 
-                                # Ajuste os termos r.get("data") para o nome real da sua coluna de data (ex: "data_registro")
-                                dados_pessoais_user = [
-                                    r for r in resposta_direta.data 
-                                    if data_inicio <= str(r.get("data") or r.get("data_registro") or "") <= data_fim
-                                ]
+                                # 1. Padroniza as datas do Streamlit para string (YYYY-MM-DD)
+                                str_inicio = data_inicio.strftime("%Y-%m-%d") if hasattr(data_inicio, "strftime") else str(data_inicio)
+                                str_fim = data_fim.strftime("%Y-%m-%d") if hasattr(data_fim, "strftime") else str(data_fim)
+                                
+                                # 2. Filtra comparando strings de forma segura
+                                for r in resposta_direta.data:
+                                    # Captura o campo de data e garante que pegamos apenas os 10 primeiros caracteres (YYYY-MM-DD)
+                                    data_crua = str(r.get("data") or r.get("data_registro") or "")
+                                    data_linha = data_crua[:10] 
+                                    
+                                    if str_inicio <= data_linha <= str_fim:
+                                        dados_pessoais_user.append(r)
+                                        
                         except Exception as db_err:
-                            # Se der erro de nome de tabela ou coluna, ele vai te avisar explicitamente na tela:
                             st.error(f"Erro ao buscar dados no banco para {u_nome} ({u_email}): {db_err}")
                             continue
         
