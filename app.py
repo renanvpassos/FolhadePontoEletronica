@@ -131,9 +131,10 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
     styles = getSampleStyleSheet()
     
     title_style = ParagraphStyle('TituloPDF', parent=styles['Heading1'], fontSize=14, textColor=colors.HexColor("#1E3A8A"), spaceAfter=10)
-    header_style = ParagraphStyle('HeaderPDF', parent=styles['Normal'], fontSize=6.5, textColor=colors.white, fontName="Helvetica-Bold")
-    cell_style = ParagraphStyle('CeluaPDF', parent=styles['Normal'], fontSize=9, fontName="Helvetica")
-    total_style = ParagraphStyle('TotalPDF', parent=styles['Normal'], fontSize=10, fontName="Helvetica-Bold", textColor=colors.HexColor("#1E3A8A"), spaceBefore=5, spaceAfter=5)
+    header_style = ParagraphStyle('HeaderPDF', parent=styles['Normal'], fontSize=7.5, textColor=colors.white, fontName="Helvetica-Bold", alignment=1) # Centralizado
+    cell_style = ParagraphStyle('CeluaPDF', parent=styles['Normal'], fontSize=7, fontName="Helvetica", alignment=1) # Centralizado
+    justif_style = ParagraphStyle('JustifPDF', parent=styles['Normal'], fontSize=6.5, fontName="Helvetica") # Alinhado à esquerda para textos longos
+    total_style = ParagraphStyle('TotalPDF', parent=styles['Normal'], fontSize=9, fontName="Helvetica-Bold", textColor=colors.HexColor("#1E3A8A"), spaceBefore=3, spaceAfter=3)
     erro_style = ParagraphStyle('ErroStyle', parent=styles['Normal'], fontSize=8, textColor=colors.red, fontName="Helvetica-Bold")
 
     caminho_logo = "logoMult.png"
@@ -177,7 +178,9 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
     periodo_completo = pd.date_range(start=min_data, end=max_data, freq='D')
 
     mapeamento_normalizado = {str(k).strip().lower(): v for k, v in mapeamento_celulas.items()}
-    usuarios = df_copy['E-mail'].unique() if 'E-mail' in df_copy.columns else []
+    
+    # AJUSTE: Garantir que e-mails vazios ou NaNs não gerem loops incorretos
+    usuarios = [u for u in df_copy['E-mail'].dropna().unique() if str(u).strip() != ""] if 'E-mail' in df_copy.columns else []
     
     for i, email in enumerate(usuarios):
         df_funcionario = df_copy[df_copy['E-mail'].astype(str).str.strip().str.lower() == str(email).strip().lower()].copy()
@@ -220,7 +223,7 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
             story.append(Paragraph("[AVISO: Adicione o arquivo logoMult.png no seu GitHub]", erro_style))
             story.append(Spacer(1, 8))
         
-        story.append(Paragraph(f"Relatório de Ponto: <font color='red'>{nome_funcionario}</font>", title_style))
+        story.append(Paragraph(f"Relatório de Ponto: <font color='#1E3A8A'>{nome_funcionario}</font>", title_style))
         story.append(Paragraph(f"<b>Período:</b> {min_data.strftime('%d/%m/%Y')} até {max_data.strftime('%d/%m/%Y')}", styles['Normal']))
         story.append(Paragraph(f"<b>E-mail:</b> {email}", styles['Normal']))
         story.append(Paragraph(f"<b>Célula:</b> {celula}", styles['Normal']))
@@ -243,8 +246,8 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
             lambda x: dias_semana_pt[int(x)] if pd.notna(x) else ""
         )
         
-        # CORREÇÃO DA SELEÇÃO: Filtrar colunas direto do df_funcionario_completo gerado
-        colunas_remover = ["Funcionário", "E-mail", "Data_Datetime", "Célula", "Celula"]
+        # AJUSTE: Incluído o 'celula' minúsculo para sumir do escopo da tabela
+        colunas_remover = ["Funcionário", "E-mail", "Data_Datetime", "Célula", "Celula", "celula"]
         colunas_exibicao = [col for col in df_funcionario_completo.columns if col not in colunas_remover]
         
         # Garantir que 'Data' e 'Dia da Semana' fiquem nas primeiras posições se existirem
@@ -262,16 +265,44 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         dados_tabela.append(header_row)
         
         for _, row in df_tabela.iterrows():
-            linha = [Paragraph(str(val).strip() if val != "" else "", cell_style) for val in row]
+            linha = []
+            for col_idx, (col_nome, val) in enumerate(row.items()):
+                # Aplica estilo alinhado à esquerda e menor para colunas de justificativa
+                estilo_aplicar = justif_style if "Justificativa" in str(col_nome) else cell_style
+                linha.append(Paragraph(str(val).strip() if val != "" else "", estilo_aplicar))
             dados_tabela.append(linha)
             
-        tabela = Table(dados_tabela, repeatRows=1)
+        # AJUSTE DE LAYOUT: Cálculo dinâmico de larguras (Largura útil em Landscape A4 = 802)
+        # Dá mais espaço para justificativas e menos para horários curtos
+        num_cols = len(colunas_exibicao)
+        larguras_colunas = []
+        largura_disponivel = 802
+        
+        # Conta quantas colunas de texto longo (Justificativas) existem
+        cols_justificativa = sum(1 for c in colunas_exibicao if "Justificativa" in c)
+        cols_normais = num_cols - cols_justificativa
+        
+        # Define pesos: Justificativas ganham 95 pontos, colunas normais dividem o resto
+        largura_justif = 95 if cols_justificativa > 0 else 0
+        largura_normal = (largura_disponivel - (largura_justif * cols_justificativa)) / max(1, cols_normais)
+        
+        for col in colunas_exibicao:
+            if "Justificativa" in col:
+                larguras_colunas.append(largura_justif)
+            elif col in ["Data", "Dia da Semana"]:
+                larguras_colunas.append(largura_normal * 1.1) # Um pouco mais de espaço para a data/dia
+            else:
+                larguras_colunas.append(largura_normal * 0.9)
+
+        tabela = Table(dados_tabela, colWidths=larguras_colunas, repeatRows=1)
         tabela.setStyle(TableStyle([
             ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1E3A8A")),
-            ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+            ('ALIGN', (0,0), (-1,-1), 'CENTER'),
             ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#D1D5DB")),
             ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor("#F9FAFB")]),
             ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+            ('TOPPADDING', (0,0), (-1,-1), 4),
         ]))
         
         story.append(tabela)
