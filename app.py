@@ -1342,124 +1342,106 @@ elif opcao == "RELATÓRIO":
                 st.caption(f"Gera o arquivo contendo os espelhos de ponto consolidados de sua célula ativa: **{celula_usuario}**")
         
             if st.button("📊 Gerar Relatório Consolidado", use_container_width=True, type="primary"):
-                # 1. Buscar TODOS os usuários cadastrados no sistema para garantir que ninguém seja omitido
+                # 1. Buscar os registros reais existentes utilizando a função padrão testada
+                dados_gerais_banco = executar_query_supabase("buscar_relatorio_geral", data_filtro=data_inicio, data_fim=data_fim) or []
+                
+                # 2. Processar a massa de dados existente através da função original
+                df_geral_completo = processar_dados_ponto(dados_gerais_banco, data_inicio, data_fim, incluir_usuario_info=True, formatar_data_br=True)
+                
+                if df_geral_completo.empty:
+                    df_geral_completo = pd.DataFrame(columns=["Funcionário", "E-mail", "Dia da Semana", "Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", "Hora Extra", "Justificativa Entrada", "Justificativa Saída Almoço", "Justificativa Retorno Almoço", "Justificativa Saída"])
+                
+                # 3. Mapear as células com base no e-mail de cadastro atual do colaborador
+                df_geral_completo["Celula_Filtro"] = df_geral_completo["E-mail"].astype(str).str.strip().str.lower().map(mapeamento_celulas)
+                
+                # 4. Determinar e filtrar o escopo da célula selecionada
+                if cargo_usuario == "Supervisor":
+                    df_filtrado = df_geral_completo[df_geral_completo["Celula_Filtro"] == celula_usuario].copy()
+                    target_celula = celula_usuario
+                    prefixo_nome = f"Relatorio_Consolidado_Celula_{celula_usuario}"
+                else:  
+                    if opcao_consolidada == "Todos os Colaboradores":
+                        df_filtrado = df_geral_completo.copy()
+                        target_celula = "Todos"
+                        prefixo_nome = "Relatorio_Consolidado_Todos_Colaboradores"
+                    else:
+                        df_filtrado = df_geral_completo[df_geral_completo["Celula_Filtro"] == opcao_consolidada].copy()
+                        target_celula = opcao_consolidada
+                        prefixo_nome = f"Relatorio_Consolidado_Celula_{opcao_consolidada}"
+                
+                # 5. CRUZAMENTO DE SEGURANÇA: Buscar TODOS os usuários cadastrados para incluir os zerados
                 try:
                     busca_all = supabase.table("usuarios_ponto").select("email, nome, celula").execute()
                     todos_usuarios_banco = busca_all.data or []
                 except Exception as e:
-                    st.error(f"Erro ao buscar lista de colaboradores no banco: {e}")
+                    st.error(f"Erro ao validar lista de colaboradores no banco de dados: {e}")
                     todos_usuarios_banco = []
-
-                # 2. Filtrar os colaboradores que pertencem estritamente ao escopo selecionado (com tolerância a espaços e maiúsculas)
-                usuarios_filtrados = []
+                
+                # Mapear quais e-mails já constam com registros no DataFrame filtrado
+                emails_com_dados = set()
+                if "E-mail" in df_filtrado.columns and not df_filtrado.empty:
+                    emails_com_dados = set(df_filtrado["E-mail"].astype(str).str.strip().str.lower().unique())
+                
+                linhas_placeholder = []
                 for u in todos_usuarios_banco:
                     if not u.get("email"):
                         continue
-                    u_email = str(u["email"]).strip().lower()
+                    u_email = str(u["email"]).strip()
+                    u_email_lower = u_email.lower()
                     u_nome = u.get("nome", "Sem Nome")
                     u_celula = str(u.get("celula", "")).strip()
                     
+                    # Verificar o pertencimento ao escopo selecionado
+                    pertence_ao_grupo = False
                     if cargo_usuario == "Supervisor":
-                        if u_celula.lower() == str(celula_usuario).strip().lower():
-                            usuarios_filtrados.append({"email": u_email, "nome": u_nome, "celula": u_celula})
+                        if u_celula.lower() == str(target_celula).strip().lower():
+                            pertence_ao_grupo = True
                     elif cargo_usuario == "Master":
-                        if opcao_consolidada == "Todos os Colaboradores":
-                            usuarios_filtrados.append({"email": u_email, "nome": u_nome, "celula": u_celula})
+                        if target_celula == "Todos":
+                            pertence_ao_grupo = True
                         else:
-                            if u_celula.lower() == str(opcao_consolidada).strip().lower():
-                                usuarios_filtrados.append({"email": u_email, "nome": u_nome, "celula": u_celula})
-
-                if not usuarios_filtrados:
-                    st.warning("Nenhum usuário encontrado para a célula ou escopo selecionado.")
+                            if u_celula.lower() == str(target_celula).strip().lower():
+                                pertence_ao_grupo = True
+                    
+                    # Se o colaborador pertence à célula mas não possui nenhuma batida, injetamos uma linha de referência
+                    if pertence_ao_grupo and u_email_lower not in emails_com_dados:
+                        linhas_placeholder.append({
+                            "Funcionário": u_nome,
+                            "E-mail": u_email,
+                            "Dia da Semana": "",
+                            "Data": data_inicio.strftime("%d/%m/%Y"), # Data base inicial para acionar a criação das páginas
+                            "Entrada": "",
+                            "Saída Almoço": "",
+                            "Retorno Almoço": "",
+                            "Saída": "",
+                            "Hora Extra": "00:00",
+                            "Justificativa Entrada": "",
+                            "Justificativa Saída Almoço": "",
+                            "Justificativa Retorno Almoço": "",
+                            "Justificativa Saída": ""
+                        })
+                
+                # Mesclar os usuários sem ponto de forma limpa ao relatório final
+                if lines_placeholder := linhas_placeholder:
+                    df_placeholder = pd.DataFrame(lines_placeholder)
+                    df_filtrado = pd.concat([df_filtrado, df_placeholder], ignore_index=True)
+                
+                # Remover coluna auxiliar de filtragem
+                if "Celula_Filtro" in df_filtrado.columns:
+                    df_filtrado = df_filtrado.drop(columns=["Celula_Filtro"])
+                
+                if df_filtrado.empty:
+                    st.warning("Nenhum dado localizado para os critérios selecionados.")
                 else:
-                    # Ordenar os colaboradores alfabeticamente pelo nome para organização do PDF
-                    usuarios_filtrados = sorted(usuarios_filtrados, key=lambda x: x["nome"].lower())
+                    # Ordenar alfabeticamente para que a paginação do PDF fique organizada
+                    if "Funcionário" in df_filtrado.columns:
+                        df_filtrado = df_filtrado.sort_values(
+                            by="Funcionário", 
+                            key=lambda col: col.str.lower(),
+                            kind="mergesort"
+                        )
                     
-                    # 3. Buscar os registros de ponto salvos no período completo
-                    dados_gerais_banco = executar_query_supabase("buscar_relatorio_geral", data_filtro=data_inicio, data_fim=data_fim) or []
-                    
-                    # Indexar os registros por (email, data) para busca O(1) imediata
-                    logs_indexados = {}
-                    for item in dados_gerais_banco:
-                        emp_email = str(item.get("email", "")).strip().lower()
-                        dt_banco = item.get("data")
-                        if dt_banco:
-                            dt_key = str(dt_banco)[:10]  # Formato YYYY-MM-DD
-                            logs_indexados[(emp_email, dt_key)] = item
-
-                    # 4. Construir a grade de calendário completa para cada usuário selecionado da célula
-                    lista_datas = []
-                    curr_date = data_inicio
-                    while curr_date <= data_fim:
-                        lista_datas.append(curr_date)
-                        curr_date += timedelta(days=1)
-
-                    dias_semana = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"]
-                    linhas_consolidadas = []
-
-                    for u in usuarios_filtrados:
-                        for dt in lista_datas:
-                            data_iso = dt.strftime("%Y-%m-%d")
-                            item = logs_indexados.get((u["email"], data_iso), {})
-                            
-                            linha = {
-                                "Funcionário": u["nome"],
-                                "E-mail": u["email"],
-                                "Dia da Semana": dias_semana[dt.weekday()],
-                                "Data": dt.strftime("%d/%m/%Y"),
-                                "Entrada": "",
-                                "Saída Almoço": "",
-                                "Retorno Almoço": "",
-                                "Saída": "",
-                                "Hora Extra": "00:00",
-                                "Justificativa Entrada": item.get("justificativa_entrada", "") or "",
-                                "Justificativa Saída Almoço": item.get("justificativa_saida_almoco", "") or "",
-                                "Justificativa Retorno Almoço": item.get("justificativa_retorno_almoco", "") or "",
-                                "Justificativa Saída": item.get("justificativa_saida", "") or ""
-                            }
-                            
-                            dt_entrada, dt_saida = None, None
-                            for col_banco, col_df in [
-                                ("horario_entrada", "Entrada"),
-                                ("saida_almoco", "Saída Almoço"),
-                                ("retorno_almoco", "Retorno Almoço"),
-                                ("horario_saida", "Saída")
-                            ]:
-                                valor = item.get(col_banco)
-                                if valor:
-                                    try:
-                                        dt_objeto = datetime.fromisoformat(valor).astimezone(fuso_br)
-                                        linha[col_df] = dt_objeto.strftime("%H:%M:%S")
-                                        if col_banco == "horario_entrada":
-                                            dt_entrada = dt_objeto
-                                        elif col_banco == "horario_saida":
-                                            dt_saida = dt_objeto
-                                    except Exception:
-                                        linha[col_df] = ""
-                                        
-                            if dt_entrada and dt_saida:
-                                segundos_trabalhados = int((dt_saida - dt_entrada).total_seconds())
-                                jornada_limite_segundos = 9 * 3600
-                                if segundos_trabalhados > jornada_limite_segundos:
-                                    segundos_extras = segundos_trabalhados - jornada_limite_segundos
-                                    horas_ext = segundos_extras // 3600
-                                    minutos_ext = (segundos_extras % 3600) // 60
-                                    linha["Hora Extra"] = f"{horas_ext:02d}:{minutos_ext:02d}"
-                            
-                            linhas_consolidadas.append(linha)
-
-                    df_filtrado = pd.DataFrame(linhas_consolidadas)
-                    
-                    # Definir o nome do arquivo com base na seleção executada
-                    if cargo_usuario == "Supervisor":
-                        prefixo_nome = f"Relatorio_Consolidado_Celula_{celula_usuario}"
-                    else:
-                        if opcao_consolidada == "Todos os Colaboradores":
-                            prefixo_nome = "Relatorio_Consolidado_Todos_Colaboradores"
-                        else:
-                            prefixo_nome = f"Relatorio_Consolidado_Celula_{opcao_consolidada}"
-
-                    # Geração dos arquivos binários finais
+                    # Gerar arquivos compilados
                     dados_excel_multiaba = converter_para_excel_multiaba(df_filtrado)
                     dados_pdf_gerado = converter_para_pdf_consolidado(df_filtrado, mapeamento_celulas, data_inicio, data_fim)
                     
