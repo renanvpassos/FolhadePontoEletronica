@@ -148,14 +148,14 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
     story = []
     styles = getSampleStyleSheet()
     
-    # --- Fontes e espaçamentos ---
-    title_style = ParagraphStyle('TituloPDF', parent=styles['Heading1'], fontSize=18, textColor=colors.HexColor("#1E3A8A"), spaceAfter=6)
+    # --- PONTO DE EQUILÍBRIO: Fontes recalibradas para visual ideal em 1 página ---
+    title_style = ParagraphStyle('TituloPDF', parent=styles['Heading1'], fontSize=14, textColor=colors.HexColor("#1E3A8A"), spaceAfter=5)
     
-    header_style = ParagraphStyle('HeaderPDF', parent=styles['Normal'], fontSize=10, leading=15, textColor=colors.white, fontName="Helvetica-Bold", alignment=1)
-    cell_style = ParagraphStyle('CeluaPDF', parent=styles['Normal'], fontSize=9, leading=14, fontName="Helvetica", alignment=1)
+    header_style = ParagraphStyle('HeaderPDF', parent=styles['Normal'], fontSize=10, leading=13, textColor=colors.white, fontName="Helvetica-Bold", alignment=1)
+    cell_style = ParagraphStyle('CeluaPDF', parent=styles['Normal'], fontSize=9, leading=12, fontName="Helvetica", alignment=1)
     
-    total_style = ParagraphStyle('TotalPDF', parent=styles['Normal'], fontSize=12, fontName="Helvetica-Bold", textColor=colors.HexColor("#1E3A8A"), spaceBefore=3, spaceAfter=3)
-    erro_style = ParagraphStyle('ErroStyle', parent=styles['Normal'], fontSize=9, textColor=colors.red, fontName="Helvetica-Bold")
+    total_style = ParagraphStyle('TotalPDF', parent=styles['Normal'], fontSize=10, fontName="Helvetica-Bold", textColor=colors.HexColor("#1E3A8A"), spaceBefore=2, spaceAfter=2)
+    erro_style = ParagraphStyle('ErroStyle', parent=styles['Normal'], fontSize=8, textColor=colors.red, fontName="Helvetica-Bold")
 
     caminho_logo = "logoMult.png"
     logo_existe = os.path.exists(caminho_logo)
@@ -241,7 +241,7 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         
         if logo_existe:
             try:
-                logo_flowable = Image(caminho_logo, width=98, height=27)
+                logo_flowable = Image(caminho_logo, width=80, height=24)
                 logo_flowable.hAlign = 'RIGHT'
                 story.append(logo_flowable)
                 story.append(Spacer(1, 3))
@@ -255,7 +255,7 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         story.append(Paragraph(f"<b>E-mail:</b> {email} | <b>Célula:</b> {celula}", styles['Normal']))
         story.append(Paragraph(f"<b>Total de Horas Extras no Período:</b> <font color='red'>{total_horas_str}</font>", total_style))
         story.append(Paragraph(f"<b>Total de Horas Trabalhadas no Período:</b> <font color='green'>{total_horas_trab_str}</font>", total_style))
-        story.append(Spacer(1, 3))
+        story.append(Spacer(1, 4))
         
         colunas_remover = ['funcionário', 'funcionario', 'e-mail', 'email', 'celula', 'célula']
         colunas_exibicao = [
@@ -331,15 +331,15 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         tabela = Table(dados_tabela, repeatRows=1)
         tabela.hAlign = 'CENTER'
         
-        # --- AJUSTE: Padding aumentado de 2.5 para 4.0 para melhor leitura ---
+        # --- AJUSTE: Padding ideal de 3.5 para garantir 1 página com conforto visual ---
         estilos_base = [
             ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1E3A8A")),
             ('ALIGN', (0,0), (-1,-1), 'CENTER'),
             ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#D1D5DB")),
             ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor("#F9FAFB")]),
             ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-            ('TOPPADDING', (0,0), (-1,-1), 4.0),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 4.0),
+            ('TOPPADDING', (0,0), (-1,-1), 3.5),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 3.5),
         ]
         
         estilos_base.extend(estilos_celulas_dinamicos)
