@@ -35,6 +35,7 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     caminho_logo = "logoMult.png"
     logo_existe = os.path.exists(caminho_logo)
     
+    # Funções auxiliares mantidas
     def _extrair_minutos(val):
         try:
             if pd.isna(val) or str(val).strip() == "" or ":" not in str(val): return 0
@@ -109,16 +110,25 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
         ('RIGHTPADDING', (0,0), (-1,-1), 2),
     ]
     
+    # Identificar colunas obrigatórias para verificar preenchimento
+    colunas_obrigatorias = [c for c in df_filtrado.columns if 'observação' not in c.lower()]
+    
     for r_idx, (_, row) in enumerate(df_filtrado.iterrows(), start=1):
         texto_data_dia = str(row.get("Data / Dia", "")).upper()
         eh_fds = "DOMINGO" in texto_data_dia or "SÁBADO" in texto_data_dia or "SABADO" in texto_data_dia
         estilo_linha = cell_bold_style if eh_fds else cell_style
         
-        # Logica de destaque amarelo para fim de semana com valor preenchido
-        if eh_fds:
-            for c_idx, val in enumerate(row):
-                if pd.notna(val) and str(val).strip() != "":
-                    estilos_tabela.append(('BACKGROUND', (c_idx, r_idx), (c_idx, r_idx), colors.HexColor("#FEF08A")))
+        # Lógica de preenchimento obrigatório
+        linha_completa = True
+        for col in colunas_obrigatorias:
+            val = str(row.get(col, "")).strip()
+            if val == "" or val.lower() == "nan" or val == "0" or val == "0.0":
+                linha_completa = False
+                break
+        
+        # Pinta amarelo apenas se for final de semana E a linha estiver completa
+        if eh_fds and linha_completa:
+            estilos_tabela.append(('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor("#FEF08A")))
         
         linha = []
         for col_nome, val in row.items():
