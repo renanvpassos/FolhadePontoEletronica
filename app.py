@@ -1320,147 +1320,148 @@ elif opcao == "RELATÓRIO":
             )
 
         # --- SEÇÃO DE EXPORTAÇÃO CONSOLIDADA POR CARGOS GESTORES ---
-        if cargo_usuario in ["Supervisor", "Master"]:
-            st.write("---")
-            st.markdown("### 🗂️ Exportação Geral da Equipe (Consolidada)")
-            
-            opcao_consolidada = "Minha Célula"
-            celulas_disponiveis = []
-            
-            if cargo_usuario == "Master":
-                st.caption("Escolha qual célula extrair ou se deseja consolidar todas as células.")
-                try:
-                    busca_celulas = supabase.table("usuarios_ponto").select("celula").execute()
-                    if busca_celulas.data:
-                        celulas_disponiveis = sorted(list(set([str(u["celula"]).strip() for u in busca_celulas.data if u.get("celula")])))
-                except Exception:
-                    pass
-                
-                opcoes_master = ["Todos os Colaboradores"] + celulas_disponiveis
-                opcao_consolidada = st.selectbox("Selecione abaixo a célula desejada ou o relatório consolidado de todos os funcionários por ordem alfabética:", options=opcoes_master)
-            else:
-                st.caption(f"Gera o arquivo contendo os espelhos de ponto consolidados de sua célula ativa: **{celula_usuario}**")
+if cargo_usuario in ["Supervisor", "Master"]:
+    st.write("---")
+    st.markdown("### 🗂️ Exportação Geral da Equipe (Consolidada)")
+    
+    opcao_consolidada = "Minha Célula"
+    celulas_disponiveis = []
+    
+    # 1. ANTECIPAÇÃO DO CRUZAMENTO: Buscar TODOS os usuários cadastrados no banco
+    # Fazendo isso aqui, evitamos múltiplas requisições e usamos dados sempre atualizados
+    try:
+        busca_all = supabase.table("usuarios_ponto").select("email, nome, celula").execute()
+        todos_usuarios_banco = busca_all.data or []
+    except Exception as e:
+        st.error(f"Erro ao validar lista de colaboradores no banco de dados: {e}")
+        todos_usuarios_banco = []
         
-            if st.button("📊 Gerar Relatório Consolidado", use_container_width=True, type="primary"):
-                # 1. Buscar os registros reais existentes utilizando a função padrão testada
-                dados_gerais_banco = executar_query_supabase("buscar_relatorio_geral", data_filtro=data_inicio, data_fim=data_fim) or []
-                
-                # 2. Processar a massa de dados existente através da função original
-                df_geral_completo = processar_dados_ponto(dados_gerais_banco, data_inicio, data_fim, incluir_usuario_info=True, formatar_data_br=True)
-                
-                if df_geral_completo.empty:
-                    df_geral_completo = pd.DataFrame(columns=["Funcionário", "E-mail", "Dia da Semana", "Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", "Hora Extra", "Justificativa Entrada", "Justificativa Saída Almoço", "Justificativa Retorno Almoço", "Justificativa Saída"])
-                
-                # 3. Mapear as células com base no e-mail de cadastro atual do colaborador
-                df_geral_completo["Celula_Filtro"] = df_geral_completo["E-mail"].astype(str).str.strip().str.lower().map(mapeamento_celulas)
-                
-                # 4. Determinar e filtrar o escopo da célula selecionada
-                if cargo_usuario == "Supervisor":
-                    df_filtrado = df_geral_completo[df_geral_completo["Celula_Filtro"] == celula_usuario].copy()
-                    target_celula = celula_usuario
-                    prefixo_nome = f"Relatorio_Consolidado_Celula_{celula_usuario}"
-                else:  
-                    if opcao_consolidada == "Todos os Colaboradores":
-                        df_filtrado = df_geral_completo.copy()
-                        target_celula = "Todos"
-                        prefixo_nome = "Relatorio_Consolidado_Todos_Colaboradores"
-                    else:
-                        df_filtrado = df_geral_completo[df_geral_completo["Celula_Filtro"] == opcao_consolidada].copy()
-                        target_celula = opcao_consolidada
-                        prefixo_nome = f"Relatorio_Consolidado_Celula_{opcao_consolidada}"
-                
-                # 5. CRUZAMENTO DE SEGURANÇA: Buscar TODOS os usuários cadastrados para incluir os zerados
-                try:
-                    busca_all = supabase.table("usuarios_ponto").select("email, nome, celula").execute()
-                    todos_usuarios_banco = busca_all.data or []
-                except Exception as e:
-                    st.error(f"Erro ao validar lista de colaboradores no banco de dados: {e}")
-                    todos_usuarios_banco = []
-                
-                # Mapear quais e-mails já constam com registros no DataFrame filtrado
-                emails_com_dados = set()
-                if "E-mail" in df_filtrado.columns and not df_filtrado.empty:
-                    emails_com_dados = set(df_filtrado["E-mail"].astype(str).str.strip().str.lower().unique())
-                
-                linhas_placeholder = []
-                for u in todos_usuarios_banco:
-                    if not u.get("email"):
-                        continue
-                    u_email = str(u["email"]).strip()
-                    u_email_lower = u_email.lower()
-                    u_nome = u.get("nome", "Sem Nome")
-                    u_celula = str(u.get("celula", "")).strip()
-                    
-                    # Verificar o pertencimento ao escopo selecionado
-                    pertence_ao_grupo = False
-                    if cargo_usuario == "Supervisor":
-                        if u_celula.lower() == str(target_celula).strip().lower():
-                            pertence_ao_grupo = True
-                    elif cargo_usuario == "Master":
-                        if target_celula == "Todos":
-                            pertence_ao_grupo = True
-                        else:
-                            if u_celula.lower() == str(target_celula).strip().lower():
-                                pertence_ao_grupo = True
-                    
-                    # Se o colaborador pertence à célula mas não possui nenhuma batida, injetamos uma linha de referência
-                    if pertence_ao_grupo and u_email_lower not in emails_com_dados:
-                        linhas_placeholder.append({
-                            "Funcionário": u_nome,
-                            "E-mail": u_email,
-                            "Dia da Semana": "",
-                            "Data": data_inicio.strftime("%d/%m/%Y"), # Data base inicial para acionar a criação das páginas
-                            "Entrada": "",
-                            "Saída Almoço": "",
-                            "Retorno Almoço": "",
-                            "Saída": "",
-                            "Hora Extra": "00:00",
-                            "Justificativa Entrada": "",
-                            "Justificativa Saída Almoço": "",
-                            "Justificativa Retorno Almoço": "",
-                            "Justificativa Saída": ""
-                        })
-                
-                # Mesclar os usuários sem ponto de forma limpa ao relatório final
-                if lines_placeholder := linhas_placeholder:
-                    df_placeholder = pd.DataFrame(lines_placeholder)
-                    df_filtrado = pd.concat([df_filtrado, df_placeholder], ignore_index=True)
-                
-                # Remover coluna auxiliar de filtragem
-                if "Celula_Filtro" in df_filtrado.columns:
-                    df_filtrado = df_filtrado.drop(columns=["Celula_Filtro"])
-                
-                if df_filtrado.empty:
-                    st.warning("Nenhum dado localizado para os critérios selecionados.")
-                else:
-                    # Ordenar alfabeticamente para que a paginação do PDF fique organizada
-                    if "Funcionário" in df_filtrado.columns:
-                        df_filtrado = df_filtrado.sort_values(
-                            by="Funcionário", 
-                            key=lambda col: col.str.lower(),
-                            kind="mergesort"
-                        )
-                    
-                    # Gerar arquivos compilados
-                    dados_excel_multiaba = converter_para_excel_multiaba(df_filtrado)
-                    dados_pdf_gerado = converter_para_pdf_consolidado(df_filtrado, mapeamento_celulas, data_inicio, data_fim)
-                    
-                    st.success("✅ Relatórios consolidados gerados com sucesso! Escolha o formato para baixar:")
-                    
-                    col_down1, col_down2 = st.columns(2)
-                    with col_down1:
-                        st.download_button(
-                            label="📥 Baixar em Excel (.xlsx)",
-                            data=dados_excel_multiaba,
-                            file_name=f"{prefixo_nome}_{data_inicio}_a_{data_fim}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            use_container_width=True
-                        )
-                    with col_down2:
-                        st.download_button(
-                            label="📄 Baixar em PDF (.pdf)",
-                            data=dados_pdf_gerado,
-                            file_name=f"{prefixo_nome}_{data_inicio}_a_{data_fim}.pdf",
-                            mime="application/pdf",
-                            use_container_width=True
-                        )
+    if cargo_usuario == "Master":
+        st.caption("Escolha qual célula extrair ou se deseja consolidar todas as células.")
+        if todos_usuarios_banco:
+            # Extrai as células únicas direto do banco de dados
+            celulas_disponiveis = sorted(list(set([str(u["celula"]).strip() for u in todos_usuarios_banco if u.get("celula")])))
+        
+        opcoes_master = ["Todos os Colaboradores"] + celulas_disponiveis
+        opcao_consolidada = st.selectbox("Selecione abaixo a célula desejada ou o relatório consolidado de todos os funcionários por ordem alfabética:", options=opcoes_master)
+    else:
+        st.caption(f"Gera o arquivo contendo os espelhos de ponto consolidados de sua célula ativa: **{celula_usuario}**")
+
+    if st.button("📊 Gerar Relatório Consolidado", use_container_width=True, type="primary"):
+        # 2. Buscar os registros reais existentes utilizando a função padrão testada
+        dados_gerais_banco = executar_query_supabase("buscar_relatorio_geral", data_filtro=data_inicio, data_fim=data_fim) or []
+        
+        # 3. Processar a massa de dados existente através da função original
+        df_geral_completo = processar_dados_ponto(dados_gerais_banco, data_inicio, data_fim, incluir_usuario_info=True, formatar_data_br=True)
+        
+        if df_geral_completo.empty:
+            df_geral_completo = pd.DataFrame(columns=["Funcionário", "E-mail", "Dia da Semana", "Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", "Hora Extra", "Justificativa Entrada", "Justificativa Saída Almoço", "Justificativa Retorno Almoço", "Justificativa Saída"])
+        
+        # 4. MAPEAMENTO EM TEMPO REAL (CORREÇÃO DO BUG)
+        # Criamos um dicionário de células dinâmico baseado 100% no estado atual do banco de dados
+        mapeamento_celulas_db = {
+            str(u["email"]).strip().lower(): str(u.get("celula", "")).strip()
+            for u in todos_usuarios_banco if u.get("email")
+        }
+        
+        # Substituímos o mapeamento antigo pelo mapeamento dinâmico do banco
+        df_geral_completo["Celula_Filtro"] = df_geral_completo["E-mail"].astype(str).str.strip().str.lower().map(mapeamento_celulas_db)
+        
+        # 5. Determinar e filtrar o escopo da célula selecionada
+        if cargo_usuario == "Supervisor":
+            target_celula = celula_usuario
+            df_filtrado = df_geral_completo[df_geral_completo["Celula_Filtro"].str.lower() == str(target_celula).strip().lower()].copy()
+            prefixo_nome = f"Relatorio_Consolidado_Celula_{celula_usuario}"
+        else:  
+            if opcao_consolidada == "Todos os Colaboradores":
+                df_filtrado = df_geral_completo.copy()
+                target_celula = "Todos"
+                prefixo_nome = "Relatorio_Consolidado_Todos_Colaboradores"
+            else:
+                target_celula = opcao_consolidada
+                df_filtrado = df_geral_completo[df_geral_completo["Celula_Filtro"].str.lower() == str(target_celula).strip().lower()].copy()
+                prefixo_nome = f"Relatorio_Consolidado_Celula_{opcao_consolidada}"
+        
+        # 6. Identificar quais e-mails já constam com registros no DataFrame filtrado
+        emails_com_dados = set()
+        if "E-mail" in df_filtrado.columns and not df_filtrado.empty:
+            emails_com_dados = set(df_filtrado["E-mail"].astype(str).str.strip().str.lower().unique())
+        
+        linhas_placeholder = []
+        for u in todos_usuarios_banco:
+            if not u.get("email"):
+                continue
+            u_email = str(u["email"]).strip()
+            u_email_lower = u_email.lower()
+            u_nome = u.get("nome", "Sem Nome")
+            u_celula = str(u.get("celula", "")).strip()
+            
+            # Verificar o pertencimento ao grupo filtrado
+            pertence_ao_grupo = False
+            if target_celula == "Todos":
+                pertence_ao_grupo = True
+            elif u_celula.lower() == str(target_celula).strip().lower():
+                pertence_ao_grupo = True
+            
+            # Se o colaborador pertence à célula mas REALMENTE não possui nenhuma batida no período
+            if pertence_ao_grupo and u_email_lower not in emails_com_dados:
+                linhas_placeholder.append({
+                    "Funcionário": u_nome,
+                    "E-mail": u_email,
+                    "Dia da Semana": "",
+                    "Data": data_inicio.strftime("%d/%m/%Y"),
+                    "Entrada": "",
+                    "Saída Almoço": "",
+                    "Retorno Almoço": "",
+                    "Saída": "",
+                    "Hora Extra": "00:00",
+                    "Justificativa Entrada": "",
+                    "Justificativa Saída Almoço": "",
+                    "Justificativa Retorno Almoço": "",
+                    "Justificativa Saída": ""
+                })
+        
+        # Mesclar os usuários genuinamente sem ponto de forma limpa ao relatório final
+        if linhas_placeholder:
+            df_placeholder = pd.DataFrame(linhas_placeholder)
+            df_filtrado = pd.concat([df_filtrado, df_placeholder], ignore_index=True)
+        
+        # Remover coluna auxiliar de filtragem
+        if "Celula_Filtro" in df_filtrado.columns:
+            df_filtrado = df_filtrado.drop(columns=["Celula_Filtro"])
+        
+        if df_filtrado.empty:
+            st.warning("Nenhum dado localizado para os critérios selecionados.")
+        else:
+            # Ordenar alfabeticamente para que a paginação fique organizada
+            if "Funcionário" in df_filtrado.columns:
+                df_filtrado = df_filtrado.sort_values(
+                    by="Funcionário", 
+                    key=lambda col: col.str.lower(),
+                    kind="mergesort"
+                )
+            
+            # Gerar arquivos compilados
+            dados_excel_multiaba = converter_para_excel_multiaba(df_filtrado)
+            # Passamos o mapeamento atualizado do banco também para a função do PDF caso ela utilize
+            dados_pdf_gerado = converter_para_pdf_consolidado(df_filtrado, mapeamento_celulas_db, data_inicio, data_fim)
+            
+            st.success("✅ Relatórios consolidados gerados com sucesso! Escolha o formato para baixar:")
+            
+            col_down1, col_down2 = st.columns(2)
+            with col_down1:
+                st.download_button(
+                    label="📥 Baixar em Excel (.xlsx)",
+                    data=dados_excel_multiaba,
+                    file_name=f"{prefixo_nome}_{data_inicio}_a_{data_fim}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
+            with col_down2:
+                st.download_button(
+                    label="📄 Baixar em PDF (.pdf)",
+                    data=dados_pdf_gerado,
+                    file_name=f"{prefixo_nome}_{data_inicio}_a_{data_fim}.pdf",
+                    mime="application/pdf",
+                    use_container_width=True
+                )
