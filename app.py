@@ -144,8 +144,7 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
             if pd.isna(val) or str(val).strip() == "" or ":" not in str(val):
                 return 0
             partes = str(val).strip().split(':')
-            h, m = int(partes[0]), int(partes[1])
-            return h * 60 + m
+            return int(partes[0]) * 60 + int(partes[1])
         except:
             return 0
 
@@ -162,25 +161,26 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
     df_copy = df.copy()
     coluna_data = 'Data'  
     
+    # CORREÇÃO: Forçar a conversão limpa da data para datetime e normalizar o tipo de dado
     if coluna_data in df_copy.columns and not df_copy[coluna_data].empty:
         amostra = str(df_copy[coluna_data].dropna().iloc[0])
         if "/" in amostra:
-            df_copy['Data_Datetime'] = pd.to_datetime(df_copy[coluna_data], format='%d/%m/%Y', errors='coerce').dt.normalize()
+            df_copy['Data_Datetime'] = pd.to_datetime(df_copy[coluna_data], format='%d/%m/%Y', errors='coerce')
         else:
-            df_copy['Data_Datetime'] = pd.to_datetime(df_copy[coluna_data], errors='coerce').dt.normalize()
+            df_copy['Data_Datetime'] = pd.to_datetime(df_copy[coluna_data], errors='coerce')
     
-    min_data = pd.to_datetime(data_inicio).floor('D')
-    max_data = pd.to_datetime(data_fim).floor('D')
+    # Força a remoção de timezone para evitar erros de cruzamento (Merge)
+    df_copy['Data_Datetime'] = df_copy['Data_Datetime'].dt.tz_localize(None).dt.normalize()
+    
+    min_data = pd.to_datetime(data_inicio).tz_localize(None).floor('D')
+    max_data = pd.to_datetime(data_fim).tz_localize(None).floor('D')
     periodo_completo = pd.date_range(start=min_data, end=max_data, freq='D')
 
-    # Normalização de segurança para o mapeamento interno
     mapeamento_normalizado = {str(k).strip().lower(): v for k, v in mapeamento_celulas.items()}
-
-    usuarios = df['E-mail'].unique() if 'E-mail' in df.columns else []
+    usuarios = df_copy['E-mail'].unique() if 'E-mail' in df_copy.columns else []
     
     for i, email in enumerate(usuarios):
-        # Filtro tolerante a variações de caixa alta/baixa
-        df_funcionario = df_copy[df_copy['E-mail'].astype(str).str.strip().str.lower() == str(email).strip().lower()]
+        df_funcionario = df_copy[df_copy['E-mail'].astype(str).str.strip().str.lower() == str(email).strip().lower()].copy()
         if df_funcionario.empty:
             continue
             
@@ -196,7 +196,7 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         minutos = total_mins % 60
         total_horas_str = f"{horas:02d}:{minutos:02d}"
 
-        # === CÁLCULO DE HORAS TRABALHADAS (Com Fallback de Segurança) ===
+        # === CÁLCULO DE HORAS TRABALHADAS ===
         total_mins_trab = 0
         if "Horas Trabalhadas" in df_funcionario.columns and df_funcionario["Horas Trabalhadas"].apply(_extrair_minutos).sum() > 0:
             total_mins_trab = df_funcionario["Horas Trabalhadas"].apply(_extrair_minutos).sum()
@@ -228,18 +228,33 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         story.append(Paragraph(f"<b>Total de Horas Trabalhadas no Período:</b> <font color='green'>{total_horas_trab_str}</font>", total_style))
         story.append(Spacer(1, 5))
         
+        # CORREÇÃO DO MERGE: Garantir tipo idêntico de data
         df_base_periodo = pd.DataFrame({'Data_Datetime': periodo_completo})
+        df_base_periodo['Data_Datetime'] = df_base_periodo['Data_Datetime'].dt.tz_localize(None).dt.normalize()
+        
         df_funcionario_completo = pd.merge(df_base_periodo, df_funcionario, on='Data_Datetime', how='left')
         
+        # Reconstrói a coluna textual de exibição 'Data' para a tabela
         df_funcionario_completo[coluna_data] = df_funcionario_completo['Data_Datetime'].dt.strftime('%d/%m/%Y')
         
-        if "Dia da Semana" in df.columns:
-            dias_semana_pt = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"]
-            df_funcionario_completo["Dia da Semana"] = df_funcionario_completo['Data_Datetime'].dt.weekday.map(
-                lambda x: dias_semana_pt[int(x)] if pd.notna(x) else ""
-            )
+        # Tratamento do Dia da Semana baseado na data reconstruída do período
+        dias_semana_pt = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"]
+        df_funcionario_completo["Dia da Semana"] = df_funcionario_completo['Data_Datetime'].dt.weekday.map(
+            lambda x: dias_semana_pt[int(x)] if pd.notna(x) else ""
+        )
         
-        colunas_exibicao = [col for col in df.columns if col not in ["Funcionário", "E-mail", "Data_Datetime"]]
+        # CORREÇÃO DA SELEÇÃO: Filtrar colunas direto do df_funcionario_completo gerado
+        colunas_remover = ["Funcionário", "E-mail", "Data_Datetime", "Célula", "Celula"]
+        colunas_exibicao = [col for col in df_funcionario_completo.columns if col not in colunas_remover]
+        
+        # Garantir que 'Data' e 'Dia da Semana' fiquem nas primeiras posições se existirem
+        if "Dia da Semana" in colunas_exibicao:
+            colunas_exibicao.remove("Dia da Semana")
+            colunas_exibicao.insert(0, "Dia da Semana")
+        if coluna_data in colunas_exibicao:
+            colunas_exibicao.remove(coluna_data)
+            colunas_exibicao.insert(0, coluna_data)
+            
         df_tabela = df_funcionario_completo[colunas_exibicao].fillna("")
         
         dados_tabela = []
