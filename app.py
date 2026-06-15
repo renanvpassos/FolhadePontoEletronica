@@ -26,8 +26,7 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     title_style = ParagraphStyle('TituloPDF', parent=styles['Heading1'], fontSize=13, textColor=colors.HexColor("#1E3A8A"), spaceAfter=4)
     header_style = ParagraphStyle('HeaderPDF', parent=styles['Normal'], fontSize=8.5, leading=10, textColor=colors.white, fontName="Helvetica-Bold", alignment=1)
     
-    # Fontes reduzidas para 7.5 e leading para 9 para compactar a tabela
-    cell_style = ParagraphStyle('CeluaPDF', parent=styles['Normal'], fontSize=8.5, leading=9, fontName="Helvetica", alignment=1)
+    cell_style = ParagraphStyle('CeluaPDF', parent=styles['Normal'], fontSize=7.5, leading=9, fontName="Helvetica", alignment=1)
     cell_bold_style = ParagraphStyle('CelulaNegritoPDF', parent=styles['Normal'], fontSize=7.5, leading=9, fontName="Helvetica-Bold", alignment=1)
     
     total_style = ParagraphStyle('TotalPDF', parent=styles['Normal'], fontSize=9.5, fontName="Helvetica-Bold", textColor=colors.HexColor("#1E3A8A"), spaceBefore=2, spaceAfter=2)
@@ -38,23 +37,18 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     
     def _extrair_minutos(val):
         try:
-            if pd.isna(val) or str(val).strip() == "" or ":" not in str(val):
-                return 0
+            if pd.isna(val) or str(val).strip() == "" or ":" not in str(val): return 0
             partes = str(val).strip().split(':')
-            h, m = int(partes[0]), int(partes[1])
-            return h * 60 + m
-        except:
-            return 0
+            return int(partes[0]) * 60 + int(partes[1])
+        except: return 0
 
     def _calcular_minutos_entre_horas(h1, h2):
         try:
-            if pd.isna(h1) or pd.isna(h2) or not h1 or not h2:
-                return 0
+            if pd.isna(h1) or pd.isna(h2) or not h1 or not h2: return 0
             t1 = sum(x * int(t) for x, t in zip([60, 1, 0], str(h1).strip().split(':')))
             t2 = sum(x * int(t) for x, t in zip([60, 1, 0], str(h2).strip().split(':')))
             return max(0, t2 - t1)
-        except:
-            return 0
+        except: return 0
             
     # === CÁLCULOS ===
     total_mins = df["Hora Extra"].apply(_extrair_minutos).sum() if "Hora Extra" in df.columns else 0
@@ -90,7 +84,6 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     # === TRATAMENTO DAS COLUNAS ===
     df_pdf = df.copy()
     
-    # 1. Unificar Data e Dia da Semana
     if "Data" in df_pdf.columns and "Dia da Semana" in df_pdf.columns:
         conteudo_combinado = []
         for _, row in df_pdf.iterrows():
@@ -101,32 +94,11 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
         df_pdf.insert(0, "Data / Dia", conteudo_combinado)
         df_pdf = df_pdf.drop(columns=["Data", "Dia da Semana"])
 
-    # 2. Remover Justificativas
     colunas_manter = [c for c in df_pdf.columns if "justificativa" not in c.lower()]
     df_filtrado = df_pdf[colunas_manter]
     
     # === CRIAÇÃO DA TABELA ===
     dados_tabela = [[Paragraph(f"<b>{col}</b>", header_style) for col in df_filtrado.columns]]
-    
-    idx_hora_extra = list(df_filtrado.columns).index("Hora Extra") if "Hora Extra" in df_filtrado.columns else -1
-    estilos_celulas_amarelas = []
-    
-    for r_idx, (_, row) in enumerate(df_filtrado.iterrows(), start=1):
-        texto_data_dia = str(row.get("Data / Dia", "")).upper()
-        eh_fds = "DOMINGO" in texto_data_dia or "SÁBADO" in texto_data_dia or "SABADO" in texto_data_dia
-        estilo_linha = cell_bold_style if eh_fds else cell_style
-        
-        linha = [Paragraph(str(val) if pd.notna(val) else "", estilo_linha) for val in row]
-        dados_tabela.append(linha)
-        
-        if idx_hora_extra != -1:
-            val_he = str(row.iloc[idx_hora_extra]).strip()
-            if val_he != "" and val_he != "00:00":
-                estilos_celulas_amarelas.append(('BACKGROUND', (idx_hora_extra, r_idx), (idx_hora_extra, r_idx), colors.HexColor("#FEF08A")))
-    
-    tabela = Table(dados_tabela, repeatRows=1)
-    
-    # Estilização com espaçamento reduzido
     estilos_tabela = [
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1E3A8A")),
         ('ALIGN', (0,0), (-1,-1), 'CENTER'),
@@ -136,7 +108,31 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
         ('LEFTPADDING', (0,0), (-1,-1), 2),
         ('RIGHTPADDING', (0,0), (-1,-1), 2),
     ]
-    estilos_tabela.extend(estilos_celulas_amarelas)
+    
+    for r_idx, (_, row) in enumerate(df_filtrado.iterrows(), start=1):
+        texto_data_dia = str(row.get("Data / Dia", "")).upper()
+        eh_fds = "DOMINGO" in texto_data_dia or "SÁBADO" in texto_data_dia or "SABADO" in texto_data_dia
+        estilo_linha = cell_bold_style if eh_fds else cell_style
+        
+        # Logica de destaque amarelo para fim de semana com valor preenchido
+        if eh_fds:
+            for c_idx, val in enumerate(row):
+                if pd.notna(val) and str(val).strip() != "":
+                    estilos_tabela.append(('BACKGROUND', (c_idx, r_idx), (c_idx, r_idx), colors.HexColor("#FEF08A")))
+        
+        linha = []
+        for col_nome, val in row.items():
+            valor_str = str(val) if pd.notna(val) else ""
+            
+            # Regra: Se Hora Extra for 00:00 ou 0, não exibe
+            if col_nome == "Hora Extra" and (valor_str in ["00:00", "0", "0.0"]):
+                valor_str = ""
+            
+            linha.append(Paragraph(valor_str, estilo_linha))
+            
+        dados_tabela.append(linha)
+    
+    tabela = Table(dados_tabela, repeatRows=1)
     tabela.setStyle(TableStyle(estilos_tabela))
     
     story.append(tabela)
