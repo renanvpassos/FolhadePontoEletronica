@@ -150,11 +150,9 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
     
     title_style = ParagraphStyle('TituloPDF', parent=styles['Heading1'], fontSize=14, textColor=colors.HexColor("#1E3A8A"), spaceAfter=10)
     
-    # --- AJUSTE 4: Redução de 10% no tamanho das fontes e adequação do leading ---
+    # Cabeçalho e células configurados com alignment=1 (Centro)
     header_style = ParagraphStyle('HeaderPDF', parent=styles['Normal'], fontSize=11.7, leading=14, textColor=colors.white, fontName="Helvetica-Bold", alignment=1)
-    cell_style = ParagraphStyle('CeluaPDF', parent=styles['Normal'], fontSize=16.2, leading=20, fontName="Helvetica")
-    # Estilo específico para centralizar valores dentro da célula
-    center_cell_style = ParagraphStyle('CentroCeluaPDF', parent=cell_style, alignment=1)
+    cell_style = ParagraphStyle('CeluaPDF', parent=styles['Normal'], fontSize=16.2, leading=20, fontName="Helvetica", alignment=1)
     
     total_style = ParagraphStyle('TotalPDF', parent=styles['Normal'], fontSize=10, fontName="Helvetica-Bold", textColor=colors.HexColor("#1E3A8A"), spaceBefore=5, spaceAfter=5)
     erro_style = ParagraphStyle('ErroStyle', parent=styles['Normal'], fontSize=8, textColor=colors.red, fontName="Helvetica-Bold")
@@ -302,13 +300,11 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
                 val_str = str(val) if val is not None and not pd.isna(val) else ""
                 val_str = val_str.strip()
                 
-                # --- AJUSTE 3: Se o valor da coluna 'Hora Extra' for "00:00" deixa em branco ---
                 if col_name == "Hora Extra" and val_str == "00:00":
                     val_str = ""
                 
-                # --- AJUSTE 2: Alinha os valores da coluna 'Hora Extra' no centro ---
-                atual_style = center_cell_style if col_name == "Hora Extra" else cell_style
-                linha.append(Paragraph(val_str, atual_style))
+                # Todas as células agora adotam o padrão centralizado
+                linha.append(Paragraph(val_str, cell_style))
                 
             dados_tabela.append(linha)
             
@@ -337,21 +333,16 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         tabela = Table(dados_tabela, repeatRows=1)
         tabela.hAlign = 'CENTER'
         
-        # --- AJUSTE 1 & 2: Alinhamentos estruturais da tabela via TableStyle ---
+        # O ALIGN agora foi definido globalmente de (0,0) até (-1,-1) como 'CENTER'
         estilos_base = [
             ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1E3A8A")),
-            ('ALIGN', (0,0), (-1,0), 'CENTER'),    # Centraliza horizontalmente todos os Headers
-            ('ALIGN', (0,1), (-1,-1), 'LEFT'),      # Mantém alinhamento à esquerda padrão para o corpo
+            ('ALIGN', (0,0), (-1,-1), 'CENTER'),
             ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#D1D5DB")),
             ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor("#F9FAFB")]),
             ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
             ('TOPPADDING', (0,0), (-1,-1), 12),
             ('BOTTOMPADDING', (0,0), (-1,-1), 12),
         ]
-        
-        # Força o alinhamento da coluna Hora Extra no TableStyle caso ela exista
-        if idx_hora_extra != -1:
-            estilos_base.append(('ALIGN', (idx_hora_extra, 1), (idx_hora_extra, -1), 'CENTER'))
         
         estilos_base.extend(estilos_celulas_dinamicos)
         tabela.setStyle(TableStyle(estilos_base))
