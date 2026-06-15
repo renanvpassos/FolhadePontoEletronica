@@ -22,20 +22,17 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     story = []
     styles = getSampleStyleSheet()
     
-    # Estilos com fonte reduzida para otimizar espaço
+    # Estilos
     title_style = ParagraphStyle('TituloPDF', parent=styles['Heading1'], fontSize=13, textColor=colors.HexColor("#1E3A8A"), spaceAfter=4)
     header_style = ParagraphStyle('HeaderPDF', parent=styles['Normal'], fontSize=8.5, leading=10, textColor=colors.white, fontName="Helvetica-Bold", alignment=1)
-    
     cell_style = ParagraphStyle('CeluaPDF', parent=styles['Normal'], fontSize=7.5, leading=9, fontName="Helvetica", alignment=1)
     cell_bold_style = ParagraphStyle('CelulaNegritoPDF', parent=styles['Normal'], fontSize=7.5, leading=9, fontName="Helvetica-Bold", alignment=1)
-    
     total_style = ParagraphStyle('TotalPDF', parent=styles['Normal'], fontSize=9.5, fontName="Helvetica-Bold", textColor=colors.HexColor("#1E3A8A"), spaceBefore=2, spaceAfter=2)
     erro_style = ParagraphStyle('ErroStyle', parent=styles['Normal'], fontSize=8, textColor=colors.red, fontName="Helvetica-Bold")
     
     caminho_logo = "logoMult.png"
     logo_existe = os.path.exists(caminho_logo)
     
-    # Funções auxiliares mantidas
     def _extrair_minutos(val):
         try:
             if pd.isna(val) or str(val).strip() == "" or ":" not in str(val): return 0
@@ -43,29 +40,10 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
             return int(partes[0]) * 60 + int(partes[1])
         except: return 0
 
-    def _calcular_minutos_entre_horas(h1, h2):
-        try:
-            if pd.isna(h1) or pd.isna(h2) or not h1 or not h2: return 0
-            t1 = sum(x * int(t) for x, t in zip([60, 1, 0], str(h1).strip().split(':')))
-            t2 = sum(x * int(t) for x, t in zip([60, 1, 0], str(h2).strip().split(':')))
-            return max(0, t2 - t1)
-        except: return 0
-            
     # === CÁLCULOS ===
     total_mins = df["Hora Extra"].apply(_extrair_minutos).sum() if "Hora Extra" in df.columns else 0
-    horas, minutos = total_mins // 60, total_mins % 60
-    total_horas_str = f"{horas:02d}:{minutos:02d}"
+    total_horas_str = f"{total_mins // 60:02d}:{total_mins % 60:02d}"
 
-    total_mins_trab = 0
-    if "Horas Trabalhadas" in df.columns and df["Horas Trabalhadas"].apply(_extrair_minutos).sum() > 0:
-        total_mins_trab = df["Horas Trabalhadas"].apply(_extrair_minutos).sum()
-    elif "Entrada" in df.columns and "Saída" in df.columns:
-        for _, r in df.iterrows():
-            total_mins_trab += _calcular_minutos_entre_horas(r.get("Entrada"), r.get("Saída"))
-    
-    horas_trab, minutos_trab = total_mins_trab // 60, total_mins_trab % 60
-    total_horas_trab_str = f"{horas_trab:02d}:{minutos_trab:02d}"
-    
     # === CONSTRUÇÃO DO DOCUMENTO ===
     celula = mapeamento_celulas.get(email, "Não Informada")
     
@@ -79,24 +57,20 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     story.append(Paragraph(f"<b>E-mail:</b> {email}", styles['Normal']))
     story.append(Paragraph(f"<b>Célula:</b> {celula}", styles['Normal']))
     story.append(Paragraph(f"<b>Total de Horas Extras no Período:</b> <font color='red'>{total_horas_str}</font>", total_style))
-    story.append(Paragraph(f"<b>Total de Horas Trabalhadas no Período:</b> <font color='green'>{total_horas_trab_str}</font>", total_style))
     story.append(Spacer(1, 5))
     
     # === TRATAMENTO DAS COLUNAS ===
     df_pdf = df.copy()
-    
     if "Data" in df_pdf.columns and "Dia da Semana" in df_pdf.columns:
-        conteudo_combinado = []
-        for _, row in df_pdf.iterrows():
-            d = str(row["Data"]).strip()
-            dia = d.split('/')[0] if '/' in d else d
-            ds = str(row["Dia da Semana"]).strip()
-            conteudo_combinado.append(f"{dia}<br/>{ds}")
+        conteudo_combinado = [f"{str(row['Data']).split('/')[0]}<br/>{row['Dia da Semana']}" for _, row in df_pdf.iterrows()]
         df_pdf.insert(0, "Data / Dia", conteudo_combinado)
         df_pdf = df_pdf.drop(columns=["Data", "Dia da Semana"])
 
     colunas_manter = [c for c in df_pdf.columns if "justificativa" not in c.lower()]
     df_filtrado = df_pdf[colunas_manter]
+    
+    idx_hora_extra = list(df_filtrado.columns).index("Hora Extra") if "Hora Extra" in df_filtrado.columns else -1
+    colunas_obrigatorias = [c for c in df_filtrado.columns if 'observação' not in c.lower()]
     
     # === CRIAÇÃO DA TABELA ===
     dados_tabela = [[Paragraph(f"<b>{col}</b>", header_style) for col in df_filtrado.columns]]
@@ -110,42 +84,34 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
         ('RIGHTPADDING', (0,0), (-1,-1), 2),
     ]
     
-    # Identificar colunas obrigatórias para verificar preenchimento
-    colunas_obrigatorias = [c for c in df_filtrado.columns if 'observação' not in c.lower()]
-    
     for r_idx, (_, row) in enumerate(df_filtrado.iterrows(), start=1):
-        texto_data_dia = str(row.get("Data / Dia", "")).upper()
-        eh_fds = "DOMINGO" in texto_data_dia or "SÁBADO" in texto_data_dia or "SABADO" in texto_data_dia
-        estilo_linha = cell_bold_style if eh_fds else cell_style
+        # Verifica FDS e preenchimento
+        texto_data = str(row.get("Data / Dia", "")).upper()
+        eh_fds = "DOMINGO" in texto_data or "SÁBADO" in texto_data or "SABADO" in texto_data
         
-        # Lógica de preenchimento obrigatório
-        linha_completa = True
-        for col in colunas_obrigatorias:
-            val = str(row.get(col, "")).strip()
-            if val == "" or val.lower() == "nan" or val == "0" or val == "0.0":
-                linha_completa = False
-                break
+        # Verifica se a linha está completa (ignora observação)
+        linha_completa = all(str(row.get(col, "")).strip() not in ["", "nan", "0", "0.0"] for col in colunas_obrigatorias)
         
-        # Pinta amarelo apenas se for final de semana E a linha estiver completa
+        # Aplica regra de FDS
         if eh_fds and linha_completa:
             estilos_tabela.append(('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor("#FEF08A")))
         
+        # Aplica regra de Hora Extra (apenas se tiver valor e não for FDS completo)
+        val_he = str(row.get("Hora Extra", "")).strip()
+        if idx_hora_extra != -1 and val_he not in ["", "0", "0.0", "00:00"]:
+            estilos_tabela.append(('BACKGROUND', (idx_hora_extra, r_idx), (idx_hora_extra, r_idx), colors.HexColor("#FEF08A")))
+
         linha = []
         for col_nome, val in row.items():
-            valor_str = str(val) if pd.notna(val) else ""
-            
-            # Regra: Se Hora Extra for 00:00 ou 0, não exibe
-            if col_nome == "Hora Extra" and (valor_str in ["00:00", "0", "0.0"]):
-                valor_str = ""
-            
-            linha.append(Paragraph(valor_str, estilo_linha))
+            valor_str = "" if (col_nome == "Hora Extra" and val in ["00:00", "0", "0.0", ""]) else str(val)
+            linha.append(Paragraph(valor_str, cell_bold_style if eh_fds else cell_style))
             
         dados_tabela.append(linha)
     
     tabela = Table(dados_tabela, repeatRows=1)
     tabela.setStyle(TableStyle(estilos_tabela))
-    
     story.append(tabela)
+    
     doc.build(story)
     output.seek(0)
     return output.getvalue()
