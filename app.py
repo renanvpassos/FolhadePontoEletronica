@@ -242,18 +242,37 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         header_row = [Paragraph(f"<b>{col}</b>", header_style) for col in df_tabela.columns]
         dados_tabela.append(header_row)
         
-        for _, row in df_tabela.iterrows():
+        # --- Lógica de Pintar Células Específicas ---
+        # Identifica o índice da coluna "Hora Extra" na tabela atual, se existir
+        idx_hora_extra = list(df_tabela.columns).index("Hora Extra") if "Hora Extra" in df_tabela.columns else -1
+        estilos_celulas_amarelas = []
+
+        # Usamos enumerate iniciando em 1 porque a linha 0 é o cabeçalho (Header)
+        for r_idx, (_, row) in enumerate(df_tabela.iterrows(), start=1):
             linha = [Paragraph(str(val) if val is not None and not pd.isna(val) and str(val).strip() != "" else "", cell_style) for val in row]
             dados_tabela.append(linha)
             
+            # Se a coluna existir, valida o valor atual da linha
+            if idx_hora_extra != -1:
+                val_hora_extra = str(row.iloc[idx_hora_extra]).strip()
+                if val_hora_extra != "" and val_hora_extra != "00:00":
+                    # Adiciona a regra de background amarelo para a coordenada específica (coluna, linha)
+                    estilos_celulas_amarelas.append(('BACKGROUND', (idx_hora_extra, r_idx), (idx_hora_extra, r_idx), colors.HexColor("#FEF08A")))
+            
         tabela = Table(dados_tabela, repeatRows=1)
-        tabela.setStyle(TableStyle([
+        
+        # Define os estilos base da tabela
+        estilos_base = [
             ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1E3A8A")),
             ('ALIGN', (0,0), (-1,-1), 'LEFT'),
             ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#D1D5DB")),
             ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor("#F9FAFB")]),
             ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ]))
+        ]
+        
+        # Concatena os estilos base com as cores amarelas dinâmicas
+        estilos_base.extend(estilos_celulas_amarelas)
+        tabela.setStyle(TableStyle(estilos_base))
         
         story.append(tabela)
         
