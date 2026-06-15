@@ -131,9 +131,9 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
     styles = getSampleStyleSheet()
     
     title_style = ParagraphStyle('TituloPDF', parent=styles['Heading1'], fontSize=14, textColor=colors.HexColor("#1E3A8A"), spaceAfter=10)
-    header_style = ParagraphStyle('HeaderPDF', parent=styles['Normal'], fontSize=7.5, textColor=colors.white, fontName="Helvetica-Bold", alignment=1) # Centralizado
-    cell_style = ParagraphStyle('CeluaPDF', parent=styles['Normal'], fontSize=7, fontName="Helvetica", alignment=1) # Centralizado
-    justif_style = ParagraphStyle('JustifPDF', parent=styles['Normal'], fontSize=6.5, fontName="Helvetica") # Alinhado à esquerda para textos longos
+    header_style = ParagraphStyle('HeaderPDF', parent=styles['Normal'], fontSize=7.5, textColor=colors.white, fontName="Helvetica-Bold", alignment=1)
+    cell_style = ParagraphStyle('CeluaPDF', parent=styles['Normal'], fontSize=7, fontName="Helvetica", alignment=1)
+    justif_style = ParagraphStyle('JustifPDF', parent=styles['Normal'], fontSize=6.5, fontName="Helvetica")
     total_style = ParagraphStyle('TotalPDF', parent=styles['Normal'], fontSize=9, fontName="Helvetica-Bold", textColor=colors.HexColor("#1E3A8A"), spaceBefore=3, spaceAfter=3)
     erro_style = ParagraphStyle('ErroStyle', parent=styles['Normal'], fontSize=8, textColor=colors.red, fontName="Helvetica-Bold")
 
@@ -160,9 +160,11 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
             return 0
             
     df_copy = df.copy()
+    
+    # Remove qualquer espaço invisível dos nomes das colunas originais
+    df_copy.columns = [str(c).strip() for c in df_copy.columns]
     coluna_data = 'Data'  
     
-    # CORREÇÃO: Forçar a conversão limpa da data para datetime e normalizar o tipo de dado
     if coluna_data in df_copy.columns and not df_copy[coluna_data].empty:
         amostra = str(df_copy[coluna_data].dropna().iloc[0])
         if "/" in amostra:
@@ -170,16 +172,13 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         else:
             df_copy['Data_Datetime'] = pd.to_datetime(df_copy[coluna_data], errors='coerce')
     
-    # Força a remoção de timezone para evitar erros de cruzamento (Merge)
     df_copy['Data_Datetime'] = df_copy['Data_Datetime'].dt.tz_localize(None).dt.normalize()
     
     min_data = pd.to_datetime(data_inicio).tz_localize(None).floor('D')
     max_data = pd.to_datetime(data_fim).tz_localize(None).floor('D')
     periodo_completo = pd.date_range(start=min_data, end=max_data, freq='D')
 
-    mapeamento_normalizado = {str(k).strip().lower(): v for k, v in mapeamento_celulas.items()}
-    
-    # AJUSTE: Garantir que e-mails vazios ou NaNs não gerem loops incorretos
+    mapeamento_normalizado = {str(k).strip().lower(): str(v).strip() for k, v in mapeamento_celulas.items()}
     usuarios = [u for u in df_copy['E-mail'].dropna().unique() if str(u).strip() != ""] if 'E-mail' in df_copy.columns else []
     
     for i, email in enumerate(usuarios):
@@ -231,26 +230,23 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         story.append(Paragraph(f"<b>Total de Horas Trabalhadas no Período:</b> <font color='green'>{total_horas_trab_str}</font>", total_style))
         story.append(Spacer(1, 5))
         
-        # CORREÇÃO DO MERGE: Garantir tipo idêntico de data
         df_base_periodo = pd.DataFrame({'Data_Datetime': periodo_completo})
         df_base_periodo['Data_Datetime'] = df_base_periodo['Data_Datetime'].dt.tz_localize(None).dt.normalize()
         
         df_funcionario_completo = pd.merge(df_base_periodo, df_funcionario, on='Data_Datetime', how='left')
-        
-        # Reconstrói a coluna textual de exibição 'Data' para a tabela
         df_funcionario_completo[coluna_data] = df_funcionario_completo['Data_Datetime'].dt.strftime('%d/%m/%Y')
         
-        # Tratamento do Dia da Semana baseado na data reconstruída do período
         dias_semana_pt = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"]
         df_funcionario_completo["Dia da Semana"] = df_funcionario_completo['Data_Datetime'].dt.weekday.map(
             lambda x: dias_semana_pt[int(x)] if pd.notna(x) else ""
         )
         
-        # AJUSTE: Incluído o 'celula' minúsculo para sumir do escopo da tabela
-        colunas_remover = ["Funcionário", "E-mail", "Data_Datetime", "Célula", "Celula", "celula"]
-        colunas_exibicao = [col for col in df_funcionario_completo.columns if col not in colunas_remover]
+        # CORREÇÃO CRÍTICA: Forçar limpeza de strings nas colunas do merge para garantir a remoção
+        df_funcionario_completo.columns = [str(c).strip() for c in df_funcionario_completo.columns]
         
-        # Garantir que 'Data' e 'Dia da Semana' fiquem nas primeiras posições se existirem
+        colunas_remover = ["funcionário", "funcionario", "e-mail", "email", "data_datetime", "célula", "celula"]
+        colunas_exibicao = [col for col in df_funcionario_completo.columns if col.lower().strip() not in colunas_remover]
+        
         if "Dia da Semana" in colunas_exibicao:
             colunas_exibicao.remove("Dia da Semana")
             colunas_exibicao.insert(0, "Dia da Semana")
@@ -266,23 +262,18 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         
         for _, row in df_tabela.iterrows():
             linha = []
-            for col_idx, (col_nome, val) in enumerate(row.items()):
-                # Aplica estilo alinhado à esquerda e menor para colunas de justificativa
+            for col_nome, val in row.items():
                 estilo_aplicar = justif_style if "Justificativa" in str(col_nome) else cell_style
                 linha.append(Paragraph(str(val).strip() if val != "" else "", estilo_aplicar))
             dados_tabela.append(linha)
             
-        # AJUSTE DE LAYOUT: Cálculo dinâmico de larguras (Largura útil em Landscape A4 = 802)
-        # Dá mais espaço para justificativas e menos para horários curtos
         num_cols = len(colunas_exibicao)
         larguras_colunas = []
         largura_disponivel = 802
         
-        # Conta quantas colunas de texto longo (Justificativas) existem
         cols_justificativa = sum(1 for c in colunas_exibicao if "Justificativa" in c)
         cols_normais = num_cols - cols_justificativa
         
-        # Define pesos: Justificativas ganham 95 pontos, colunas normais dividem o resto
         largura_justif = 95 if cols_justificativa > 0 else 0
         largura_normal = (largura_disponivel - (largura_justif * cols_justificativa)) / max(1, cols_normais)
         
@@ -290,7 +281,7 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
             if "Justificativa" in col:
                 larguras_colunas.append(largura_justif)
             elif col in ["Data", "Dia da Semana"]:
-                larguras_colunas.append(largura_normal * 1.1) # Um pouco mais de espaço para a data/dia
+                larguras_colunas.append(largura_normal * 1.1)
             else:
                 larguras_colunas.append(largura_normal * 0.9)
 
@@ -1373,7 +1364,7 @@ elif opcao == "RELATÓRIO":
             opcao_consolidada = "Minha Célula"
             celulas_disponiveis = []
             
-            # 1. CRUZAMENTO SEGURO: Buscar TODOS os usuários cadastrados no banco para obter a Célula de Referência ATUAL
+            # 1. CRUZAMENTO SEGURO: Buscar TODOS os usuários cadastrados no banco
             try:
                 busca_all = supabase.table("usuarios_ponto").select("email, nome, celula").execute()
                 todos_usuarios_banco = busca_all.data or []
@@ -1381,7 +1372,7 @@ elif opcao == "RELATÓRIO":
                 st.error(f"Erro ao validar lista de colaboradores no banco de dados: {e}")
                 todos_usuarios_banco = []
                 
-            # Criar o mapa dinâmico baseado 100% no estado ATUAL do banco de dados (E-mail -> Célula Atual)
+            # Criar o mapa dinâmico baseado 100% no estado ATUAL do banco de dados (E-mail -> Célula Atual) com tratamento rigoroso de texto
             mapeamento_celulas_db = {
                 str(u["email"]).strip().lower(): str(u.get("celula", "")).strip()
                 for u in todos_usuarios_banco if u.get("email")
@@ -1409,7 +1400,7 @@ elif opcao == "RELATÓRIO":
         
             if st.button("📊 Processar e Gerar Relatório Consolidado", use_container_width=True, type="primary"):
                 with st.spinner("Processando dados e compilando relatórios..."):
-                    # 2. Buscar os registros reais existentes utilizando a função padrão testada
+                    # 2. Buscar os registros reais existentes
                     dados_gerais_banco = executar_query_supabase("buscar_relatorio_geral", data_filtro=data_inicio, data_fim=data_fim) or []
                     
                     # 3. Processar a massa de dados existente através da função original
@@ -1418,27 +1409,39 @@ elif opcao == "RELATÓRIO":
                     if df_geral_completo.empty:
                         df_geral_completo = pd.DataFrame(columns=["Funcionário", "E-mail", "Dia da Semana", "Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", "Hora Extra", "Justificativa Entrada", "Justificativa Saída Almoço", "Justificativa Retorno Almoço", "Justificativa Saída"])
                     
-                    # 4. SOLUÇÃO DO BUG: Forçar a Célula ATUAL do usuário em TODAS as colunas de dados de forma explícita
-                    df_geral_completo["Celula_Filtro"] = df_geral_completo["E-mail"].astype(str).str.strip().str.lower().map(mapeamento_celulas_db)
+                    # Padroniza os nomes das colunas do dataframe principal
+                    df_geral_completo.columns = [str(c).strip() for c in df_geral_completo.columns]
                     
-                    # Alimenta todas as variações possíveis para garantir compatibilidade com as funções internas de PDF/Excel
+                    # Localiza dinamicamente a coluna de e-mail independente da caixa (E-mail, email, Email)
+                    col_email_real = "E-mail"
+                    for c in df_geral_completo.columns:
+                        if c.lower() in ["e-mail", "email"]:
+                            col_email_real = c
+                            break
+                    
+                    # CORREÇÃO PARA OS 4 USUÁRIOS: Garante que os e-mails das batidas de ponto estão limpos e sem espaços para casar com o mapa
+                    df_geral_completo[col_email_real] = df_geral_completo[col_email_real].astype(str).str.strip().str.lower()
+                    
+                    # 4. Forçar a Célula ATUAL do usuário em TODAS as colunas de dados de forma explícita
+                    df_geral_completo["Celula_Filtro"] = df_geral_completo[col_email_real].map(mapeamento_celulas_db).fillna("Não Informada").astype(str).str.strip()
+                    
                     for col_nome in ["celula", "Celula", "Célula"]:
                         df_geral_completo[col_nome] = df_geral_completo["Celula_Filtro"]
                     
                     # 5. Determinar e filtrar o escopo da célula selecionada
                     if cargo_usuario == "Supervisor":
-                        target_celula = celula_usuario
-                        df_filtrado = df_geral_completo[df_geral_completo["Celula_Filtro"].str.lower() == str(target_celula).strip().lower()].copy()
-                        prefixo_nome = f"Relatorio_Consolidado_Celula_{celula_usuario}"
+                        target_celula = str(celula_usuario).strip().lower()
+                        df_filtrado = df_geral_completo[df_geral_completo["Celula_Filtro"].str.lower() == target_celula].copy()
+                        prefixo_nome = f"Relatorio_Consolidado_Celula_{celula_usuario.replace(' ', '_')}"
                     else:  
                         if opcao_consolidada == "Todos os Colaboradores":
                             df_filtrado = df_geral_completo.copy()
-                            target_celula = "Todos"
+                            target_celula = "todos"
                             prefixo_nome = "Relatorio_Consolidado_Todos_Colaboradores"
                         else:
-                            target_celula = opcao_consolidada
-                            df_filtrado = df_geral_completo[df_geral_completo["Celula_Filtro"].str.lower() == str(target_celula).strip().lower()].copy()
-                            prefixo_nome = f"Relatorio_Consolidado_Celula_{opcao_consolidada}"
+                            target_celula = str(opcao_consolidada).strip().lower()
+                            df_filtrado = df_geral_completo[df_geral_completo["Celula_Filtro"].str.lower() == target_celula].copy()
+                            prefixo_nome = f"Relatorio_Consolidado_Celula_{opcao_consolidada.replace(' ', '_')}"
                     
                     # 6. Identificar quais e-mails já constam com registros válidos no DataFrame filtrado
                     emails_com_dados = set()
@@ -1449,20 +1452,19 @@ elif opcao == "RELATÓRIO":
                     for u in todos_usuarios_banco:
                         if not u.get("email"):
                             continue
-                        u_email = str(u["email"]).strip()
-                        u_email_lower = u_email.lower()
+                        u_email = str(u["email"]).strip().lower()
                         u_nome = u.get("nome", "Sem Nome")
                         u_celula = str(u.get("celula", "")).strip()
                         
                         # Verificar se o usuário pertence à célula alvo baseado na CÉLULA ATUAL dele
                         pertence_ao_grupo = False
-                        if target_celula == "Todos":
+                        if target_celula == "todos":
                             pertence_ao_grupo = True
-                        elif u_celula.lower() == str(target_celula).strip().lower():
+                        elif u_celula.lower() == target_celula:
                             pertence_ao_grupo = True
                         
-                        # Se o colaborador pertence à célula atual, mas REALMENTE não possui nenhuma batida no período
-                        if pertence_ao_grupo and u_email_lower not in emails_com_dados:
+                        # Se o colaborador pertence à célula atual, mas realmente não possui nenhuma batida no período
+                        if pertence_ao_grupo and u_email not in emails_com_dados:
                             linhas_placeholder.append({
                                 "Funcionário": u_nome,
                                 "E-mail": u_email,
@@ -1472,10 +1474,7 @@ elif opcao == "RELATÓRIO":
                                 "Hora Extra": "00:00",
                                 "Justificativa Entrada": "", "Justificativa Saída Almoço": "", 
                                 "Justificativa Retorno Almoço": "", "Justificativa Saída": "",
-                                # Garante a coluna exata do banco e as variações visuais que as funções de exportação usam
-                                "celula": u_celula,
-                                "Celula": u_celula,
-                                "Célula": u_celula
+                                "celula": u_celula, "Celula": u_celula, "Célula": u_celula
                             })
                     
                     # Mesclar os usuários genuinamente sem ponto ao relatório final
@@ -1491,7 +1490,6 @@ elif opcao == "RELATÓRIO":
                         st.warning("Nenhum dado localizado para os critérios selecionados.")
                         st.session_state.processamento_concluido = False
                     else:
-                        # Ordenar alfabeticamente para organizar a paginação do PDF
                         if "Funcionário" in df_filtrado.columns:
                             df_filtrado = df_filtrado.sort_values(
                                 by="Funcionário", 
@@ -1499,13 +1497,12 @@ elif opcao == "RELATÓRIO":
                                 kind="mergesort"
                             )
                         
-                        # Salvar arquivos compilados no Session State para persistência segura durante downloads
                         st.session_state.dados_excel_consolidado = converter_para_excel_multiaba(df_filtrado)
                         st.session_state.dados_pdf_consolidado = converter_para_pdf_consolidado(df_filtrado, mapeamento_celulas_db, data_inicio, data_fim)
                         st.session_state.nome_arquivo_base = prefixo_nome
                         st.session_state.processamento_concluido = True
         
-            # Exibição dos botões baseada no estado do processamento e fora do escopo do st.button de execução
+            # Exibição dos botões baseada no estado do processamento
             if st.session_state.processamento_concluido:
                 st.success("✅ Relatórios consolidados gerados com sucesso! Escolha o formato para baixar:")
                 
