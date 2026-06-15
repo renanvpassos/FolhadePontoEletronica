@@ -1323,12 +1323,23 @@ elif opcao == "RELATÓRIO":
             opcao_consolidada = "Minha Célula"
             celulas_disponiveis = []
             
-            try:
-                busca_all = supabase.table("usuarios_ponto").select("email, nome, celula").execute()
-                todos_usuarios_banco = busca_all.data or []
-            except Exception as e:
-                st.error(f"Erro ao validar lista de colaboradores no banco de dados: {e}")
-                todos_usuarios_banco = []
+            # 1. BUSCA PAGINADA DE USUÁRIOS (Evita que a própria lista de funcionários corte em 1000)
+            todos_usuarios_banco = []
+            inicio_user = 0
+            passo_user = 1000
+            
+            while True:
+                try:
+                    busca_page = supabase.table("usuarios_ponto").select("email, nome, celula").range(inicio_user, inicio_user + passo_user - 1).execute()
+                    if not busca_page.data:
+                        break
+                    todos_usuarios_banco.extend(busca_page.data)
+                    if len(busca_page.data) < passo_user:
+                        break
+                    inicio_user += passo_user
+                except Exception as e:
+                    st.error(f"Erro ao validar lista de colaboradores no banco de dados: {e}")
+                    break
                 
             mapeamento_celulas_db = {
                 str(u["email"]).strip().lower(): str(u.get("celula", "")).strip()
@@ -1355,20 +1366,9 @@ elif opcao == "RELATÓRIO":
                 st.session_state.processamento_concluido = False
         
             if st.button("📊 Processar e Gerar Relatório Consolidado", use_container_width=True, type="primary"):
-                with st.spinner("Processando dados e compilando relatórios..."):
+                with st.spinner("Processando dados e compilando relatórios da equipe..."):
                     
-                    # Busca a extração geral (pode sofrer com limite de 1000 linhas do Supabase)
-                    dados_gerais_banco = executar_query_supabase("buscar_relatorio_geral", data_filtro=data_inicio, data_fim=data_fim) or []
-                    
-                    # Descobre dinamicamente o nome da coluna de e-mail retornada na query geral
-                    coluna_email_dados = "email"
-                    if dados_gerais_banco and len(dados_gerais_banco) > 0:
-                        for k in dados_gerais_banco[0].keys():
-                            if "email" in str(k).lower():
-                                coluna_email_dados = k
-                                break
-        
-                    # Filtragem inicial do escopo de funcionários
+                    # Filtragem inicial de quais usuários devem ser processados nesta rodada
                     if cargo_usuario == "Supervisor":
                         target_celula = str(celula_usuario).strip().lower()
                         usuarios_alvo = [u for u in todos_usuarios_banco if str(u.get("celula", "")).strip().lower() == target_celula]
@@ -1385,45 +1385,45 @@ elif opcao == "RELATÓRIO":
         
                     dfs_equipe = []
                     
-                    # Processamento individualizado em lote para garantir integridade
+                    # 2. SEGREDO DO DRIBLE: Buscamos os pontos individualmente por funcionário (Igual à tela individual)
                     for u in usuarios_alvo:
                         u_email = str(u["email"]).strip().lower()
                         u_nome = str(u.get("nome", "Sem Nome")).strip()
                         
-                        # 1. Tenta extrair do pool geral coletado
-                        dados_pessoais_user = [
-                            row for row in dados_gerais_banco 
-                            if str(row.get(coluna_email_dados, "")).strip().lower() == u_email
-                        ]
-                        
-                        # 2. FALLBACK ANTICORTE: Se não achou dados para este usuário na query global,
-                        # faz o fetch direto e individual dele idêntico à tela individual que funciona!
-                        if not dados_pessoais_user:
-                            try:
-                                # NOTA: Altere "NOME_DA_SUA_TABELA_DE_BATIDAS" para o nome real da sua tabela de pontos se necessário
-                                # Ou replique aqui a mesma função/RPC de busca que você usa na sua tela individual.
-                                resposta_direta = supabase.table("registro_ponto").select("*").eq(coluna_email_dados, u_email).execute()
-                                if resposta_direta.data:
-                                    dados_pessoais_user = [
-                                        r for r in resposta_direta.data 
-                                        if data_inicio <= str(r.get("data") or r.get("data_registro") or "") <= data_fim
-                                    ]
-                            except Exception as fallback_err:
-                                pass # Caso falhe, mantém a lista vazia para tratar abaixo
+                        dados_pessoais_user = []
+                        try:
+                            # 🚨 ATENÇÃO AQUI: Substitua "registro_ponto" pelo nome REAL da sua tabela ou view de batidas de ponto.
+                            # Mude também o campo "email" caso sua coluna se chame "email_usuario", etc.
+                            resposta_direta = supabase.table("registro_ponto").select("*").eq("email", u_email).execute()
+                            
+                            if resposta_direta.data:
+                                # Filtra apenas as datas do período selecionado. 
+                                # Ajuste os termos r.get("data") para o nome real da sua coluna de data (ex: "data_registro")
+                                dados_pessoais_user = [
+                                    r for r in resposta_direta.data 
+                                    if data_inicio <= str(r.get("data") or r.get("data_registro") or "") <= data_fim
+                                ]
+                        except Exception as db_err:
+                            # Se der erro de nome de tabela ou coluna, ele vai te avisar explicitamente na tela:
+                            st.error(f"Erro ao buscar dados no banco para {u_nome} ({u_email}): {db_err}")
+                            continue
         
-                        # Roda a esteira de tratamento validada por você
+                        # Roda a mesma esteira de tratamento do relatório individual
                         df_user_limpo = processar_dados_ponto(dados_pessoais_user, data_inicio, data_fim, incluir_usuario_info=False, formatar_data_br=True)
                         
                         if df_user_limpo is not None and not df_user_limpo.empty:
+                            # Injeta as colunas de controle essenciais para a montagem e ordenação do PDF estruturado
                             df_user_limpo["Funcionário"] = u_nome
                             df_user_limpo["E-mail"] = u_email
                             dfs_equipe.append(df_user_limpo)
                     
                     if not dfs_equipe:
-                        st.warning("Nenhum dado localizado para os critérios selecionados.")
+                        st.warning("Nenhum dado de ponto localizado para os critérios e período selecionados.")
                         st.session_state.processamento_concluido = False
                     else:
                         df_filtrado = pd.concat(dfs_equipe, ignore_index=True)
+                        
+                        # Ordenação alfabética final garantida antes de ir para os arquivos
                         df_filtrado = df_filtrado.sort_values(by="Funcionário", key=lambda col: col.str.lower(), kind="mergesort")
                         
                         st.session_state.dados_excel_consolidado = converter_para_excel_multiaba(df_filtrado)
