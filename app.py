@@ -1228,7 +1228,7 @@ elif opcao == "RELATÓRIO":
         st.markdown(f"##### 📑 Histórico de Registros ({data_inicio.strftime('%d/%m/%Y')} até {data_fim.strftime('%d/%m/%Y')})")
         
         # 1. Adicionado 'OBSERVAÇÃO' após 'Retorno Almoço' na visualização da tela
-        ordem_colunas_tela = ["Dia da Semana", "Data", "Entrada", "Saída Almoço", "Retorno Almoço", "OBSERVAÇÃO", "Saída", "Hora Extra", "Justificativa Entrada", "Justificativa Saída Almoço", "Justificativa Retorno Almoço", "Justificativa Saída"]
+        ordem_colunas_tela = ["Dia da Semana", "Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", "Hora Extra", "Justificativa Entrada", "Justificativa Saída Almoço", "Justificativa Retorno Almoço", "Justificativa Saída", "OBSERVAÇÃO"]
         
         if cargo_usuario in ["Supervisor", "Master"]:
             st.warning("⚠️ **Atenção:** Confirme as alterações antes de salvar.")
