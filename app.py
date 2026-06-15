@@ -1073,9 +1073,10 @@ elif opcao == "RELATÓRIO":
         def processar_dados_ponto(dados, dt_inicio, dt_fim, incluir_usuario_info=False, formatar_data_br=False):
             dias_semana = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"]
             
-            ordem_individual = ["Dia da Semana", "Data", "Entrada", "Saída", "Hora Extra", "Saída Almoço", "Retorno Almoço", "Justificativa Entrada", "Justificativa Saída Almoço", "Justificativa Retorno Almoço", "Justificativa Saída"]
-            ordem_consolidada = ["Funcionário", "E-mail", "Dia da Semana", "Data", "Entrada", "Saída", "Hora Extra", "Saída Almoço", "Retorno Almoço", "Justificativa Entrada", "Justificativa Saída Almoço", "Justificativa Retorno Almoço", "Justificativa Saída"]
-
+            # 1. Adicionado 'OBSERVAÇÃO' após 'Retorno Almoço' nas ordens de colunas
+            ordem_individual = ["Dia da Semana", "Data", "Entrada", "Saída", "Hora Extra", "Saída Almoço", "Retorno Almoço", "OBSERVAÇÃO", "Justificativa Entrada", "Justificativa Saída Almoço", "Justificativa Retorno Almoço", "Justificativa Saída"]
+            ordem_consolidada = ["Funcionário", "E-mail", "Dia da Semana", "Data", "Entrada", "Saída", "Hora Extra", "Saída Almoço", "Retorno Almoço", "OBSERVAÇÃO", "Justificativa Entrada", "Justificativa Saída Almoço", "Justificativa Retorno Almoço", "Justificativa Saída"]
+        
             if incluir_usuario_info:
                 if not dados:
                     return pd.DataFrame()
@@ -1120,7 +1121,7 @@ elif opcao == "RELATÓRIO":
                             linha["Data"] = data_banco.strftime("%Y-%m-%d")
                         else:
                             linha["Data"] = str(data_banco)[:10] if data_banco else ""
-
+        
                     dt_entrada, dt_saida = None, None
                     for col_banco, col_df in [
                         ("horario_entrada", "Entrada"),
@@ -1141,7 +1142,7 @@ elif opcao == "RELATÓRIO":
                                 linha[col_df] = ""
                         else:
                             linha[col_df] = ""
-
+        
                     hora_extra_str = "00:00"
                     if dt_entrada and dt_saida:
                         segundos_trabalhados = int((dt_saida - dt_entrada).total_seconds())
@@ -1153,6 +1154,10 @@ elif opcao == "RELATÓRIO":
                             hora_extra_str = f"{horas_ext:02d}:{minutos_ext:02d}"
                     
                     linha["Hora Extra"] = hora_extra_str
+                    
+                    # 2. Capturando a observação do banco de dados no fluxo consolidado
+                    linha["OBSERVAÇÃO"] = item.get("observacao", "") or ""
+                    
                     linha["Justificativa Entrada"] = item.get("justificativa_entrada", "") or ""
                     linha["Justificativa Saída Almoço"] = item.get("justificativa_saida_almoco", "") or ""
                     linha["Justificativa Retorno Almoço"] = item.get("justificativa_retorno_almoco", "") or ""
@@ -1167,7 +1172,7 @@ elif opcao == "RELATÓRIO":
             while curr_date <= dt_fim:
                 lista_datas.append(curr_date)
                 curr_date += timedelta(days=1)
-
+        
             dados_por_data = {}
             if dados:
                 for item in dados:
@@ -1180,12 +1185,12 @@ elif opcao == "RELATÓRIO":
                         else:
                             dt_key = str(dt_banco)[:10]
                         dados_por_data[dt_key] = item
-
+        
             linhas_processadas = []
             for dt in lista_datas:
                 data_iso = dt.strftime("%Y-%m-%d")
                 item = dados_por_data.get(data_iso, {})
-
+        
                 linha = {}
                 linha["Dia da Semana"] = dias_semana[dt.weekday()]
                 
@@ -1193,7 +1198,7 @@ elif opcao == "RELATÓRIO":
                     linha["Data"] = dt.strftime("%d/%m/%Y")
                 else:
                     linha["Data"] = data_iso
-
+        
                 dt_entrada, dt_saida = None, None
                 for col_banco, col_df in [
                     ("horario_entrada", "Entrada"),
@@ -1214,7 +1219,7 @@ elif opcao == "RELATÓRIO":
                             linha[col_df] = ""
                     else:
                         linha[col_df] = ""
-
+        
                 hora_extra_str = "00:00"
                 if dt_entrada and dt_saida:
                     segundos_trabalhados = int((dt_saida - dt_entrada).total_seconds())
@@ -1226,21 +1231,27 @@ elif opcao == "RELATÓRIO":
                         hora_extra_str = f"{horas_ext:02d}:{minutos_ext:02d}"
                 
                 linha["Hora Extra"] = hora_extra_str
+                
+                # 2. Capturando a observação do banco de dados no fluxo individual
+                linha["OBSERVAÇÃO"] = item.get("observacao", "") or ""
+                
                 linha["Justificativa Entrada"] = item.get("justificativa_entrada", "") or ""
                 linha["Justificativa Saída Almoço"] = item.get("justificativa_saida_almoco", "") or ""
                 linha["Justificativa Retorno Almoço"] = item.get("justificativa_retorno_almoco", "") or ""
                 linha["Justificativa Saída"] = item.get("justificativa_saida", "") or ""
                 linhas_processadas.append(linha)
-
+        
             df_res = pd.DataFrame(linhas_processadas)
             return df_res[[c for c in ordem_individual if c in df_res.columns]]
         
         dados_pessoais = executar_query_supabase("buscar_relatorio", email=email_busca, data_filtro=data_inicio, data_fim=data_fim)
         df_visualizacao = processar_dados_ponto(dados_pessoais, data_inicio, data_fim, incluir_usuario_info=False, formatar_data_br=True)
-    
+        
         st.markdown(f"##### 📑 Histórico de Registros ({data_inicio.strftime('%d/%m/%Y')} até {data_fim.strftime('%d/%m/%Y')})")
-        ordem_colunas_tela = ["Dia da Semana", "Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", "Hora Extra", "Justificativa Entrada", "Justificativa Saída Almoço", "Justificativa Retorno Almoço", "Justificativa Saída"]
-
+        
+        # 1. Adicionado 'OBSERVAÇÃO' após 'Retorno Almoço' na visualização da tela
+        ordem_colunas_tela = ["Dia da Semana", "Data", "Entrada", "Saída Almoço", "Retorno Almoço", "OBSERVAÇÃO", "Saída", "Hora Extra", "Justificativa Entrada", "Justificativa Saída Almoço", "Justificativa Retorno Almoço", "Justificativa Saída"]
+        
         if cargo_usuario in ["Supervisor", "Master"]:
             st.warning("⚠️ **Atenção:** Confirme as alterações antes de salvar.")
             
@@ -1248,7 +1259,7 @@ elif opcao == "RELATÓRIO":
                 df_visualizacao, 
                 use_container_width=True, 
                 hide_index=True,
-                disabled=["Dia da Semana", "Data", "Hora Extra"], 
+                disabled=["Dia da Semana", "Data", "Hora Extra"],  # Nota: Como 'OBSERVAÇÃO' não está aqui, ela fica editável.
                 column_order=ordem_colunas_tela,
                 column_config={
                     "Dia da Semana": st.column_config.TextColumn("Dia da Semana"),
@@ -1256,6 +1267,7 @@ elif opcao == "RELATÓRIO":
                     "Entrada": st.column_config.TextColumn("Entrada"),
                     "Saída Almoço": st.column_config.TextColumn("Saída Almoço"),
                     "Retorno Almoço": st.column_config.TextColumn("Retorno Almoço"),
+                    "OBSERVAÇÃO": st.column_config.TextColumn("OBSERVAÇÃO"), # Configuração adicionada
                     "Saída": st.column_config.TextColumn("Saída")
                 },
                 key="editor_ponto_gestao"
@@ -1276,6 +1288,7 @@ elif opcao == "RELATÓRIO":
                     sucessos = 0
                     erros = 0
                     
+                    # 3. Mapeando a coluna para a tabela do Supabase ('observacao')
                     mapeamento_colunas_db = {
                         "Entrada": "horario_entrada",
                         "Justificativa Entrada": "justificativa_entrada",
@@ -1283,6 +1296,7 @@ elif opcao == "RELATÓRIO":
                         "Justificativa Saída Almoço": "justificativa_saida_almoco",
                         "Retorno Almoço": "retorno_almoco",
                         "Justificativa Retorno Almoço": "justificativa_retorno_almoco",
+                        "OBSERVAÇÃO": "observacao",
                         "Saída": "horario_saida",
                         "Justificativa Saída": "justificativa_saida"
                     }
@@ -1310,7 +1324,7 @@ elif opcao == "RELATÓRIO":
                             
                             valor_antigo = df_visualizacao.iloc[idx_linha].get(col_df, "")
                             if pd.isna(valor_antigo) or valor_antigo is None:
-                                valor_antigo = "--:--:--"
+                                valor_antigo = "--:--:--" if col_banco in ["horario_entrada", "saida_almoco", "retorno_almoco", "horario_saida"] else ""
                             
                             if col_banco in ["horario_entrada", "saida_almoco", "retorno_almoco", "horario_saida"]:
                                 if novo_valor is None:
@@ -1387,6 +1401,7 @@ elif opcao == "RELATÓRIO":
                         st.success(f"✅ Sucesso! Foram atualizadas as alterações de {sucessos} linha(s) para {nome_busca}.")
                         st.rerun()
         else:
+            # 4. Caso o usuário NÃO seja Supervisor/Master, renderiza apenas um DataFrame comum (Sem opção de edição)
             st.dataframe(df_visualizacao, use_container_width=True, hide_index=True, column_order=ordem_colunas_tela)
         
         # --- PROCESSAMENTO E EXPORTAÇÃO INDIVIDUAL ---
