@@ -1074,8 +1074,8 @@ elif opcao == "RELATÓRIO":
             dias_semana = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"]
             
             # 1. Adicionado 'OBSERVAÇÃO' após 'Retorno Almoço' nas ordens de colunas
-            ordem_individual = ["Dia da Semana", "Data", "Entrada", "Saída", "Hora Extra", "Saída Almoço", "Retorno Almoço", "OBSERVAÇÃO", "Justificativa Entrada", "Justificativa Saída Almoço", "Justificativa Retorno Almoço", "Justificativa Saída"]
-            ordem_consolidada = ["Funcionário", "E-mail", "Dia da Semana", "Data", "Entrada", "Saída", "Hora Extra", "Saída Almoço", "Retorno Almoço", "OBSERVAÇÃO", "Justificativa Entrada", "Justificativa Saída Almoço", "Justificativa Retorno Almoço", "Justificativa Saída"]
+            ordem_individual = ["Dia da Semana", "Data", "Entrada", "Saída", "Hora Extra", "Saída Almoço", "Retorno Almoço", "Justificativa Entrada", "Justificativa Saída Almoço", "Justificativa Retorno Almoço", "Justificativa Saída", "OBSERVAÇÃO"]
+            ordem_consolidada = ["Funcionário", "E-mail", "Dia da Semana", "Data", "Entrada", "Saída", "Hora Extra", "Saída Almoço", "Retorno Almoço", "Justificativa Entrada", "Justificativa Saída Almoço", "Justificativa Retorno Almoço", "Justificativa Saída", "OBSERVAÇÃO"]
         
             if incluir_usuario_info:
                 if not dados:
