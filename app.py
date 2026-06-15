@@ -48,7 +48,6 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
         try:
             if pd.isna(h1) or pd.isna(h2) or not h1 or not h2:
                 return 0
-            # Converte HH:MM:SS ou HH:MM para minutos totais desde o início do dia
             t1 = sum(x * int(t) for x, t in zip([60, 1, 0], str(h1).strip().split(':')))
             t2 = sum(x * int(t) for x, t in zip([60, 1, 0], str(h2).strip().split(':')))
             return max(0, t2 - t1)
@@ -64,12 +63,10 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     minutos = total_mins % 60
     total_horas_str = f"{horas:02d}:{minutos:02d}"
 
-    # === CÁLCULO DE HORAS TRABALHADAS (Com Fallback de Segurança) ===
+    # === CÁLCULO DE HORAS TRABALHADAS ===
     total_mins_trab = 0
-    # 1ª Tentativa: Pela coluna direta
     if "Horas Trabalhadas" in df.columns and df["Horas Trabalhadas"].apply(_extrair_minutos).sum() > 0:
         total_mins_trab = df["Horas Trabalhadas"].apply(_extrair_minutos).sum()
-    # 2ª Tentativa (Fallback): Se a coluna falhar, calcula direto da Entrada -> Saída por linha
     elif "Entrada" in df.columns and "Saída" in df.columns:
         for _, r in df.iterrows():
             total_mins_trab += _calcular_minutos_entre_horas(r.get("Entrada"), r.get("Saída"))
@@ -100,29 +97,65 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     story.append(Paragraph(f"<b>Total de Horas Trabalhadas no Período:</b> <font color='green'>{total_horas_trab_str}</font>", total_style))
     story.append(Spacer(1, 5))
     
+    # === TRATAMENTO DAS COLUNAS PARA O PDF ===
+    # Copia o dataframe para não alterar o original
+    df_pdf = df.copy()
+    
+    # 1. Cria a coluna combinada se "Data" e "Dia da Semana" existirem
+    if "Data" in df_pdf.columns and "Dia da Semana" in df_pdf.columns:
+        conteudo_combinado = []
+        for _, row in df_pdf.iterrows():
+            data_original = str(row["Data"]).strip()
+            # Extrai apenas o dia (se for formato DD/MM/AAAA pega a primeira parte, senão mantém)
+            apenas_dia = data_original.split('/')[0] if '/' in data_original else data_original
+            dia_semana = str(row["Dia da Semana"]).strip()
+            
+            # Formata com a quebra de linha para o ReportLab
+            conteudo_combinado.append(f"{apenas_dia}<br/>{dia_semana}")
+            
+        # Insere a nova coluna na primeira posição
+        df_pdf.insert(0, "Data / Dia", conteudo_combinado)
+        # Remove as colunas originais que foram unificadas
+        df_pdf = df_pdf.drop(columns=["Data", "Dia da Semana"])
+
+    # 2. Ignora colunas que possuem "justificativa" no nome
+    colunas_para_manter = [col for col in df_pdf.columns if "justificativa" not in col.lower()]
+    df_filtrado = df_pdf[colunas_para_manter]
+    
     dados_tabela = []
-    header_row = [Paragraph(f"<b>{col}</b>", header_style) for col in df.columns]
+    header_row = [Paragraph(f"<b>{col}</b>", header_style) for col in df_filtrado.columns]
     dados_tabela.append(header_row)
     
-    # --- Identificação da coluna e mapeamento de cores ---
-    idx_hora_extra = list(df.columns).index("Hora Extra") if "Hora Extra" in df.columns else -1
+    # Redefine a busca do índice de hora extra baseado no novo dataframe filtrado
+    idx_hora_extra = list(df_filtrado.columns).index("Hora Extra") if "Hora Extra" in df_filtrado.columns else -1
+    idx_data_dia = list(df_filtrado.columns).index("Data / Dia") if "Data / Dia" in df_filtrado.columns else -1
+    
     estilos_celulas_amarelas = []
     
-    # Percorre as linhas rastreando o índice físico da tabela (começando em 1 por causa do cabeçalho)
-    for r_idx, (_, row) in enumerate(df.iterrows(), start=1):
-        linha = [Paragraph(str(val) if val is not None and not pd.isna(val) else "", cell_style) for val in row]
+    # Percorre as linhas do dataframe filtrado
+    for r_idx, (_, row) in enumerate(df_filtrado.iterrows(), start=1):
+        # Identifica se é final de semana buscando na célula unificada ou no df original
+        texto_celula_data = str(row.get("Data / Dia", "")).upper()
+        eh_fim_de_semana = "DOMINGO" in texto_celula_data or "SÁBADO" in texto_celula_data or "SABADO" in texto_celula_data
+        
+        # Define o estilo da linha baseado no dia da semana
+        estilo_atual = cell_bold_style if eh_fim_de_semana else cell_style
+        
+        linha = []
+        for val in row:
+            texto_val = str(val) if val is not None and not pd.isna(val) else ""
+            linha.append(Paragraph(texto_val, estilo_atual))
+            
         dados_tabela.append(linha)
         
-        # Verifica se o valor da linha atual na coluna Hora Extra necessita de destaque
+        # Verifica destaque da Hora Extra
         if idx_hora_extra != -1:
             val_hora_extra = str(row.iloc[idx_hora_extra]).strip()
             if val_hora_extra != "" and val_hora_extra != "00:00":
-                # Armazena o comando de background amarelo pastel para esta coordenada (coluna, linha)
                 estilos_celulas_amarelas.append(('BACKGROUND', (idx_hora_extra, r_idx), (idx_hora_extra, r_idx), colors.HexColor("#FEF08A")))
         
     tabela = Table(dados_tabela, repeatRows=1)
     
-    # Estilos básicos estruturais da tabela
     estilos_base = [
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1E3A8A")),
         ('ALIGN', (0,0), (-1,-1), 'LEFT'),
@@ -131,7 +164,6 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
     ]
     
-    # Injeta os destaques amarelos calculados no estilo base da tabela
     estilos_base.extend(estilos_celulas_amarelas)
     tabela.setStyle(TableStyle(estilos_base))
     
