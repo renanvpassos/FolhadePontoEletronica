@@ -277,7 +277,6 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
                 dia_sem = str(row.get("Dia da Semana", "")).strip() if tem_dia_semana else ""
                 apenas_dia = _extrair_apenas_o_dia(row.get("Data", "")) if tem_data else ""
                 
-                # --- ALTERAÇÃO AQUI: Data invertida para ficar por cima do dia da semana ---
                 if dia_sem and apenas_dia:
                     texto_celula = f"{apenas_dia}<br/>{dia_sem}"
                 else:
@@ -294,6 +293,11 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         estilos_celulas_dinamicos = []
 
         for r_idx, (_, row) in enumerate(df_tabela.iterrows(), start=1):
+            # Identifica antecipadamente se a linha atual corresponde a um fim de semana
+            orig_row = df_funcionario.iloc[r_idx - 1]
+            dia_sem_orig = str(orig_row.get("Dia da Semana", "")).strip().lower()
+            is_fim_de_semana = dia_sem_orig in ["sábado", "sabado", "domingo"]
+
             linha = []
             for col_name in df_tabela.columns:
                 val = row[col_name]
@@ -303,16 +307,18 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
                 if col_name == "Hora Extra" and val_str == "00:00":
                     val_str = ""
                 
-                if col_name in ["Dia / Data", "Hora Extra"]:
+                # --- LÓGICA DE NEGRITO CONDICIONAL ---
+                if col_name == "Dia / Data":
+                    if is_fim_de_semana:
+                        linha.append(Paragraph(val_str, cell_bold_style))
+                    else:
+                        linha.append(Paragraph(val_str, cell_style))
+                elif col_name == "Hora Extra":
                     linha.append(Paragraph(val_str, cell_bold_style))
                 else:
                     linha.append(Paragraph(val_str, cell_style))
                 
             dados_tabela.append(linha)
-            
-            orig_row = df_funcionario.iloc[r_idx - 1]
-            dia_sem_orig = str(orig_row.get("Dia da Semana", "")).strip().lower()
-            is_fim_de_semana = dia_sem_orig in ["sábado", "sabado", "domingo"]
             
             if is_fim_de_semana:
                 tem_informacao = False
