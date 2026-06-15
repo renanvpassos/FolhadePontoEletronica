@@ -151,7 +151,6 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
     title_style = ParagraphStyle('TituloPDF', parent=styles['Heading1'], fontSize=13, textColor=colors.HexColor("#1E3A8A"), spaceAfter=4)
     header_style = ParagraphStyle('HeaderPDF', parent=styles['Normal'], fontSize=9.5, leading=12, textColor=colors.white, fontName="Helvetica-Bold", alignment=1)
     
-    # --- ESTILOS DAS CÉLULAS (Normal e Negrito) ---
     cell_style = ParagraphStyle('CeluaPDF', parent=styles['Normal'], fontSize=8.5, leading=11, fontName="Helvetica", alignment=1)
     cell_bold_style = ParagraphStyle('CelulaNegritoPDF', parent=styles['Normal'], fontSize=8.5, leading=11, fontName="Helvetica-Bold", alignment=1)
     
@@ -278,10 +277,11 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
                 dia_sem = str(row.get("Dia da Semana", "")).strip() if tem_dia_semana else ""
                 apenas_dia = _extrair_apenas_o_dia(row.get("Data", "")) if tem_data else ""
                 
+                # --- ALTERAÇÃO AQUI: Data invertida para ficar por cima do dia da semana ---
                 if dia_sem and apenas_dia:
-                    texto_celula = f"{dia_sem}<br/>{apenas_dia}"
+                    texto_celula = f"{apenas_dia}<br/>{dia_sem}"
                 else:
-                    texto_celula = dia_sem or apenas_dia
+                    texto_celula = apenas_dia or dia_sem
                 coluna_combinada.append(texto_celula)
                 
             df_tabela.insert(0, "Dia / Data", coluna_combinada)
@@ -303,7 +303,6 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
                 if col_name == "Hora Extra" and val_str == "00:00":
                     val_str = ""
                 
-                # --- APLICANDO NEGRITO NAS COLUNAS ESPECÍFICAS ---
                 if col_name in ["Dia / Data", "Hora Extra"]:
                     linha.append(Paragraph(val_str, cell_bold_style))
                 else:
