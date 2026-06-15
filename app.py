@@ -26,7 +26,7 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     title_style = ParagraphStyle('TituloPDF', parent=styles['Heading1'], fontSize=14, textColor=colors.HexColor("#1E3A8A"), spaceAfter=10)
     header_style = ParagraphStyle('HeaderPDF', parent=styles['Normal'], fontSize=6.5, textColor=colors.white, fontName="Helvetica-Bold")
     cell_style = ParagraphStyle('CeluaPDF', parent=styles['Normal'], fontSize=9, fontName="Helvetica")
-    total_style = ParagraphStyle('TotalPDF', parent=styles['Normal'], fontSize=10, fontName="Helvetica-Bold", textColor=colors.HexColor("#1E3A8A"), spaceBefore=5, spaceAfter=10)
+    total_style = ParagraphStyle('TotalPDF', parent=styles['Normal'], fontSize=10, fontName="Helvetica-Bold", textColor=colors.HexColor("#1E3A8A"), spaceBefore=5, spaceAfter=5)
     erro_style = ParagraphStyle('ErroStyle', parent=styles['Normal'], fontSize=8, textColor=colors.red, fontName="Helvetica-Bold")
     
     # --- VERIFICAÇÃO DA LOGO NO REPOSITÓRIO (Igual ao Consolidado) ---
@@ -50,6 +50,15 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     horas = total_mins // 60
     minutos = total_mins % 60
     total_horas_str = f"{horas:02d}:{minutos:02d}"
+
+    # === CÁLCULO DE HORAS TRABALHADAS ===
+    total_mins_trab = 0
+    if "Horas Trabalhadas" in df.columns:
+        total_mins_trab = df["Horas Trabalhadas"].apply(_extrair_minutos).sum()
+    
+    horas_trab = total_mins_trab // 60
+    minutos_trab = total_mins_trab % 60
+    total_horas_trab_str = f"{horas_trab:02d}:{minutos_trab:02d}"
     
     # BUSCA DA CÉLULA: Idêntica à lógica do consolidado utilizando o e-mail como chave
     celula = mapeamento_celulas.get(email, "Não Informada")
@@ -73,6 +82,7 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     story.append(Paragraph(f"<b>Célula:</b> {celula}", styles['Normal']))
     
     story.append(Paragraph(f"<b>Total de Horas Extras no Período:</b> <font color='red'>{total_horas_str}</font>", total_style))
+    story.append(Paragraph(f"<b>Total de Horas Trabalhadas no Período:</b> <font color='green'>{total_horas_trab_str}</font>", total_style))
     story.append(Spacer(1, 5))
     
     # Montagem da tabela (o DF aqui já vem limpo, sem colunas repetidas de Nome/Email)
@@ -113,7 +123,7 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
     title_style = ParagraphStyle('TituloPDF', parent=styles['Heading1'], fontSize=14, textColor=colors.HexColor("#1E3A8A"), spaceAfter=10)
     header_style = ParagraphStyle('HeaderPDF', parent=styles['Normal'], fontSize=6.5, textColor=colors.white, fontName="Helvetica-Bold")
     cell_style = ParagraphStyle('CeluaPDF', parent=styles['Normal'], fontSize=9, fontName="Helvetica")
-    total_style = ParagraphStyle('TotalPDF', parent=styles['Normal'], fontSize=10, fontName="Helvetica-Bold", textColor=colors.HexColor("#1E3A8A"), spaceBefore=5, spaceAfter=10)
+    total_style = ParagraphStyle('TotalPDF', parent=styles['Normal'], fontSize=10, fontName="Helvetica-Bold", textColor=colors.HexColor("#1E3A8A"), spaceBefore=5, spaceAfter=5)
     erro_style = ParagraphStyle('ErroStyle', parent=styles['Normal'], fontSize=8, textColor=colors.red, fontName="Helvetica-Bold")
 
     # --- CAMINHO DA LOGO NO GITHUB/STREAMLIT ---
@@ -153,6 +163,7 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         nome_funcionario = df_funcionario['Funcionário'].iloc[0]
         celula = mapeamento_celulas.get(email, "Não Informada")
         
+        # === CÁLCULO DE HORAS EXTRAS ===
         total_mins = 0
         if "Hora Extra" in df_funcionario.columns:
             total_mins = df_funcionario["Hora Extra"].apply(_extrair_minutos).sum()
@@ -160,6 +171,15 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         horas = total_mins // 60
         minutos = total_mins % 60
         total_horas_str = f"{horas:02d}:{minutos:02d}"
+
+        # === CÁLCULO DE HORAS TRABALHADAS ===
+        total_mins_trab = 0
+        if "Horas Trabalhadas" in df_funcionario.columns:
+            total_mins_trab = df_funcionario["Horas Trabalhadas"].apply(_extrair_minutos).sum()
+        
+        horas_trab = total_mins_trab // 60
+        minutos_trab = total_mins_trab % 60
+        total_horas_trab_str = f"{horas_trab:02d}:{minutos_trab:02d}"
         
         # --- POSICIONAMENTO DA LOGO REPOSITÓRIO ---
         if logo_existe:
@@ -179,6 +199,7 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         story.append(Paragraph(f"<b>E-mail:</b> {email}", styles['Normal']))
         story.append(Paragraph(f"<b>Célula:</b> {celula}", styles['Normal']))
         story.append(Paragraph(f"<b>Total de Horas Extras no Período:</b> <font color='red'>{total_horas_str}</font>", total_style))
+        story.append(Paragraph(f"<b>Total de Horas Trabalhadas no Período:</b> <font color='green'>{total_horas_trab_str}</font>", total_style))
         story.append(Spacer(1, 5))
         
         df_base_periodo = pd.DataFrame({'Data_Datetime': periodo_completo})
