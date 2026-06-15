@@ -900,13 +900,18 @@ elif opcao == "RELATÓRIO":
                         dt_ent = datetime.fromisoformat(val_ent).astimezone(fuso_br)
                         dt_sai = datetime.fromisoformat(val_sai).astimezone(fuso_br)
                         segundos_trab = int((dt_sai - dt_ent).total_seconds())
+                        
                         if segundos_trab > 0:
-                            def_total_minutos_trabalhados += segundos_trab // 60
+                            jornada_limite = 9 * 3600  # 9 horas em segundos
                             
-                            # Lógica idêntica ao seu processamento para horas extras
-                            jornada_limite = 9 * 3600
                             if segundos_trab > jornada_limite:
-                                def_total_minutos_extras += (segundos_trab - jornada_limite) // 60
+                                # Se passou de 9h: garante os 540 min da jornada + o excedente convertido em minutos
+                                minutos_excedentes = (segundos_trab - jornada_limite) // 60
+                                def_total_minutos_trabalhados += (jornada_limite // 60) + minutos_excedentes
+                                def_total_minutos_extras += minutos_excedentes
+                            else:
+                                # Se não bateu 9h, soma apenas o tempo real trabalhado convertido em minutos
+                                def_total_minutos_trabalhados += segundos_trab // 60
                     except:
                         pass
 
