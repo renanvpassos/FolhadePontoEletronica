@@ -192,7 +192,7 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         minutos = total_mins % 60
         total_horas_str = f"{horas:02d}:{minutos:02d}"
 
-        # === CÁLCULO DE HORAS TRABALHADAS (Com Fallback de Segurança) ===
+        # === CÁLCULO DE HORAS TRABALHADAS ===
         total_mins_trab = 0
         if "Horas Trabalhadas" in df_funcionario.columns and df_funcionario["Horas Trabalhadas"].apply(_extrair_minutos).sum() > 0:
             total_mins_trab = df_funcionario["Horas Trabalhadas"].apply(_extrair_minutos).sum()
@@ -213,7 +213,7 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
             except Exception as img_err:
                 story.append(Paragraph(f"[ERRO DE RENDERIZAÇÃO: {img_err}]", erro_style))
         else:
-            story.append(Paragraph("[AVISO: Adicione o arquivo logoMult.png no seu GitHub]", erro_style))
+            story.append(Paragraph("[AVISO: Adicione o arquivo logoMult.png no mesmo diretório]", erro_style))
             story.append(Spacer(1, 8))
         
         story.append(Paragraph(f"Relatório de Ponto: <font color='red'>{nome_funcionario}</font>", title_style))
@@ -263,7 +263,7 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
     doc.build(story)
     output.seek(0)
     return output.getvalue()
-
+    
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Sistema de Ponto Eletrônico", page_icon="⏱️", layout="centered")
 
