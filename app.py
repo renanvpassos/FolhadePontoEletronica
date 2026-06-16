@@ -75,11 +75,12 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
 
     # === CÁLCULO DA JORNADA DE TRABALHO NO PERÍODO ===
     total_jornada_mins = 0
+    col_entrada = next((c for c in df.columns if c.lower() == 'entrada'), None)
+    col_saida = next((c for c in df.columns if c.lower() in ['saida', 'saída']), None)
+    
     if coluna_total:
         total_jornada_mins = df[coluna_total].apply(_extrair_minutos).sum()
     else:
-        col_entrada = next((c for c in df.columns if c.lower() == 'entrada'), None)
-        col_saida = next((c for c in df.columns if c.lower() in ['saida', 'saída']), None)
         if col_entrada and col_saida:
             for _, row in df.iterrows():
                 ent = _extrair_minutos(row[col_entrada])
@@ -126,12 +127,11 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     story.append(Paragraph(f"<b>Célula:</b> {celula}", styles['Normal']))
     story.append(Spacer(1, 4))
     
-    # ESTRUTURA MODIFICADA: Matriz de 2 linhas para alinhar perfeitamente os totais
     totais_dados = [
         [
             Paragraph(f"<b>Total de Horas de Trabalho no Período:</b> <font color='#1E3A8A'>{total_jornada_str}</font>", total_style),
-            "", # Célula vazia para manter a estrutura de colunas
-            ""  # Célula vazia para manter a estrutura de colunas
+            "", 
+            ""  
         ],
         [
             Paragraph(f"<b>Total de Horas Extras no Período:</b> <font color='red'>{total_horas_str}</font>", total_style),
@@ -169,6 +169,10 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     idx_hora_extra = list(df_filtrado.columns).index("Hora Extra") if "Hora Extra" in df_filtrado.columns else -1
     colunas_obrigatorias = [c for c in df_filtrado.columns if 'observação' not in c.lower()]
     
+    # Identifica colunas locais para validação de preenchimento na listagem
+    col_entrada_fil = next((c for c in df_filtrado.columns if c.lower() == 'entrada'), None)
+    col_saida_fil = next((c for c in df_filtrado.columns if c.lower() in ['saida', 'saída']), None)
+
     # === CRIAÇÃO DA TABELA ===
     dados_tabela = [[Paragraph(f"<b>{col}</b>", header_style) for col in df_filtrado.columns]]
     estilos_tabela = [
@@ -187,9 +191,17 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
         eh_fds = "DOMINGO" in texto_data or "SÁBADO" in texto_data or "SABADO" in texto_data
         eh_feriado = orig_idx in indices_feriado
         
+        # Verifica se Entrada e Saída estão especificamente preenchidas
+        val_entrada = str(row.get(col_entrada_fil, "")).strip() if col_entrada_fil else ""
+        val_saida = str(row.get(col_saida_fil, "")).strip() if col_saida_fil else ""
+        horarios_preenchidos = val_entrada not in ["", "nan", "0", "0.0", "00:00"] and val_saida not in ["", "nan", "0", "0.0", "00:00"]
+        
         linha_completa = all(str(row.get(col, "")).strip() not in ["", "nan", "0", "0.0"] for col in colunas_obrigatorias)
         
-        if eh_feriado or (eh_fds and linha_completa):
+        # DEFINIÇÃO DE DESTAQUE DA LINHA (Pintar apenas se houver preenchimento dos horários)
+        deve_destacar = (eh_feriado and horarios_preenchidos) or (eh_fds and linha_completa)
+        
+        if deve_destacar:
             estilos_tabela.append(('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor("#FEF08A")))
         
         val_he = str(row.get("Hora Extra", "")).strip()
@@ -199,7 +211,8 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
         linha = []
         for col_nome, val in row.items():
             valor_str = "" if (col_nome == "Hora Extra" and val in ["00:00", "0", "0.0", ""]) else str(val)
-            linha.append(Paragraph(valor_str, cell_bold_style if (eh_fds or eh_feriado) else cell_style))
+            # Aplica negrito apenas se a linha foi de fato destacada por atividade
+            linha.append(Paragraph(valor_str, cell_bold_style if deve_destacar else cell_style))
             
         dados_tabela.append(linha)
     
