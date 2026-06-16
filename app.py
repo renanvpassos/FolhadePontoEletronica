@@ -1069,8 +1069,8 @@ elif opcao == "RELATÓRIO":
             
             # 💡 ADICIONE AQUI AS NOVAS DATAS (Formato: "AAAA-MM-DD")
             datas_especiais = {
-                "04/06/2026",  # 04/06/2026
-                "24/12/2026",  # 24/12/2026
+                "04-06-2026",  # 04/06/2026
+                "24-12-2026",  # 24/12/2026
                 # "2026-12-25",  # Exemplo de como adicionar mais datas
             }
             
