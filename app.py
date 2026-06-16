@@ -211,11 +211,7 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         
         total_mins = 0
         if "Hora Extra" in df_funcionario.columns:
-            if "Dia da Semana" in df_funcionario.columns:
-                filtro_uteis = ~df_funcionario["Dia da Semana"].astype(str).str.strip().str.lower().isin(["sábado", "sabado", "domingo"])
-                total_mins = df_funcionario[filtro_uteis]["Hora Extra"].apply(_extrair_minutos).sum()
-            else:
-                total_mins = df_funcionario["Hora Extra"].apply(_extrair_minutos).sum()
+            total_mins = df_funcionario["Hora Extra"].apply(_extrair_minutos).sum()
         
         horas = total_mins // 60
         minutos = total_mins % 60
