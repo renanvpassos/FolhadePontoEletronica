@@ -1245,8 +1245,8 @@ elif opcao == "RELATÓRIO":
                     "Entrada": st.column_config.TextColumn("Entrada"),
                     "Saída Almoço": st.column_config.TextColumn("Saída Almoço"),
                     "Retorno Almoço": st.column_config.TextColumn("Retorno Almoço"),
-                    "OBSERVAÇÃO": st.column_config.TextColumn("OBSERVAÇÃO"),
-                    "Saída": st.column_config.TextColumn("Saída")
+                    "Saída": st.column_config.TextColumn("Saída"),
+                    "OBSERVAÇÃO": st.column_config.TextColumn("OBSERVAÇÃO")
                 },
                 key="editor_ponto_gestao"
             )
