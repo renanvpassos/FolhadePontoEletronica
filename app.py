@@ -38,7 +38,7 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     styles = getSampleStyleSheet()
     
     # === CONFIGURAÇÃO DE FERIADOS (Adicione novas datas aqui) ===
-    feriados = ["04/06/2026", "24/12/2026"]
+    feriados = ["04/06/2026", "12/06/2026"]
     
     # Estilos
     title_style = ParagraphStyle('TituloPDF', parent=styles['Heading1'], fontSize=13, textColor=colors.HexColor("#1E3A8A"), spaceAfter=4)
@@ -78,7 +78,6 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     if coluna_total:
         total_jornada_mins = df[coluna_total].apply(_extrair_minutos).sum()
     else:
-        # Fallback: Se não achar coluna total, calcula pela diferença de Saída e Entrada
         col_entrada = next((c for c in df.columns if c.lower() == 'entrada'), None)
         col_saida = next((c for c in df.columns if c.lower() in ['saida', 'saída']), None)
         if col_entrada and col_saida:
@@ -125,18 +124,22 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     story.append(Paragraph(f"Relatório de Ponto: <font color='red'>{nome_funcionario}</font>", title_style))
     story.append(Paragraph(f"<b>E-mail:</b> {email}", styles['Normal']))
     story.append(Paragraph(f"<b>Célula:</b> {celula}", styles['Normal']))
-    
-    # Adiciona o Total da Jornada de Trabalho ACIMA das horas extras
     story.append(Spacer(1, 4))
-    story.append(Paragraph(f"<b>Total de Horas de Trabalho no Período:</b> <font color='#1E3A8A'>{total_jornada_str}</font>", total_style))
-    story.append(Spacer(1, 2))
     
-    # Organiza os três totais de extras lado a lado
-    totais_dados = [[
-        Paragraph(f"<b>Total de Horas Extras no Período:</b> <font color='red'>{total_horas_str}</font>", total_style),
-        Paragraph(f"<b>Total de Horas Extras 75% no Período:</b> <font color='red'>{horas_75_str}</font>", total_style),
-        Paragraph(f"<b>Total de Horas Extras 100% no Período:</b> <font color='red'>{horas_100_str}</font>", total_style)
-    ]]
+    # ESTRUTURA MODIFICADA: Matriz de 2 linhas para alinhar perfeitamente os totais
+    totais_dados = [
+        [
+            Paragraph(f"<b>Total de Horas de Trabalho no Período:</b> <font color='#1E3A8A'>{total_jornada_str}</font>", total_style),
+            "", # Célula vazia para manter a estrutura de colunas
+            ""  # Célula vazia para manter a estrutura de colunas
+        ],
+        [
+            Paragraph(f"<b>Total de Horas Extras no Período:</b> <font color='red'>{total_horas_str}</font>", total_style),
+            Paragraph(f"<b>Total de Horas Extras 75% no Período:</b> <font color='red'>{horas_75_str}</font>", total_style),
+            Paragraph(f"<b>Total de Horas Extras 100% no Período:</b> <font color='red'>{horas_100_str}</font>", total_style)
+        ]
+    ]
+    
     tabela_totais = Table(totais_dados, colWidths=[270, 270, 270])
     tabela_totais.setStyle(TableStyle([
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
@@ -151,7 +154,6 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     # === TRATAMENTO DAS COLUNAS ===
     df_pdf = df.copy()
     
-    # Mapeia os índices de todos os feriados cadastrados
     indices_feriado = []
     if "Data" in df_pdf.columns:
         indices_feriado = df_pdf[df_pdf["Data"].astype(str).str.strip().isin(feriados)].index.tolist()
