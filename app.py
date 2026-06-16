@@ -12,6 +12,20 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
+def converter_para_csv_integracao(df):
+    """
+    Gera o CSV de integração a partir de um DataFrame de relatório (individual ou consolidado).
+    Remove automaticamente todas as colunas de Justificativa, preservando a ordem das demais colunas.
+    """
+    if df is None or df.empty:
+        return "".encode("utf-8-sig")
+
+    colunas_validas = [c for c in df.columns if "Justificativa" not in c]
+    df_csv = df[colunas_validas].copy()
+
+    # separador ";" e BOM (utf-8-sig) para abrir corretamente no Excel em pt-BR
+    return df_csv.to_csv(index=False, sep=";").encode("utf-8-sig")
+
 def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celulas):
     output = BytesIO()
     doc = SimpleDocTemplate(
@@ -1251,11 +1265,105 @@ elif opcao == "RELATÓRIO":
                 key="editor_ponto_gestao"
             )
             
-            col_btn, _ = st.columns([1, 1])
+            col_btn, col_csv_integ = st.columns(2)
             with col_btn:
                 caixa_confirmacao = st.popover("💾 Salvar Alterações no Banco", use_container_width=True)
                 caixa_confirmacao.warning(f"⚠️ Atenção: Isso alterará permanentemente os dados de {nome_busca}.")
                 confirmou_salvar = caixa_confirmacao.button("Sim, confirmar e salvar", type="primary", use_container_width=True)
+
+            with col_csv_integ:
+                gerar_csv_integracao = st.button("🗳️ Gerar CSV Integração", use_container_width=True)
+
+            if gerar_csv_integracao:
+                with st.spinner("Gerando CSV(s) de integração..."):
+                    # --- CSV INDIVIDUAL (colaborador atualmente selecionado na tela) ---
+                    df_csv_ind = processar_dados_ponto(dados_pessoais, data_inicio, data_fim, incluir_usuario_info=False, formatar_data_br=True)
+                    st.session_state.csv_integ_individual = converter_para_csv_integracao(df_csv_ind)
+                    st.session_state.csv_integ_individual_nome = f"CSV_Integracao_{nome_busca.replace(' ', '_')}_{data_inicio}_a_{data_fim}.csv"
+
+                    # --- CSV CONSOLIDADO (Supervisor -> própria célula | Master -> todos os colaboradores) ---
+                    todos_usuarios_csv = []
+                    inicio_pag, passo_pag = 0, 1000
+                    while True:
+                        try:
+                            pagina = supabase.table("usuarios_ponto").select("email, nome, celula").range(inicio_pag, inicio_pag + passo_pag - 1).execute()
+                            if not pagina.data:
+                                break
+                            todos_usuarios_csv.extend(pagina.data)
+                            if len(pagina.data) < passo_pag:
+                                break
+                            inicio_pag += passo_pag
+                        except Exception as e:
+                            st.error(f"Erro ao buscar colaboradores para o CSV consolidado: {e}")
+                            break
+
+                    if cargo_usuario == "Supervisor":
+                        target_celula_csv = str(celula_usuario).strip().lower()
+                        usuarios_alvo_csv = [u for u in todos_usuarios_csv if str(u.get("celula", "")).strip().lower() == target_celula_csv]
+                        nome_arquivo_consolidado = f"CSV_Integracao_Consolidado_Celula_{celula_usuario.replace(' ', '_')}_{data_inicio}_a_{data_fim}.csv"
+                    else:
+                        usuarios_alvo_csv = todos_usuarios_csv
+                        nome_arquivo_consolidado = f"CSV_Integracao_Consolidado_Todos_Colaboradores_{data_inicio}_a_{data_fim}.csv"
+
+                    str_inicio_csv = data_inicio.strftime("%Y-%m-%d") if hasattr(data_inicio, "strftime") else str(data_inicio)
+                    str_fim_csv = data_fim.strftime("%Y-%m-%d") if hasattr(data_fim, "strftime") else str(data_fim)
+
+                    dfs_equipe_csv = []
+                    for u in usuarios_alvo_csv:
+                        u_email_csv = str(u["email"]).strip().lower()
+                        u_nome_csv = str(u.get("nome", "Sem Nome")).strip()
+
+                        dados_user_csv = []
+                        try:
+                            resposta_csv = supabase.table("registro_ponto").select("*").eq("email", u_email_csv).execute()
+                            if resposta_csv.data:
+                                for r in resposta_csv.data:
+                                    data_crua_csv = str(r.get("data") or r.get("data_registro") or "")
+                                    data_linha_csv = data_crua_csv[:10]
+                                    if str_inicio_csv <= data_linha_csv <= str_fim_csv:
+                                        dados_user_csv.append(r)
+                        except Exception as db_err:
+                            st.error(f"Erro ao buscar dados no banco para {u_nome_csv} ({u_email_csv}): {db_err}")
+                            continue
+
+                        df_user_csv = processar_dados_ponto(dados_user_csv, data_inicio, data_fim, incluir_usuario_info=False, formatar_data_br=True)
+                        if df_user_csv is not None and not df_user_csv.empty:
+                            df_user_csv.insert(0, "E-mail", u_email_csv)
+                            df_user_csv.insert(0, "Funcionário", u_nome_csv)
+                            dfs_equipe_csv.append(df_user_csv)
+
+                    if dfs_equipe_csv:
+                        df_consolidado_csv = pd.concat(dfs_equipe_csv, ignore_index=True)
+                        df_consolidado_csv = df_consolidado_csv.sort_values(by="Funcionário", key=lambda col: col.str.lower(), kind="mergesort")
+                        st.session_state.csv_integ_consolidado = converter_para_csv_integracao(df_consolidado_csv)
+                    else:
+                        st.session_state.csv_integ_consolidado = None
+
+                    st.session_state.csv_integ_consolidado_nome = nome_arquivo_consolidado
+                    st.session_state.csv_integracao_pronto = True
+
+            if st.session_state.get("csv_integracao_pronto"):
+                st.success("✅ CSV(s) de integração gerados com sucesso!")
+                col_csv_d1, col_csv_d2 = st.columns(2)
+                with col_csv_d1:
+                    st.download_button(
+                        label="📥 Baixar CSV Individual",
+                        data=st.session_state.csv_integ_individual,
+                        file_name=st.session_state.csv_integ_individual_nome,
+                        mime="text/csv",
+                        use_container_width=True
+                    )
+                with col_csv_d2:
+                    if st.session_state.csv_integ_consolidado is not None:
+                        st.download_button(
+                            label="📥 Baixar CSV Consolidado",
+                            data=st.session_state.csv_integ_consolidado,
+                            file_name=st.session_state.csv_integ_consolidado_nome,
+                            mime="text/csv",
+                            use_container_width=True
+                        )
+                    else:
+                        st.info("Nenhum dado consolidado encontrado para o período selecionado.")
             
             if confirmou_salvar:
                 alteracoes = st.session_state.get("editor_ponto_gestao", {}).get("edited_rows", {})
