@@ -1181,16 +1181,25 @@ elif opcao == "RELATÓRIO":
                             linha[col_df] = ""
         
                     hora_extra_str = "00:00"
+                    # Lista de datas pré-definidas onde todo o tempo trabalhado é hora extra (Formato: DD/MM/AAAA)
+                    datas_100_porcento = [
+                        "04/06/2026", 
+                        "24/12/2026"
+                    ]
+                    
                     if dt_entrada and dt_saida and dt_obj:
                         segundos_trabalhados = int((dt_saida - dt_entrada).total_seconds())
                         dia_da_semana_numero = dt_obj.weekday() # 0 = Segunda, ..., 5 = Sábado, 6 = Domingo
                         
+                        # Converte o dt_obj para texto no formato DD/MM/AAAA para comparar com a lista
+                        data_atual_str = dt_obj.strftime("%d/%m/%Y")
+                        
                         # REGRA MODIFICADA AQUI:
-                        # Se for sábado (5) ou domingo (6), todo o tempo trabalhado é hora extra.
-                        if dia_da_semana_numero in [5, 6]:
+                        # Se for sábado (5), domingo (6) OU se a data atual estiver na lista de datas especiais:
+                        if dia_da_semana_numero in [5, 6] or data_atual_str in datas_100_porcento:
                             segundos_extras = segundos_trabalhados
                         else:
-                            # Para dias de semana, a hora extra é o que exceder 9 horas.
+                            # Para dias de semana normais, a hora extra é o que exceder 9 horas.
                             jornada_limite_segundos = 9 * 3600
                             segundos_extras = max(0, segundos_trabalhados - jornada_limite_segundos)
                         
