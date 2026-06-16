@@ -1237,7 +1237,7 @@ elif opcao == "RELATÓRIO":
                 df_visualizacao, 
                 use_container_width=True, 
                 hide_index=True,
-                disabled=["Dia da Semana", "Data", "Hora Extra"],  # Nota: Como 'OBSERVAÇÃO' não está aqui, ela fica editável.
+                disabled=["Dia da Semana", "Data", "Hora Extra"],  
                 column_order=ordem_colunas_tela,
                 column_config={
                     "Dia da Semana": st.column_config.TextColumn("Dia da Semana"),
@@ -1245,7 +1245,7 @@ elif opcao == "RELATÓRIO":
                     "Entrada": st.column_config.TextColumn("Entrada"),
                     "Saída Almoço": st.column_config.TextColumn("Saída Almoço"),
                     "Retorno Almoço": st.column_config.TextColumn("Retorno Almoço"),
-                    "OBSERVAÇÃO": st.column_config.TextColumn("OBSERVAÇÃO"), # Configuração adicionada
+                    "OBSERVAÇÃO": st.column_config.TextColumn("OBSERVAÇÃO"),
                     "Saída": st.column_config.TextColumn("Saída")
                 },
                 key="editor_ponto_gestao"
@@ -1274,9 +1274,9 @@ elif opcao == "RELATÓRIO":
                         "Justificativa Saída Almoço": "justificativa_saida_almoco",
                         "Retorno Almoço": "retorno_almoco",
                         "Justificativa Retorno Almoço": "justificativa_retorno_almoco",
-                        "OBSERVAÇÃO": "observacao",
                         "Saída": "horario_saida",
-                        "Justificativa Saída": "justificativa_saida"
+                        "Justificativa Saída": "justificativa_saida",
+                        "OBSERVAÇÃO": "observacao"
                     }
                     
                     datas_com_registro = {item.get("data") for item in dados_pessoais if item.get("data")}
