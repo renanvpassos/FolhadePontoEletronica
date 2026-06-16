@@ -1059,7 +1059,7 @@ elif opcao == "RELATÓRIO":
                         
                         if segundos_trab > 0:
                             # Agrupa pelo dia da entrada
-                            dia_str = dt_ent.strftime("%Y-%m-%d")
+                            dia_str = dt_ent.strftime("%d-%m-%Y")
                             segundos_por_dia[dia_str] += segundos_trab
                     except:
                         pass
@@ -1067,19 +1067,26 @@ elif opcao == "RELATÓRIO":
             # --- APLICAÇÃO DA REGRA DE NEGÓCIO POR DIA ---
             jornada_limite = 9 * 3600  # 9 horas em segundos
             
+            # 💡 ADICIONE AQUI AS NOVAS DATAS (Formato: "AAAA-MM-DD")
+            datas_especiais = {
+                "04/06/2026",  # 04/06/2026
+                "24/12/2026",  # 24/12/2026
+                # "2026-12-25",  # Exemplo de como adicionar mais datas
+            }
+            
             for dia_str, segundos_totais_do_dia in segundos_por_dia.items():
                 # Acumula o total bruto trabalhado no período (independente de ser extra ou não)
                 total_segundos_trabalhados += segundos_totais_do_dia
                 
                 # Descobre o dia da semana a partir da data (0=Segunda, 5=Sábado, 6=Domingo)
-                dt_dia = datetime.strptime(dia_str, "%Y-%m-%d")
+                dt_dia = datetime.strptime(dia_str, "%d-%m-%Y")
                 dia_da_semana = dt_dia.weekday()
                 
-                # REGRA SÁBADO OU DOMINGO: Todo o tempo trabalhado vira hora extra
-                if dia_da_semana in (5, 6):
+                # REGRA SÁBADO, DOMINGO OU DATAS ESPECIAIS: Todo o tempo trabalhado vira hora extra
+                if dia_da_semana in (5, 6) or dia_str in datas_especiais:
                     total_segundos_extras += segundos_totais_do_dia
                 
-                # REGRA DIA DE SEMANA: Apenas o que passar de 9 horas vira hora extra
+                # REGRA DIA DE SEMANA COMUM: Apenas o que passar de 9 horas vira hora extra
                 else:
                     if segundos_totais_do_dia > jornada_limite:
                         total_segundos_extras += (segundos_totais_do_dia - jornada_limite)
