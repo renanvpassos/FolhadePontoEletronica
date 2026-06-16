@@ -1081,6 +1081,7 @@ elif opcao == "RELATÓRIO":
                     
                     data_banco = item.get("data", "")
                     dia_semana_str = ""
+                    dt_obj = None # Guardamos o objeto datetime para usar no cálculo da hora extra
                     if data_banco:
                         try:
                             if isinstance(data_banco, str):
@@ -1136,11 +1137,21 @@ elif opcao == "RELATÓRIO":
                             linha[col_df] = ""
         
                     hora_extra_str = "00:00"
-                    if dt_entrada and dt_saida:
+                    if dt_entrada and dt_saida and dt_obj:
                         segundos_trabalhados = int((dt_saida - dt_entrada).total_seconds())
-                        jornada_limite_segundos = 9 * 3600
-                        if segundos_trabalhados > jornada_limite_segundos:
-                            segundos_extras = segundos_trabalhados - jornada_limite_segundos
+                        dia_da_semana_numero = dt_obj.weekday() # 0 = Segunda, ..., 5 = Sábado, 6 = Domingo
+                        
+                        # REGRA MODIFICADA AQUI:
+                        # Se for sábado (5) ou domingo (6), todo o tempo trabalhado é hora extra.
+                        if dia_da_semana_numero in [5, 6]:
+                            segundos_extras = segundos_trabalhados
+                        else:
+                            # Para dias de semana, a hora extra é o que exceder 9 horas.
+                            jornada_limite_segundos = 9 * 3600
+                            segundos_extras = max(0, segundos_trabalhados - jornada_limite_segundos)
+                        
+                        # Calcula o formato HH:MM a partir dos segundos extras
+                        if segundos_extras > 0:
                             horas_ext = segundos_extras // 3600
                             minutos_ext = (segundos_extras % 3600) // 60
                             hora_extra_str = f"{horas_ext:02d}:{minutos_ext:02d}"
@@ -1148,7 +1159,6 @@ elif opcao == "RELATÓRIO":
                     linha["Hora Extra"] = hora_extra_str
                     
                     # 2. Capturando a observação do banco de dados no fluxo consolidado
-                    
                     linha["Justificativa Entrada"] = item.get("justificativa_entrada", "") or ""
                     linha["Justificativa Saída Almoço"] = item.get("justificativa_saida_almoco", "") or ""
                     linha["Justificativa Retorno Almoço"] = item.get("justificativa_retorno_almoco", "") or ""
@@ -1158,6 +1168,92 @@ elif opcao == "RELATÓRIO":
                 
                 df_res = pd.DataFrame(linhas_processadas)
                 return df_res[[c for c in ordem_consolidada if c in df_res.columns]]
+            
+            lista_datas = []
+            curr_date = dt_inicio
+            while curr_date <= dt_fim:
+                lista_datas.append(curr_date)
+                curr_date += timedelta(days=1)
+        
+            dados_por_data = {}
+            if dados:
+                for item in dados:
+                    dt_banco = item.get("data")
+                    if dt_banco:
+                        if isinstance(dt_banco, str):
+                            dt_key = dt_banco[:10]
+                        elif hasattr(dt_banco, "strftime"):
+                            dt_key = dt_banco.strftime("%Y-%m-%d")
+                        else:
+                            dt_key = str(dt_banco)[:10]
+                        dados_por_data[dt_key] = item
+        
+            linhas_processadas = []
+            for dt in lista_datas: # dt já é um objeto datetime.date
+                data_iso = dt.strftime("%Y-%m-%d")
+                item = dados_por_data.get(data_iso, {})
+        
+                linha = {}
+                dia_da_semana_numero = dt.weekday()
+                linha["Dia da Semana"] = dias_semana[dia_da_semana_numero]
+                
+                if formatar_data_br:
+                    linha["Data"] = dt.strftime("%d/%m/%Y")
+                else:
+                    linha["Data"] = data_iso
+        
+                dt_entrada, dt_saida = None, None
+                for col_banco, col_df in [
+                    ("horario_entrada", "Entrada"),
+                    ("saida_almoco", "Saída Almoço"),
+                    ("retorno_almoco", "Retorno Almoço"),
+                    ("horario_saida", "Saída")
+                ]:
+                    valor = item.get(col_banco)
+                    if valor:
+                        try:
+                            dt_objeto = datetime.fromisoformat(valor).astimezone(fuso_br)
+                            linha[col_df] = dt_objeto.strftime("%H:%M:%S")
+                            if col_banco == "horario_entrada":
+                                dt_entrada = dt_objeto
+                            elif col_banco == "horario_saida":
+                                dt_saida = dt_objeto
+                        except Exception:
+                            linha[col_df] = ""
+                    else:
+                        linha[col_df] = ""
+        
+                hora_extra_str = "00:00"
+                if dt_entrada and dt_saida:
+                    segundos_trabalhados = int((dt_saida - dt_entrada).total_seconds())
+                    
+                    # REGRA MODIFICADA AQUI:
+                    # Se for sábado (5) ou domingo (6), todo o tempo trabalhado é hora extra.
+                    if dia_da_semana_numero in [5, 6]:
+                        segundos_extras = segundos_trabalhados
+                    else:
+                        # Para dias de semana, a hora extra é o que exceder 9 horas.
+                        jornada_limite_segundos = 9 * 3600
+                        segundos_extras = max(0, segundos_trabalhados - jornada_limite_segundos)
+                    
+                    # Calcula o formato HH:MM a partir dos segundos extras
+                    if segundos_extras > 0:
+                        horas_ext = segundos_extras // 3600
+                        minutos_ext = (segundos_extras % 3600) // 60
+                        hora_extra_str = f"{horas_ext:02d}:{minutos_ext:02d}"
+                
+                linha["Hora Extra"] = hora_extra_str
+                
+                # 2. Capturando a observação do banco de dados no fluxo individual
+                linha["Justificativa Entrada"] = item.get("justificativa_entrada", "") or ""
+                linha["Justificativa Saída Almoço"] = item.get("justificativa_saida_almoco", "") or ""
+                linha["Justificativa Retorno Almoço"] = item.get("justificativa_retorno_almoco", "") or ""
+                linha["Justificativa Saída"] = item.get("justificativa_saida", "") or ""
+                linha["OBSERVAÇÃO"] = item.get("observacao", "") or ""
+                linhas_processadas.append(linha)
+        
+            df_res = pd.DataFrame(linhas_processadas)
+            return df_res[[c for c in ordem_individual if c in df_res.columns]]
             
             lista_datas = []
             curr_date = dt_inicio
