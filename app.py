@@ -1019,35 +1019,46 @@ elif opcao == "RELATÓRIO":
     if data_inicio <= data_fim:
         dados_pessoais_indicadores = executar_query_supabase("buscar_relatorio", email=email_busca, data_filtro=data_inicio, data_fim=data_fim)
         
-        def_total_minutos_trabalhados = 0
-        def_total_minutos_extras = 0
-
+        # Alterado para acumular em segundos para evitar perdas de arredondamento
+        total_segundos_trabalhados = 0
+        total_segundos_extras = 0
+    
         if dados_pessoais_indicadores:
             for item in dados_pessoais_indicadores:
                 val_ent = item.get("horario_entrada")
                 val_sai = item.get("horario_saida")
+                
                 if val_ent and val_sai:
                     try:
-                        st.write()
+                        # Convertendo strings para objetos datetime c/ fuso horário
                         dt_ent = datetime.fromisoformat(val_ent).astimezone(fuso_br)
                         dt_sai = datetime.fromisoformat(val_sai).astimezone(fuso_br)
+                        
                         segundos_trab = int((dt_sai - dt_ent).total_seconds())
                         
                         if segundos_trab > 0:
+                            # Acumula o total bruto trabalhado
+                            total_segundos_trabalhados += segundos_trab
+                            
                             jornada_limite = 9 * 3600  # 9 horas em segundos
                             
+                            # Se excedeu a jornada, calcula as horas extras
                             if segundos_trab > jornada_limite:
-                                minutos_excedentes = (segundos_trab - jornada_limite) // 60
-                                def_total_minutos_trabalhados += (jornada_limite // 60) + minutos_excedentes
-                                def_total_minutos_extras += minutos_excedentes
-                            else:
-                                def_total_minutos_trabalhados += segundos_trab // 60
-                    except:
+                                total_segundos_extras += (segundos_trab - jornada_limite)
+                                
+                    except Exception as e:
+                        # Caso queira debugar se alguma linha falhar na conversão de data:
+                        # st.error(f"Erro ao processar item: {e}")
                         pass
-
+    
+        # Conversão dos totais acumulados para minutos apenas no final do período
+        def_total_minutos_trabalhados = total_segundos_trabalhados // 60
+        def_total_minutos_extras = total_segundos_extras // 60
+    
+        # Formatação das strings de exibição
         horas_trab_totais = f"{def_total_minutos_trabalhados // 60:02d}h {def_total_minutos_trabalhados % 60:02d}m"
         horas_ext_totais = f"{def_total_minutos_extras // 60:02d}h {def_total_minutos_extras % 60:02d}m"
-
+    
         st.write("")
         col_tot1, col_tot2 = st.columns(2)
         with col_tot1:
