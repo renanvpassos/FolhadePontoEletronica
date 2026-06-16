@@ -55,6 +55,21 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
             return int(partes[0]) * 60 + int(partes[1])
         except: return 0
 
+    # === REGRA ESPECIAL: FERIADO 04/06/2026 ===
+    df = df.copy()  # Evita modificar o DataFrame original fora da função
+    
+    # Identifica a coluna que contém o total trabalhado (ajuste as strings se o seu nome for diferente)
+    coluna_total = None
+    for col in df.columns:
+        if col.lower() in ["total", "total trabalhado", "tempo trabalhado", "total horas"]:
+            coluna_total = col
+            break
+            
+    # Se a coluna de total existir, copia o valor para 'Hora Extra' no dia do feriado
+    if "Data" in df.columns and "Hora Extra" in df.columns and coluna_total:
+        eh_feriado = df["Data"].astype(str).str.strip() == "04/06/2026"
+        df.loc[eh_feriado, "Hora Extra"] = df.loc[eh_feriado, coluna_total]
+
     # === CÁLCULOS ===
     total_mins = df["Hora Extra"].apply(_extrair_minutos).sum() if "Hora Extra" in df.columns else 0
     total_horas_str = f"{total_mins // 60:02d}:{total_mins % 60:02d}"
@@ -76,6 +91,12 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     
     # === TRATAMENTO DAS COLUNAS ===
     df_pdf = df.copy()
+    
+    # Mapeia os índices do feriado antes que a coluna 'Data' seja deletada/modificada
+    indices_feriado = []
+    if "Data" in df_pdf.columns:
+        indices_feriado = df_pdf[df_pdf["Data"].astype(str).str.strip() == "04/06/2026"].index.tolist()
+
     if "Data" in df_pdf.columns and "Dia da Semana" in df_pdf.columns:
         conteudo_combinado = [f"{str(row['Data']).split('/')[0]}<br/>{row['Dia da Semana']}" for _, row in df_pdf.iterrows()]
         df_pdf.insert(0, "Data / Dia", conteudo_combinado)
@@ -99,15 +120,16 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
         ('RIGHTPADDING', (0,0), (-1,-1), 2),
     ]
     
-    for r_idx, (_, row) in enumerate(df_filtrado.iterrows(), start=1):
-        # Verifica FDS e preenchimento
+    # Alterado para capturar o índice original do DataFrame (orig_idx)
+    for r_idx, (orig_idx, row) in enumerate(df_filtrado.iterrows(), start=1):
+        # Verifica FDS/Feriado e preenchimento
         texto_data = str(row.get("Data / Dia", "")).upper()
-        eh_fds = "DOMINGO" in texto_data or "SÁBADO" in texto_data or "SABADO" in texto_data
+        eh_fds = "DOMINGO" in texto_data or "SÁBADO" in texto_data or "SABADO" in texto_data or orig_idx in indices_feriado
         
         # Verifica se a linha está completa (ignora observação)
         linha_completa = all(str(row.get(col, "")).strip() not in ["", "nan", "0", "0.0"] for col in colunas_obrigatorias)
         
-        # Aplica regra de FDS
+        # Aplica regra de FDS ou Feriado
         if eh_fds and linha_completa:
             estilos_tabela.append(('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor("#FEF08A")))
         
@@ -119,6 +141,7 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
         linha = []
         for col_nome, val in row.items():
             valor_str = "" if (col_nome == "Hora Extra" and val in ["00:00", "0", "0.0", ""]) else str(val)
+            # Se for FDS ou Feriado, aplica o estilo com negrito (cell_bold_style)
             linha.append(Paragraph(valor_str, cell_bold_style if eh_fds else cell_style))
             
         dados_tabela.append(linha)
