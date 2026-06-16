@@ -1134,12 +1134,12 @@ elif opcao == "RELATÓRIO":
                     linha["Hora Extra"] = hora_extra_str
                     
                     # 2. Capturando a observação do banco de dados no fluxo consolidado
-                    linha["OBSERVAÇÃO"] = item.get("observacao", "") or ""
                     
                     linha["Justificativa Entrada"] = item.get("justificativa_entrada", "") or ""
                     linha["Justificativa Saída Almoço"] = item.get("justificativa_saida_almoco", "") or ""
                     linha["Justificativa Retorno Almoço"] = item.get("justificativa_retorno_almoco", "") or ""
                     linha["Justificativa Saída"] = item.get("justificativa_saida", "") or ""
+                    linha["OBSERVAÇÃO"] = item.get("observacao", "") or ""
                     linhas_processadas.append(linha)
                 
                 df_res = pd.DataFrame(linhas_processadas)
@@ -1211,12 +1211,12 @@ elif opcao == "RELATÓRIO":
                 linha["Hora Extra"] = hora_extra_str
                 
                 # 2. Capturando a observação do banco de dados no fluxo individual
-                linha["OBSERVAÇÃO"] = item.get("observacao", "") or ""
                 
                 linha["Justificativa Entrada"] = item.get("justificativa_entrada", "") or ""
                 linha["Justificativa Saída Almoço"] = item.get("justificativa_saida_almoco", "") or ""
                 linha["Justificativa Retorno Almoço"] = item.get("justificativa_retorno_almoco", "") or ""
                 linha["Justificativa Saída"] = item.get("justificativa_saida", "") or ""
+                linha["OBSERVAÇÃO"] = item.get("observacao", "") or ""
                 linhas_processadas.append(linha)
         
             df_res = pd.DataFrame(linhas_processadas)
