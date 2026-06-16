@@ -73,6 +73,23 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
         eh_feriado = df["Data"].astype(str).str.strip().isin(feriados)
         df.loc[eh_feriado, "Hora Extra"] = df.loc[eh_feriado, coluna_total]
 
+    # === CÁLCULO DA JORNADA DE TRABALHO NO PERÍODO ===
+    total_jornada_mins = 0
+    if coluna_total:
+        total_jornada_mins = df[coluna_total].apply(_extrair_minutos).sum()
+    else:
+        # Fallback: Se não achar coluna total, calcula pela diferença de Saída e Entrada
+        col_entrada = next((c for c in df.columns if c.lower() == 'entrada'), None)
+        col_saida = next((c for c in df.columns if c.lower() in ['saida', 'saída']), None)
+        if col_entrada and col_saida:
+            for _, row in df.iterrows():
+                ent = _extrair_minutos(row[col_entrada])
+                sai = _extrair_minutos(row[col_saida])
+                if sai > ent:
+                    total_jornada_mins += (sai - ent)
+
+    total_jornada_str = f"{total_jornada_mins // 60:02d}:{total_jornada_mins % 60:02d}"
+
     # === CÁLCULOS DE HORAS EXTRAS (Geral, 75% e 100%) ===
     total_mins = df["Hora Extra"].apply(_extrair_minutos).sum() if "Hora Extra" in df.columns else 0
     total_horas_str = f"{total_mins // 60:02d}:{total_mins % 60:02d}"
@@ -109,6 +126,12 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     story.append(Paragraph(f"<b>E-mail:</b> {email}", styles['Normal']))
     story.append(Paragraph(f"<b>Célula:</b> {celula}", styles['Normal']))
     
+    # Adiciona o Total da Jornada de Trabalho ACIMA das horas extras
+    story.append(Spacer(1, 4))
+    story.append(Paragraph(f"<b>Total de Horas de Trabalho no Período:</b> <font color='#1E3A8A'>{total_jornada_str}</font>", total_style))
+    story.append(Spacer(1, 2))
+    
+    # Organiza os três totais de extras lado a lado
     totais_dados = [[
         Paragraph(f"<b>Total de Horas Extras no Período:</b> <font color='red'>{total_horas_str}</font>", total_style),
         Paragraph(f"<b>Total de Horas Extras 75% no Período:</b> <font color='red'>{horas_75_str}</font>", total_style),
@@ -159,13 +182,11 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     for r_idx, (orig_idx, row) in enumerate(df_filtrado.iterrows(), start=1):
         texto_data = str(row.get("Data / Dia", "")).upper()
         
-        # Separação clara das validações
         eh_fds = "DOMINGO" in texto_data or "SÁBADO" in texto_data or "SABADO" in texto_data
         eh_feriado = orig_idx in indices_feriado
         
         linha_completa = all(str(row.get(col, "")).strip() not in ["", "nan", "0", "0.0"] for col in colunas_obrigatorias)
         
-        # MODIFICAÇÃO AQUI: Feriado pinta sempre. FDS depende da linha estar completa.
         if eh_feriado or (eh_fds and linha_completa):
             estilos_tabela.append(('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor("#FEF08A")))
         
@@ -176,7 +197,6 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
         linha = []
         for col_nome, val in row.items():
             valor_str = "" if (col_nome == "Hora Extra" and val in ["00:00", "0", "0.0", ""]) else str(val)
-            # Aplica negrito se for final de semana ou feriado
             linha.append(Paragraph(valor_str, cell_bold_style if (eh_fds or eh_feriado) else cell_style))
             
         dados_tabela.append(linha)
