@@ -11,6 +11,7 @@ from reportlab.lib.pagesizes import A4, landscape
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak, Image
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
+from collections import defaultdict
 
 def converter_para_csv_integracao(df):
     """
@@ -1019,9 +1020,11 @@ elif opcao == "RELATÓRIO":
     if data_inicio <= data_fim:
         dados_pessoais_indicadores = executar_query_supabase("buscar_relatorio", email=email_busca, data_filtro=data_inicio, data_fim=data_fim)
         
-        # Alterado para acumular em segundos para evitar perdas de arredondamento
         total_segundos_trabalhados = 0
         total_segundos_extras = 0
+        
+        # Dicionário para acumular as horas trabalhadas agrupadas por data (ex: "2026-06-16")
+        segundos_por_dia = defaultdict(int)
     
         if dados_pessoais_indicadores:
             for item in dados_pessoais_indicadores:
@@ -1030,28 +1033,30 @@ elif opcao == "RELATÓRIO":
                 
                 if val_ent and val_sai:
                     try:
-                        # Convertendo strings para objetos datetime c/ fuso horário
                         dt_ent = datetime.fromisoformat(val_ent).astimezone(fuso_br)
                         dt_sai = datetime.fromisoformat(val_sai).astimezone(fuso_br)
                         
                         segundos_trab = int((dt_sai - dt_ent).total_seconds())
                         
                         if segundos_trab > 0:
-                            # Acumula o total bruto trabalhado
-                            total_segundos_trabalhados += segundos_trab
-                            
-                            jornada_limite = 9 * 3600  # 9 horas em segundos
-                            
-                            # Se excedeu a jornada, calcula as horas extras
-                            if segundos_trab > jornada_limite:
-                                total_segundos_extras += (segundos_trab - jornada_limite)
-                                
-                    except Exception as e:
-                        # Caso queira debugar se alguma linha falhar na conversão de data:
-                        # st.error(f"Erro ao processar item: {e}")
+                            # Extrai apenas a data (Ano-Mês-Dia) para usar como chave de agrupamento
+                            dia_str = dt_ent.strftime("%Y-%m-%d")
+                            segundos_por_dia[dia_str] += segundos_trab
+                    except:
                         pass
     
-        # Conversão dos totais acumulados para minutos apenas no final do período
+            # --- CÁLCULO DOS TOTAIS BASEADO NO ACUMULADO DIÁRIO ---
+            jornada_limite = 9 * 3600  # 9 horas em segundos
+            
+            for dia, segundos_totais_do_dia in segundos_por_dia.items():
+                # Soma o total bruto de horas trabalhadas no período
+                total_segundos_trabalhados += segundos_totais_do_dia
+                
+                # Aplica a regra de hora extra sobre o TOTAL do dia civil
+                if segundos_totais_do_dia > jornada_limite:
+                    total_segundos_extras += (segundos_totais_do_dia - jornada_limite)
+    
+        # Conversão dos totais acumulados para minutos
         def_total_minutos_trabalhados = total_segundos_trabalhados // 60
         def_total_minutos_extras = total_segundos_extras // 60
     
