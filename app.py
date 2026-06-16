@@ -235,7 +235,7 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
     styles = getSampleStyleSheet()
     
     # === CONFIGURAÇÃO DE FERIADOS (Adicione novas datas aqui) ===
-    feriados = ["04/06/2026", "12/06/2026"]
+    feriados = ["04/06/2026", "24/12/2026"]
     
     # Estilos
     title_style = ParagraphStyle('TituloPDF', parent=styles['Heading1'], fontSize=13, textColor=colors.HexColor("#1E3A8A"), spaceAfter=4)
@@ -378,7 +378,7 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         # === TABELA DE TOTAIS ALINHADA (Duas linhas perfeitamente estruturadas) ===
         totais_dados = [
             [
-                Paragraph(f"<b>Total de Horas de Trabalho no Período:</b> <font color='#1E3A8A'>{total_horas_trab_str}</font>", total_style),
+                Paragraph(f"<b>Total de Horas de Trabalho no Período:</b> <font color='green'>{total_horas_trab_str}</font>", total_style),
                 "", 
                 ""  
             ],
