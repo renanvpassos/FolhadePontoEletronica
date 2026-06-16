@@ -1028,8 +1028,9 @@ elif opcao == "RELATÓRIO":
     
         if dados_pessoais_indicadores:
             for item in dados_pessoais_indicadores:
-                val_ent = item.get("horario_entrada")
-                val_sai = item.get("horario_saida")
+                # Substitua "horas_extras_banco" pelo nome exato da coluna que vem do seu Supabase
+                minutos_extras_do_dia = item.get("horas_extras_banco", 0) 
+                def_total_minutos_extras += int(minutos_extras_do_dia)
                 
                 if val_ent and val_sai:
                     try:
