@@ -38,7 +38,7 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     styles = getSampleStyleSheet()
     
     # === CONFIGURAÇÃO DE FERIADOS (Adicione novas datas aqui) ===
-    feriados = ["04/06/2026", "12/06/2026"]
+    feriados = ["04/06/2026", "24/12/2026"]
     
     # Estilos
     title_style = ParagraphStyle('TituloPDF', parent=styles['Heading1'], fontSize=13, textColor=colors.HexColor("#1E3A8A"), spaceAfter=4)
@@ -86,7 +86,6 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
             dia_semana_str = str(row.get("Dia da Semana", "")).upper()
             he_mins = _extrair_minutos(row["Hora Extra"])
             
-            # Regra para 100%: Finais de semana ou datas na lista de feriados
             eh_100 = (data_str in feriados) or ("SÁBADO" in dia_semana_str) or ("SABADO" in dia_semana_str) or ("DOMINGO" in dia_semana_str)
             
             if eh_100:
@@ -110,7 +109,6 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     story.append(Paragraph(f"<b>E-mail:</b> {email}", styles['Normal']))
     story.append(Paragraph(f"<b>Célula:</b> {celula}", styles['Normal']))
     
-    # Organiza os três totais lado a lado usando uma tabela invisível
     totais_dados = [[
         Paragraph(f"<b>Total de Horas Extras no Período:</b> <font color='red'>{total_horas_str}</font>", total_style),
         Paragraph(f"<b>Total de Horas Extras 75% no Período:</b> <font color='red'>{horas_75_str}</font>", total_style),
@@ -130,7 +128,7 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     # === TRATAMENTO DAS COLUNAS ===
     df_pdf = df.copy()
     
-    # Mapeia os índices de todos os feriados cadastrados antes que a coluna 'Data' seja modificada
+    # Mapeia os índices de todos os feriados cadastrados
     indices_feriado = []
     if "Data" in df_pdf.columns:
         indices_feriado = df_pdf[df_pdf["Data"].astype(str).str.strip().isin(feriados)].index.tolist()
@@ -160,11 +158,15 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     
     for r_idx, (orig_idx, row) in enumerate(df_filtrado.iterrows(), start=1):
         texto_data = str(row.get("Data / Dia", "")).upper()
-        eh_fds = "DOMINGO" in texto_data or "SÁBADO" in texto_data or "SABADO" in texto_data or orig_idx in indices_feriado
+        
+        # Separação clara das validações
+        eh_fds = "DOMINGO" in texto_data or "SÁBADO" in texto_data or "SABADO" in texto_data
+        eh_feriado = orig_idx in indices_feriado
         
         linha_completa = all(str(row.get(col, "")).strip() not in ["", "nan", "0", "0.0"] for col in colunas_obrigatorias)
         
-        if eh_fds and linha_completa:
+        # MODIFICAÇÃO AQUI: Feriado pinta sempre. FDS depende da linha estar completa.
+        if eh_feriado or (eh_fds and linha_completa):
             estilos_tabela.append(('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor("#FEF08A")))
         
         val_he = str(row.get("Hora Extra", "")).strip()
@@ -174,7 +176,8 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
         linha = []
         for col_nome, val in row.items():
             valor_str = "" if (col_nome == "Hora Extra" and val in ["00:00", "0", "0.0", ""]) else str(val)
-            linha.append(Paragraph(valor_str, cell_bold_style if eh_fds else cell_style))
+            # Aplica negrito se for final de semana ou feriado
+            linha.append(Paragraph(valor_str, cell_bold_style if (eh_fds or eh_feriado) else cell_style))
             
         dados_tabela.append(linha)
     
