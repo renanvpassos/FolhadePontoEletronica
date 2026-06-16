@@ -1028,9 +1028,8 @@ elif opcao == "RELATÓRIO":
     
         if dados_pessoais_indicadores:
             for item in dados_pessoais_indicadores:
-                # Substitua "horas_extras_banco" pelo nome exato da coluna que vem do seu Supabase
-                minutos_extras_do_dia = item.get("horas_extras_banco", 0) 
-                def_total_minutos_extras += int(minutos_extras_do_dia)
+                val_ent = item.get("horario_entrada")
+                val_sai = item.get("horario_saida")
                 
                 if val_ent and val_sai:
                     try:
@@ -1040,22 +1039,31 @@ elif opcao == "RELATÓRIO":
                         segundos_trab = int((dt_sai - dt_ent).total_seconds())
                         
                         if segundos_trab > 0:
-                            # Extrai apenas a data (Ano-Mês-Dia) para usar como chave de agrupamento
+                            # Agrupa pelo dia da entrada
                             dia_str = dt_ent.strftime("%Y-%m-%d")
                             segundos_por_dia[dia_str] += segundos_trab
                     except:
                         pass
     
-            # --- CÁLCULO DOS TOTAIS BASEADO NO ACUMULADO DIÁRIO ---
+            # --- APLICAÇÃO DA REGRA DE NEGÓCIO POR DIA ---
             jornada_limite = 9 * 3600  # 9 horas em segundos
             
-            for dia, segundos_totais_do_dia in segundos_por_dia.items():
-                # Soma o total bruto de horas trabalhadas no período
+            for dia_str, segundos_totais_do_dia in segundos_por_dia.items():
+                # Acumula o total bruto trabalhado no período (independente de ser extra ou não)
                 total_segundos_trabalhados += segundos_totais_do_dia
                 
-                # Aplica a regra de hora extra sobre o TOTAL do dia civil
-                if segundos_totais_do_dia > jornada_limite:
-                    total_segundos_extras += (segundos_totais_do_dia - jornada_limite)
+                # Descobre o dia da semana a partir da data (0=Segunda, 5=Sábado, 6=Domingo)
+                dt_dia = datetime.strptime(dia_str, "%Y-%m-%d")
+                dia_da_semana = dt_dia.weekday()
+                
+                # REGRA SÁBADO OU DOMINGO: Todo o tempo trabalhado vira hora extra
+                if dia_da_semana in (5, 6):
+                    total_segundos_extras += segundos_totais_do_dia
+                
+                # REGRA DIA DE SEMANA: Apenas o que passar de 9 horas vira hora extra
+                else:
+                    if segundos_totais_do_dia > jornada_limite:
+                        total_segundos_extras += (segundos_totais_do_dia - jornada_limite)
     
         # Conversão dos totais acumulados para minutos
         def_total_minutos_trabalhados = total_segundos_trabalhados // 60
