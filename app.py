@@ -38,7 +38,7 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     styles = getSampleStyleSheet()
     
     # === CONFIGURAÇÃO DE FERIADOS (Adicione novas datas aqui) ===
-    feriados = ["04/06/2026", "12/06/2026"]
+    feriados = ["04/06/2026", "24/12/2026"]
     
     # Estilos
     title_style = ParagraphStyle('TituloPDF', parent=styles['Heading1'], fontSize=13, textColor=colors.HexColor("#1E3A8A"), spaceAfter=4)
@@ -129,7 +129,7 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     
     totais_dados = [
         [
-            Paragraph(f"<b>Total de Horas de Trabalho no Período:</b> <font color='#1E3A8A'>{total_jornada_str}</font>", total_style),
+            Paragraph(f"<b>Total de Horas de Trabalho no Período:</b> <font color='green'>{total_jornada_str}</font>", total_style),
             "", 
             ""  
         ],
