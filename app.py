@@ -768,12 +768,18 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                     hora_manual_objeto = datetime.strptime(hora_digitada, "%H:%M").time()
                     horario_final_gravacao = datetime.combine(hoje, hora_manual_objeto).replace(tzinfo=fuso_br)
                     
+                    # --- VERIFICAÇÃO DE FINAL DE SEMANA OU FERIADO ---
+                    # weekday() retorna 5 para sábado e 6 para domingo
+                    is_fim_de_semana = hoje.weekday() in [5, 6]
+                    is_feriado = hoje.strftime('%d/%m/%Y') in ["04/06/2026", "24/12/2026"]
+                    dispensa_almoco = is_fim_de_semana or is_feriado
+                    
                     # --- TRAVAS DE FLUXO DE PREENCHIMENTO ---
                     if opcao != "ENTRADA" and not pontos["ENTRADA"]:
                         st.error("🛑 Bloqueado: Não é permitido preencher nenhum horário antes de registrar o horário de ENTRADA.")
                         erro_validacao = True
                         
-                    elif opcao == "RETORNO ALMOÇO" and not pontos["SAÍDA ALMOÇO"]:
+                    elif opcao == "RETORNO ALMOÇO" and not dispensa_almoco and not pontos["SAÍDA ALMOÇO"]:
                         st.error("🛑 Bloqueado: Não é permitido preencher o horário de Retorno de Almoço sem ter preenchido o horário de Saída Almoço.")
                         erro_validacao = True
                         
@@ -781,10 +787,13 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                         horarios_faltantes = []
                         if not pontos["ENTRADA"]:
                             horarios_faltantes.append("**ENTRADA**")
-                        if not pontos["SAÍDA ALMOÇO"]:
-                            horarios_faltantes.append("**SAÍDA ALMOÇO**")
-                        if not pontos["RETORNO ALMOÇO"]:
-                            horarios_faltantes.append("**RETORNO ALMOÇO**")
+                        
+                        # Só exige almoço se NÃO for fim de semana ou feriado configurado
+                        if not dispensa_almoco:
+                            if not pontos["SAÍDA ALMOÇO"]:
+                                horarios_faltantes.append("**SAÍDA ALMOÇO**")
+                            if not pontos["RETORNO ALMOÇO"]:
+                                horarios_faltantes.append("**RETORNO ALMOÇO**")
                         
                         if horarios_faltantes:
                             st.error(f"🛑 Bloqueado: Não é permitido preencher o horário de Saída sem ter preenchido todos os horários anteriores. Horários pendentes: {', '.join(horarios_faltantes)}.")
@@ -838,7 +847,7 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                 if opcao == "SAÍDA" and not erro_validacao:
                     if not pontos["ENTRADA"]:
                         st.error("⚠️ Não é possível calcular a jornada porque a **ENTRADA** de hoje não foi registrada.")
-                        msg_confirmacao = f"Deseja gravar a Saída mesmo sem o ponto de Entrada?"
+                        msg_confirmacao = f"Deseja gravar a Saída mesmo sem o point de Entrada?"
                     else:
                         t_entrada = pontos["ENTRADA"]
                         t_saida_atual = horario_final_gravacao
