@@ -1132,11 +1132,9 @@ elif opcao == "RELATÓRIO":
             celula_atual = celula_busca or ""
             nova_celula = st.text_input("📍 Célula do Colaborador (Banco de Dados):", value=celula_atual)
             
-            # Verifica se houve alteração no texto
             if nova_celula != celula_atual:
                 st.warning(f"Alteração detectada! De: '{celula_atual}' para: '{nova_celula}'")
                 
-                # Botão de confirmação
                 if st.button(f"Confirmar alteração para {nome_busca}", type="primary"):
                     try:
                         supabase.table("usuarios_ponto").update({"celula": nova_celula}).eq("email", email_busca).execute()
