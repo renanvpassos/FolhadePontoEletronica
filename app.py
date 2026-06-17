@@ -1116,30 +1116,37 @@ elif opcao == "RELATÓRIO":
     lista_todos_usuarios = []
     
     if cargo_usuario == "Master":
-        st.markdown("### 🔑 Painel de Gestão (Master)")
-        try:
-            usuarios_banco = supabase.table("usuarios_ponto").select("email, nome, celula").execute()
-            if usuarios_banco.data:
-                lista_todos_usuarios = sorted(usuarios_banco.data, key=lambda x: x.get("nome", "").lower())
-                opcoes_usuarios = {f"{u['nome']} ({u['email']}) - Célula: {u.get('celula') or 'Sem célula'}": u for u in lista_todos_usuarios}
+    st.markdown("### 🔑 Painel de Gestão (Master)")
+    try:
+        usuarios_banco = supabase.table("usuarios_ponto").select("email, nome, celula").execute()
+        if usuarios_banco.data:
+            lista_todos_usuarios = sorted(usuarios_banco.data, key=lambda x: x.get("nome", "").lower())
+            opcoes_usuarios = {f"{u['nome']} ({u['email']}) - Célula: {u.get('celula') or 'Sem célula'}": u for u in lista_todos_usuarios}
+            
+            usuario_selecionado_str = st.selectbox("Selecione o colaborador que deseja consultar na tela:", options=list(opcoes_usuarios.keys()))
+            colaborador_escolhido = opcoes_usuarios[usuario_selecionado_str]
+            email_busca = colaborador_escolhido["email"]
+            nome_busca = colaborador_escolhido["nome"]
+            celula_busca = colaborador_escolhido.get("celula")
+            
+            celula_atual = celula_busca or ""
+            nova_celula = st.text_input("📍 Célula do Colaborador (Banco de Dados):", value=celula_atual)
+            
+            # Verifica se houve alteração no texto
+            if nova_celula != celula_atual:
+                st.warning(f"Alteração detectada! De: '{celula_atual}' para: '{nova_celula}'")
                 
-                usuario_selecionado_str = st.selectbox("Selecione o colaborador que deseja consultar na tela:", options=list(opcoes_usuarios.keys()))
-                colaborador_escolhido = opcoes_usuarios[usuario_selecionado_str]
-                email_busca = colaborador_escolhido["email"]
-                nome_busca = colaborador_escolhido["nome"]
-                celula_busca = colaborador_escolhido.get("celula")
-                
-                celula_atual = celula_busca or ""
-                nova_celula = st.text_input("📍 Célula do Colaborador (Banco de Dados):", value=celula_atual)
-                if nova_celula != celula_atual:
+                # Botão de confirmação
+                if st.button(f"Confirmar alteração para {nome_busca}", type="primary"):
                     try:
                         supabase.table("usuarios_ponto").update({"celula": nova_celula}).eq("email", email_busca).execute()
-                        st.success(f"Célula de {nome_busca} updated com sucesso!")
+                        st.success(f"Célula de {nome_busca} atualizada com sucesso!")
                         st.rerun()
                     except Exception as e:
                         st.error(f"Erro ao atualizar célula: {e}")
-        except Exception:
-            st.error("Erro ao carregar a lista completa de funcionários.")
+                        
+    except Exception:
+        st.error("Erro ao carregar a lista completa de funcionários.")
     
     elif cargo_usuario == "Supervisor":
         st.markdown("### 🔑 Painel de Gestão (Supervisor)")
