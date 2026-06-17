@@ -1116,39 +1116,39 @@ elif opcao == "RELATÓRIO":
     lista_todos_usuarios = []
     
     if cargo_usuario == "Master":
-    st.markdown("### 🔑 Painel de Gestão (Master)")
-    try:
-        usuarios_banco = supabase.table("usuarios_ponto").select("email, nome, celula").execute()
-        if usuarios_banco.data:
-            lista_todos_usuarios = sorted(usuarios_banco.data, key=lambda x: x.get("nome", "").lower())
-            opcoes_usuarios = {f"{u['nome']} ({u['email']}) - Célula: {u.get('celula') or 'Sem célula'}": u for u in lista_todos_usuarios}
-
-            usuario_selecionado_str = st.selectbox("Selecione o colaborador que deseja consultar na tela:", options=list(opcoes_usuarios.keys()))
-            colaborador_escolhido = opcoes_usuarios[usuario_selecionado_str]
-            email_busca = colaborador_escolhido["email"]
-            nome_busca = colaborador_escolhido["nome"]
-            celula_busca = colaborador_escolhido.get("celula")
-
-            celula_atual = celula_busca or ""
-            nova_celula = st.text_input(
-                "📍 Célula do Colaborador (Banco de Dados):",
-                value=celula_atual,
-                key=f"celula_input_{email_busca}"  # garante que o campo reseta ao trocar de colaborador
-            )
-
-            houve_alteracao = nova_celula != celula_atual
-
-            if st.button("✅ Confirmar alteração", disabled=not houve_alteracao):
-                try:
-                    supabase.table("usuarios_ponto").update({"celula": nova_celula}).eq("email", email_busca).execute()
-                    st.success(f"Célula de {nome_busca} atualizada com sucesso!")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Erro ao atualizar célula: {e}")
-            elif houve_alteracao:
-                st.info("Alteração pendente — clique em **Confirmar alteração** para salvar.")
-    except Exception:
-        st.error("Erro ao carregar a lista completa de funcionários.")
+        st.markdown("### 🔑 Painel de Gestão (Master)")
+        try:
+            usuarios_banco = supabase.table("usuarios_ponto").select("email, nome, celula").execute()
+            if usuarios_banco.data:
+                lista_todos_usuarios = sorted(usuarios_banco.data, key=lambda x: x.get("nome", "").lower())
+                opcoes_usuarios = {f"{u['nome']} ({u['email']}) - Célula: {u.get('celula') or 'Sem célula'}": u for u in lista_todos_usuarios}
+    
+                usuario_selecionado_str = st.selectbox("Selecione o colaborador que deseja consultar na tela:", options=list(opcoes_usuarios.keys()))
+                colaborador_escolhido = opcoes_usuarios[usuario_selecionado_str]
+                email_busca = colaborador_escolhido["email"]
+                nome_busca = colaborador_escolhido["nome"]
+                celula_busca = colaborador_escolhido.get("celula")
+    
+                celula_atual = celula_busca or ""
+                nova_celula = st.text_input(
+                    "📍 Célula do Colaborador (Banco de Dados):",
+                    value=celula_atual,
+                    key=f"celula_input_{email_busca}"  # garante que o campo reseta ao trocar de colaborador
+                )
+    
+                houve_alteracao = nova_celula != celula_atual
+    
+                if st.button("✅ Confirmar alteração", disabled=not houve_alteracao):
+                    try:
+                        supabase.table("usuarios_ponto").update({"celula": nova_celula}).eq("email", email_busca).execute()
+                        st.success(f"Célula de {nome_busca} atualizada com sucesso!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erro ao atualizar célula: {e}")
+                elif houve_alteracao:
+                    st.info("Alteração pendente — clique em **Confirmar alteração** para salvar.")
+        except Exception:
+            st.error("Erro ao carregar a lista completa de funcionários.")
     
     elif cargo_usuario == "Supervisor":
         st.markdown("### 🔑 Painel de Gestão (Supervisor)")
