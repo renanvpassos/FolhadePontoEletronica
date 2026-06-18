@@ -388,8 +388,8 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
             minutos_saida = _extrair_minutos(val_saida)
 
             if minutos_saida > minutos_entrada:
-                jornada_mins = minutos_saida - minutos_entrada
-                marcar_saida_vermelha = jornada_mins != 9 * 60
+              jornada_mins = minutos_saida - minutos_entrada
+              marcar_saida_vermelha = jornada_mins < 9 * 60
 
         linha_completa = all(
             str(row.get(col, "")).strip() not in ["", "nan", "0", "0.0"]
