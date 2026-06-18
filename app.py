@@ -503,6 +503,27 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
     doc.build(story)
     output.seek(0)
     return output.getvalue()
+
+# 1. Captura as informações do navegador enviadas ao servidor Python
+headers = st.context.headers
+user_agent = headers.get("User-Agent", "").lower()
+
+# 2. Lista de palavras-chave comuns em dispositivos móveis
+dispositivos_moveis = ["android", "iphone", "ipad", "ipod", "blackberry", "iemobile", "opera mini"]
+
+# 3. Validação estrita em Python antes de carregar o app
+is_mobile = any(mobile_word in user_agent for mobile_word in dispositivos_moveis)
+
+if is_mobile:
+    # Exibe uma tela limpa de erro e interrompe totalmente o script Python
+    st.error("💻 **Dispositivo Não Suportado**")
+    st.warning("Este aplicativo foi desenvolvido para uso exclusivo em Computadores/Desktops. Por favor, acesse através de um computador.")
+    st.stop()  # Garante que o restante do código abaixo nunca seja executado ou enviado ao celular
+
+
+# --- O conteúdo do seu aplicativo começa aqui ---
+st.title("Painel Administrativo (Desktop)")
+st.success("Acesso liberado! Você está conectado a partir de um computador.")
     
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Sistema de Ponto Eletrônico", page_icon="⏱️", layout="centered")
