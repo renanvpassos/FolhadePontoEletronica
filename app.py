@@ -437,23 +437,25 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
 def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim):
     output = BytesIO()
     doc = SimpleDocTemplate(
-        output, 
-        pagesize=landscape(A4), 
+        output,
+        pagesize=landscape(A4),
         rightMargin=15, leftMargin=15, topMargin=10, bottomMargin=10
     )
     story = []
     styles = getSampleStyleSheet()
-    
+
     # === CONFIGURAÇÃO DE FERIADOS (Adicione novas datas aqui) ===
     feriados = ["04/06/2026", "24/12/2026"]
-    
+
     # Estilos
     title_style = ParagraphStyle('TituloPDF', parent=styles['Heading1'], fontSize=13, textColor=colors.HexColor("#1E3A8A"), spaceAfter=4)
     header_style = ParagraphStyle('HeaderPDF', parent=styles['Normal'], fontSize=9.5, leading=12, textColor=colors.white, fontName="Helvetica-Bold", alignment=1)
-    
+
     cell_style = ParagraphStyle('CeluaPDF', parent=styles['Normal'], fontSize=8.5, leading=11, fontName="Helvetica", alignment=1)
     cell_bold_style = ParagraphStyle('CelulaNegritoPDF', parent=styles['Normal'], fontSize=8.5, leading=11, fontName="Helvetica-Bold", alignment=1)
-    
+    cell_red_style = ParagraphStyle('CelulaVermelhaPDF', parent=cell_style, textColor=colors.red)
+    cell_red_bold_style = ParagraphStyle('CelulaVermelhaNegritoPDF', parent=cell_bold_style, textColor=colors.red)
+
     total_style = ParagraphStyle('TotalPDF', parent=styles['Normal'], fontSize=9.5, fontName="Helvetica-Bold", textColor=colors.HexColor("#1E3A8A"), spaceBefore=2, spaceAfter=2)
     erro_style = ParagraphStyle('ErroStyle', parent=styles['Normal'], fontSize=8, textColor=colors.red, fontName="Helvetica-Bold")
 
@@ -478,7 +480,7 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
             return max(0, t2 - t1)
         except:
             return 0
-            
+
     def _extrair_apenas_o_dia(val):
         if pd.isna(val) or str(val).strip() == "":
             return ""
@@ -491,9 +493,9 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
             return pd.to_datetime(val).strftime('%d')
         except:
             return s
-            
+
     df_copy = df.copy()
-    
+
     novas_colunas = {}
     for col in df_copy.columns:
         col_clean = str(col).strip().lower()
@@ -502,27 +504,30 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         elif col_clean in ['funcionário', 'funcionario']:
             novas_colunas[col] = 'Funcionário'
     df_copy = df_copy.rename(columns=novas_colunas)
-    
+
     if 'Funcionário' in df_copy.columns:
         df_copy = df_copy.sort_values(by='Funcionário', key=lambda col: col.str.lower(), kind="mergesort")
-        
+
     usuarios_emails = df_copy['E-mail'].dropna().unique() if 'E-mail' in df_copy.columns else []
-    
+
     for i, email in enumerate(usuarios_emails):
-        df_funcionario = df_copy[df_copy['E-mail'].astype(str).str.strip().str.lower() == str(email).strip().lower()].copy()
+        df_funcionario = df_copy[
+            df_copy['E-mail'].astype(str).str.strip().str.lower() == str(email).strip().lower()
+        ].copy()
+
         if df_funcionario.empty:
             continue
-            
+
         nome_funcionario = df_funcionario['Funcionário'].iloc[0] if 'Funcionário' in df_funcionario.columns else "Colaborador"
         celula = mapeamento_celulas.get(str(email).strip().lower(), "Não Informada")
-        
+
         # === REGRA ESPECIAL DE FERIADOS: OVERRIDE DA HORA EXTRA ===
         coluna_total_regra = None
         for col in df_funcionario.columns:
             if col.lower().strip() in ["total", "total trabalhado", "tempo trabalhado", "total horas", "horas trabalhadas"]:
                 coluna_total_regra = col
                 break
-        
+
         if "Data" in df_funcionario.columns and "Hora Extra" in df_funcionario.columns and coluna_total_regra:
             eh_feriado_regra = df_funcionario["Data"].astype(str).str.strip().isin(feriados)
             df_funcionario.loc[eh_feriado_regra, "Hora Extra"] = df_funcionario.loc[eh_feriado_regra, coluna_total_regra]
@@ -531,11 +536,11 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         total_mins_trab = 0
         if coluna_total_regra and df_funcionario[coluna_total_regra].apply(_extrair_minutos).sum() > 0:
             total_mins_trab = df_funcionario[coluna_total_regra].apply(_extrair_minutos).sum()
-        elif "Entrada" in df_funcionario.columns and ("Saída" in df_funcionario.columns or "Saia" in df_funcionario.columns):
+        elif "Entrada" in df_funcionario.columns and ("Saída" in df_funcionario.columns or "Saida" in df_funcionario.columns):
             col_s = "Saída" if "Saída" in df_funcionario.columns else "Saida"
             for _, r in df_funcionario.iterrows():
                 total_mins_trab += _calcular_minutos_entre_horas(r.get("Entrada"), r.get(col_s))
-        
+
         horas_trab = total_mins_trab // 60
         minutos_trab = total_mins_trab % 60
         total_horas_trab_str = f"{horas_trab:02d}:{minutos_trab:02d}"
@@ -544,7 +549,7 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         total_mins = 0
         if "Hora Extra" in df_funcionario.columns:
             total_mins = df_funcionario["Hora Extra"].apply(_extrair_minutos).sum()
-        
+
         horas = total_mins // 60
         minutos = total_mins % 60
         total_horas_str = f"{horas:02d}:{minutos:02d}"
@@ -557,9 +562,14 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
                 data_str = str(row.get("Data", "")).strip()
                 dia_semana_str = str(row.get("Dia da Semana", "")).upper()
                 he_mins = _extrair_minutos(row["Hora Extra"])
-                
-                eh_100 = (data_str in feriados) or ("SÁBADO" in dia_semana_str) or ("SABADO" in dia_semana_str) or ("DOMINGO" in dia_semana_str)
-                
+
+                eh_100 = (
+                    data_str in feriados
+                    or "SÁBADO" in dia_semana_str
+                    or "SABADO" in dia_semana_str
+                    or "DOMINGO" in dia_semana_str
+                )
+
                 if eh_100:
                     mins_100 += he_mins
                 else:
@@ -567,7 +577,7 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
 
         horas_75_str = f"{mins_75 // 60:02d}:{mins_75 % 60:02d}"
         horas_100_str = f"{mins_100 // 60:02d}:{mins_100 % 60:02d}"
-        
+
         # === RENDERIZAÇÃO DO CABEÇALHO DO COLABORADOR ===
         if logo_existe:
             try:
@@ -580,139 +590,181 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         else:
             story.append(Paragraph("[AVISO: Adicione o arquivo logoMult.png no seu GitHub]", erro_style))
             story.append(Spacer(1, 2))
-        
+
         story.append(Paragraph(f"Relatório de Ponto: <font color='red'>{nome_funcionario}</font>", title_style))
         story.append(Paragraph(f"<b>E-mail:</b> {email} | <b>Célula:</b> {celula}", styles['Normal']))
         story.append(Spacer(1, 4))
-        
-        # === TABELA DE TOTAIS ALINHADA (Duas linhas perfeitamente estruturadas) ===
+
+        # === TABELA DE TOTAIS ALINHADA ===
         totais_dados = [
             [
-                Paragraph(f"<b>Total de Horas de Trabalho no Período:</b> <font color='green'>{total_horas_trab_str}</font>", total_style),
-                "", 
-                ""  
+                Paragraph(
+                    f"<b>Total de Horas de Trabalho no Período:</b> "
+                    f"<font color='green'>{total_horas_trab_str}</font>",
+                    total_style
+                ),
+                "",
+                ""
             ],
             [
-                Paragraph(f"<b>Total de Horas Extras no Período:</b> <font color='red'>{total_horas_str}</font>", total_style),
-                Paragraph(f"<b>Total de Horas Extras 75% no Período:</b> <font color='red'>{horas_75_str}</font>", total_style),
-                Paragraph(f"<b>Total de Horas Extras 100% no Período:</b> <font color='red'>{horas_100_str}</font>", total_style)
+                Paragraph(
+                    f"<b>Total de Horas Extras no Período:</b> "
+                    f"<font color='red'>{total_horas_str}</font>",
+                    total_style
+                ),
+                Paragraph(
+                    f"<b>Total de Horas Extras 75% no Período:</b> "
+                    f"<font color='red'>{horas_75_str}</font>",
+                    total_style
+                ),
+                Paragraph(
+                    f"<b>Total de Horas Extras 100% no Período:</b> "
+                    f"<font color='red'>{horas_100_str}</font>",
+                    total_style
+                )
             ]
         ]
-        
+
         tabela_totais = Table(totais_dados, colWidths=[270, 270, 270])
         tabela_totais.setStyle(TableStyle([
-            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-            ('LEFTPADDING', (0,0), (-1,-1), 0),
-            ('RIGHTPADDING', (0,0), (-1,-1), 0),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 2),
-            ('TOPPADDING', (0,0), (-1,-1), 2),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 0),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+            ('TOPPADDING', (0, 0), (-1, -1), 2),
         ]))
         story.append(tabela_totais)
         story.append(Spacer(1, 5))
-        
+
         # === ESTRUTURAÇÃO DA TABELA DE PONTOS ===
         colunas_remover = ['funcionário', 'funcionario', 'e-mail', 'email', 'celula', 'célula']
         colunas_exibicao = [
-            col for col in df_funcionario.columns 
+            col for col in df_funcionario.columns
             if col.lower().strip() not in colunas_remover and 'justificativa' not in col.lower().strip()
         ]
-        
+
         tem_dia_semana = "Dia da Semana" in colunas_exibicao
         tem_data = "Data" in colunas_exibicao
-        
-        if tem_dia_semana: colunas_exibicao.remove("Dia da Semana")
-        if tem_data: colunas_exibicao.remove("Data")
-            
+
+        if tem_dia_semana:
+            colunas_exibicao.remove("Dia da Semana")
+        if tem_data:
+            colunas_exibicao.remove("Data")
+
         df_tabela = df_funcionario[colunas_exibicao].fillna("").copy()
-        
+
         if tem_dia_semana or tem_data:
-          coluna_combinada = []
-          for _, row in df_funcionario.iterrows():
-              dia_sem = str(row.get("Dia da Semana", "")).strip() if tem_dia_semana else ""
-              
-              # Modificado: Pegamos a data completa em vez de usar a função que extraía apenas o dia
-              data_valor = row.get("Data", "")
-              data_completa = str(data_valor).strip() if tem_data and data_valor else ""
-              
-              if dia_sem and data_completa:
-                  texto_celula = f"{data_completa}<br/>{dia_sem}"
-              else:
-                  texto_celula = data_completa or dia_sem
-              coluna_combinada.append(texto_celula)
-              
-          df_tabela.insert(0, "Dia / Data", coluna_combinada)
-        
+            coluna_combinada = []
+            for _, row in df_funcionario.iterrows():
+                dia_sem = str(row.get("Dia da Semana", "")).strip() if tem_dia_semana else ""
+                data_valor = row.get("Data", "")
+                data_completa = str(data_valor).strip() if tem_data and data_valor else ""
+
+                if dia_sem and data_completa:
+                    texto_celula = f"{data_completa}<br/>{dia_sem}"
+                else:
+                    texto_celula = data_completa or dia_sem
+
+                coluna_combinada.append(texto_celula)
+
+            df_tabela.insert(0, "Dia / Data", coluna_combinada)
+
         dados_tabela = []
         header_row = [Paragraph(f"<b>{col}</b>", header_style) for col in df_tabela.columns]
         dados_tabela.append(header_row)
-        
+
         idx_hora_extra = list(df_tabela.columns).index("Hora Extra") if "Hora Extra" in df_tabela.columns else -1
         col_entrada_fil = next((c for c in df_tabela.columns if c.lower().strip() == 'entrada'), None)
         col_saida_fil = next((c for c in df_tabela.columns if c.lower().strip() in ['saida', 'saída']), None)
-        
+
         estilos_celulas_dinamicos = []
 
         for r_idx, (_, row) in enumerate(df_tabela.iterrows(), start=1):
             orig_row = df_funcionario.iloc[r_idx - 1]
             dia_sem_orig = str(orig_row.get("Dia da Semana", "")).strip().lower()
             data_orig = str(orig_row.get("Data", "")).strip()
-            
+
             is_fim_de_semana = dia_sem_orig in ["sábado", "sabado", "domingo"]
             is_feriado = data_orig in feriados
 
-            # Nova Validação Condicional: Verifica se Entrada e Saída estão de fato registradas
+            # Validação condicional: verifica se Entrada e Saída estão registradas
             val_entrada = str(row.get(col_entrada_fil, "")).strip() if col_entrada_fil else ""
             val_saida = str(row.get(col_saida_fil, "")).strip() if col_saida_fil else ""
-            horarios_preenchidos = val_entrada not in ["", "nan", "0", "0.0", "00:00"] and val_saida not in ["", "nan", "0", "0.0", "00:00"]
 
-            # Tanto feriado quanto fim de semana só destacam a linha toda se houver batimento de ponto válido
-            deve_destacar_linha = (is_feriado and horarios_preenchidos) or (is_fim_de_semana and horarios_preenchidos)
+            horarios_preenchidos = (
+                val_entrada not in ["", "nan", "0", "0.0", "00:00"]
+                and val_saida not in ["", "nan", "0", "0.0", "00:00"]
+            )
+
+            marcar_saida_vermelha = False
+
+            if col_entrada_fil and col_saida_fil and horarios_preenchidos and not is_fim_de_semana and not is_feriado:
+                minutos_entrada = _extrair_minutos(val_entrada)
+                minutos_saida = _extrair_minutos(val_saida)
+
+                if minutos_saida > minutos_entrada:
+                    jornada_mins = minutos_saida - minutos_entrada
+                    marcar_saida_vermelha = jornada_mins < 9 * 60
+
+            # Feriado e fim de semana só destacam a linha toda se houver batimento válido
+            deve_destacar_linha = (
+                (is_feriado and horarios_preenchidos)
+                or (is_fim_de_semana and horarios_preenchidos)
+            )
 
             linha = []
             for col_name in df_tabela.columns:
                 val = row[col_name]
                 val_str = str(val) if val is not None and not pd.isna(val) else ""
                 val_str = val_str.strip()
-                
+
                 if col_name == "Hora Extra" and val_str == "00:00":
                     val_str = ""
-                
-                # Aplicação de Negrito Condicional com base nas regras de destaque
-                if deve_destacar_linha or col_name == "Hora Extra" or (is_fim_de_semana and col_name == "Dia / Data"):
-                    linha.append(Paragraph(val_str, cell_bold_style))
+
+                # Aplicação de estilos condicionais
+                if col_name == col_saida_fil and marcar_saida_vermelha:
+                    estilo_celula = cell_red_bold_style if deve_destacar_linha else cell_red_style
+                elif deve_destacar_linha or col_name == "Hora Extra" or (is_fim_de_semana and col_name == "Dia / Data"):
+                    estilo_celula = cell_bold_style
                 else:
-                    linha.append(Paragraph(val_str, cell_style))
-                
+                    estilo_celula = cell_style
+
+                linha.append(Paragraph(val_str, estilo_celula))
+
             dados_tabela.append(linha)
-            
+
             # Pintura de Fundo Condicional
             if deve_destacar_linha:
-                estilos_celulas_dinamicos.append(('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor("#FEF08A")))
+                estilos_celulas_dinamicos.append(
+                    ('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor("#FEF08A"))
+                )
             elif not is_fim_de_semana and idx_hora_extra != -1:
                 val_hora_extra = str(row.iloc[idx_hora_extra]).strip()
                 if val_hora_extra != "" and val_hora_extra != "00:00":
-                    estilos_celulas_dinamicos.append(('BACKGROUND', (idx_hora_extra, r_idx), (idx_hora_extra, r_idx), colors.HexColor("#FEF08A")))
-            
+                    estilos_celulas_dinamicos.append(
+                        ('BACKGROUND', (idx_hora_extra, r_idx), (idx_hora_extra, r_idx), colors.HexColor("#FEF08A"))
+                    )
+
         tabela = Table(dados_tabela, repeatRows=1)
         tabela.hAlign = 'CENTER'
-        
+
         estilos_base = [
-            ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1E3A8A")),
-            ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-            ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#D1D5DB")),
-            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor("#F9FAFB")]),
-            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-            ('TOPPADDING', (0,0), (-1,-1), 3.0),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 3.0),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#1E3A8A")),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#D1D5DB")),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor("#F9FAFB")]),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('TOPPADDING', (0, 0), (-1, -1), 3.0),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 3.0),
         ]
-        
+
         estilos_base.extend(estilos_celulas_dinamicos)
         tabela.setStyle(TableStyle(estilos_base))
         story.append(tabela)
-        
+
         if i < len(usuarios_emails) - 1:
             story.append(PageBreak())
-            
+
     doc.build(story)
     output.seek(0)
     return output.getvalue()
