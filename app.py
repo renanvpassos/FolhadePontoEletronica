@@ -12,7 +12,6 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from collections import defaultdict
-import time
 
 def converter_para_csv_integracao(df):
     """
@@ -504,61 +503,6 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
     doc.build(story)
     output.seek(0)
     return output.getvalue()
-
-# Configuração da página (deve ser o primeiro comando Streamlit)
-st.set_page_config(layout="wide")
-
-# 1. Injeta um script JavaScript invisível que detecta se o aparelho é touch E tem tela menor/média
-# Mesmo no modo "Para Computador", o navegador do celular ainda ativa as propriedades de touch.
-st.components.v1.html(
-    """
-    <script>
-    function detectarCelularBurlador() {
-        // Verifica se o dispositivo suporta toque na tela (Touch)
-        var temTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
-        
-        // Verifica a largura real da janela/hardware
-        var larguraDispositivo = window.screen.width;
-
-        // Se tiver touch E a tela física for menor que 1024px (típico de celulares/tablets na vertical)
-        // ou se o agente do navegador ainda indicar mobile de alguma forma:
-        if (temTouch && larguraDispositivo < 1024) {
-            // Modifica a página inteira para exibir o bloqueio e impedir a interação
-            document.open();
-            document.write(`
-                <div style="font-family: sans-serif; text-align: center; margin-top: 25vh; padding: 20px;">
-                    <h1 style="color: #ff4b4b; font-size: 3rem;">💻 Acesso Bloqueado</h1>
-                    <p style="font-size: 1.2rem; color: #31333F;">
-                        Tentativa de burla detectada. Este aplicativo <b>não permite</b> acessos por celulares ou tablets, 
-                        mesmo utilizando a opção "Versão para Computador".
-                    </p>
-                    <p style="color: #777;">Por favor, utilize um computador de mesa ou notebook de verdade.</p>
-                </div>
-            `);
-            document.close();
-        }
-    }
-    
-    // Executa a checagem imediatamente ao carregar
-    detectarCelularBurlador();
-    </script>
-    """,
-    height=0, # Deixa o componente invisível no layout do Streamlit se for PC
-)
-
-# --- Se passar pelo teste do JavaScript, o código Python roda normal ---
-
-# Lógica da mensagem de sucesso que some em 5 segundos
-espaco_mensagem = st.empty()
-espaco_mensagem.success(
-    "Acesso liberado! Você está conectado a partir de um computador legítimo."
-)
-time.sleep(5)
-espaco_mensagem.empty()
-
-# Conteúdo do seu App
-st.title("Painel Ultra Seguro")
-st.write("Se você está vendo isso, o sistema validou que você está em um Desktop real.")
     
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Sistema de Ponto Eletrônico", page_icon="⏱️", layout="centered")
