@@ -516,18 +516,21 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         df_tabela = df_funcionario[colunas_exibicao].fillna("").copy()
         
         if tem_dia_semana or tem_data:
-            coluna_combinada = []
-            for _, row in df_funcionario.iterrows():
-                dia_sem = str(row.get("Dia da Semana", "")).strip() if tem_dia_semana else ""
-                apenas_dia = _extrair_apenas_o_dia(row.get("Data", "")) if tem_data else ""
-                
-                if dia_sem and apenas_dia:
-                    texto_celula = f"{apenas_dia}<br/>{dia_sem}"
-                else:
-                    texto_celula = apenas_dia or dia_sem
-                coluna_combinada.append(texto_celula)
-                
-            df_tabela.insert(0, "Dia / Data", coluna_combinada)
+          coluna_combinada = []
+          for _, row in df_funcionario.iterrows():
+              dia_sem = str(row.get("Dia da Semana", "")).strip() if tem_dia_semana else ""
+              
+              # Modificado: Pegamos a data completa em vez de usar a função que extraía apenas o dia
+              data_valor = row.get("Data", "")
+              data_completa = str(data_valor).strip() if tem_data and data_valor else ""
+              
+              if dia_sem and data_completa:
+                  texto_celula = f"{data_completa}<br/>{dia_sem}"
+              else:
+                  texto_celula = data_completa or dia_sem
+              coluna_combinada.append(texto_celula)
+              
+          df_tabela.insert(0, "Dia / Data", coluna_combinada)
         
         dados_tabela = []
         header_row = [Paragraph(f"<b>{col}</b>", header_style) for col in df_tabela.columns]
