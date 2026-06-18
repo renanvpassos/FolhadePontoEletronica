@@ -129,44 +129,98 @@ def converter_para_csv_integracao(df):
 def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celulas):
     output = BytesIO()
     doc = SimpleDocTemplate(
-        output, 
-        pagesize=landscape(A4), 
+        output,
+        pagesize=landscape(A4),
         rightMargin=15, leftMargin=15, topMargin=15, bottomMargin=15
     )
     story = []
     styles = getSampleStyleSheet()
-    
+
     # === CONFIGURAÇÃO DE FERIADOS (Adicione novas datas aqui) ===
     feriados = ["04/06/2026", "24/12/2026"]
-    
+
     # Estilos
-    title_style = ParagraphStyle('TituloPDF', parent=styles['Heading1'], fontSize=13, textColor=colors.HexColor("#1E3A8A"), spaceAfter=4)
-    header_style = ParagraphStyle('HeaderPDF', parent=styles['Normal'], fontSize=8.5, leading=10, textColor=colors.white, fontName="Helvetica-Bold", alignment=1)
-    cell_style = ParagraphStyle('CeluaPDF', parent=styles['Normal'], fontSize=9.5, leading=9, fontName="Helvetica", alignment=1)
-    cell_bold_style = ParagraphStyle('CelulaNegritoPDF', parent=styles['Normal'], fontSize=9.5, leading=9, fontName="Helvetica-Bold", alignment=1)
-    total_style = ParagraphStyle('TotalPDF', parent=styles['Normal'], fontSize=9.5, fontName="Helvetica-Bold", textColor=colors.HexColor("#1E3A8A"), spaceBefore=2, spaceAfter=2)
-    erro_style = ParagraphStyle('ErroStyle', parent=styles['Normal'], fontSize=8, textColor=colors.red, fontName="Helvetica-Bold")
-    
+    title_style = ParagraphStyle(
+        'TituloPDF',
+        parent=styles['Heading1'],
+        fontSize=13,
+        textColor=colors.HexColor("#1E3A8A"),
+        spaceAfter=4
+    )
+    header_style = ParagraphStyle(
+        'HeaderPDF',
+        parent=styles['Normal'],
+        fontSize=8.5,
+        leading=10,
+        textColor=colors.white,
+        fontName="Helvetica-Bold",
+        alignment=1
+    )
+    cell_style = ParagraphStyle(
+        'CeluaPDF',
+        parent=styles['Normal'],
+        fontSize=9.5,
+        leading=9,
+        fontName="Helvetica",
+        alignment=1
+    )
+    cell_bold_style = ParagraphStyle(
+        'CelulaNegritoPDF',
+        parent=styles['Normal'],
+        fontSize=9.5,
+        leading=9,
+        fontName="Helvetica-Bold",
+        alignment=1
+    )
+    cell_red_style = ParagraphStyle(
+        'CelulaVermelhaPDF',
+        parent=cell_style,
+        textColor=colors.red
+    )
+    cell_red_bold_style = ParagraphStyle(
+        'CelulaVermelhaNegritoPDF',
+        parent=cell_bold_style,
+        textColor=colors.red
+    )
+    total_style = ParagraphStyle(
+        'TotalPDF',
+        parent=styles['Normal'],
+        fontSize=9.5,
+        fontName="Helvetica-Bold",
+        textColor=colors.HexColor("#1E3A8A"),
+        spaceBefore=2,
+        spaceAfter=2
+    )
+    erro_style = ParagraphStyle(
+        'ErroStyle',
+        parent=styles['Normal'],
+        fontSize=8,
+        textColor=colors.red,
+        fontName="Helvetica-Bold"
+    )
+
     caminho_logo = "logoMult.png"
     logo_existe = os.path.exists(caminho_logo)
-    
+
     def _extrair_minutos(val):
         try:
-            if pd.isna(val) or str(val).strip() == "" or ":" not in str(val): return 0
+            if pd.isna(val) or str(val).strip() == "" or ":" not in str(val):
+                return 0
             partes = str(val).strip().split(':')
             return int(partes[0]) * 60 + int(partes[1])
-        except: return 0
+        except:
+            return 0
 
     # === REGRA ESPECIAL: FERIADOS ===
-    df = df.copy()  # Evita modificar o DataFrame original fora da função
-    
+    df = df.copy()
+
     # Identifica a coluna que contém o total trabalhado
     coluna_total = None
     for col in df.columns:
         if col.lower() in ["total", "total trabalhado", "tempo trabalhado", "total horas"]:
             coluna_total = col
             break
-            
+
     # Se a coluna de total existir, copia o valor para 'Hora Extra' nos dias de feriado
     if "Data" in df.columns and "Hora Extra" in df.columns and coluna_total:
         eh_feriado = df["Data"].astype(str).str.strip().isin(feriados)
@@ -176,7 +230,7 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     total_jornada_mins = 0
     col_entrada = next((c for c in df.columns if c.lower() == 'entrada'), None)
     col_saida = next((c for c in df.columns if c.lower() in ['saida', 'saída']), None)
-    
+
     if coluna_total:
         total_jornada_mins = df[coluna_total].apply(_extrair_minutos).sum()
     else:
@@ -201,9 +255,14 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
             data_str = str(row.get("Data", "")).strip()
             dia_semana_str = str(row.get("Dia da Semana", "")).upper()
             he_mins = _extrair_minutos(row["Hora Extra"])
-            
-            eh_100 = (data_str in feriados) or ("SÁBADO" in dia_semana_str) or ("SABADO" in dia_semana_str) or ("DOMINGO" in dia_semana_str)
-            
+
+            eh_100 = (
+                data_str in feriados
+                or "SÁBADO" in dia_semana_str
+                or "SABADO" in dia_semana_str
+                or "DOMINGO" in dia_semana_str
+            )
+
             if eh_100:
                 mins_100 += he_mins
             else:
@@ -214,61 +273,79 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
 
     # === CONSTRUÇÃO DO DOCUMENTO ===
     celula = mapeamento_celulas.get(email, "Não Informada")
-    
+
     if logo_existe:
         logo_flowable = Image(caminho_logo, width=75, height=25)
         logo_flowable.hAlign = 'RIGHT'
         story.append(logo_flowable)
         story.append(Spacer(1, 8))
-        
+
     story.append(Paragraph(f"Relatório de Ponto: <font color='red'>{nome_funcionario}</font>", title_style))
     story.append(Paragraph(f"<b>E-mail:</b> {email}", styles['Normal']))
     story.append(Paragraph(f"<b>Célula:</b> {celula}", styles['Normal']))
     story.append(Spacer(1, 4))
-    
+
     totais_dados = [
         [
-            Paragraph(f"<b>Total de Horas de Trabalho no Período:</b> <font color='green'>{total_jornada_str}</font>", total_style),
-            "", 
-            ""  
+            Paragraph(
+                f"<b>Total de Horas de Trabalho no Período:</b> "
+                f"<font color='green'>{total_jornada_str}</font>",
+                total_style
+            ),
+            "",
+            ""
         ],
         [
-            Paragraph(f"<b>Total de Horas Extras no Período:</b> <font color='red'>{total_horas_str}</font>", total_style),
-            Paragraph(f"<b>Total de Horas Extras 75% no Período:</b> <font color='red'>{horas_75_str}</font>", total_style),
-            Paragraph(f"<b>Total de Horas Extras 100% no Período:</b> <font color='red'>{horas_100_str}</font>", total_style)
+            Paragraph(
+                f"<b>Total de Horas Extras no Período:</b> "
+                f"<font color='red'>{total_horas_str}</font>",
+                total_style
+            ),
+            Paragraph(
+                f"<b>Total de Horas Extras 75% no Período:</b> "
+                f"<font color='red'>{horas_75_str}</font>",
+                total_style
+            ),
+            Paragraph(
+                f"<b>Total de Horas Extras 100% no Período:</b> "
+                f"<font color='red'>{horas_100_str}</font>",
+                total_style
+            )
         ]
     ]
-    
+
     tabela_totais = Table(totais_dados, colWidths=[270, 270, 270])
     tabela_totais.setStyle(TableStyle([
-        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('LEFTPADDING', (0,0), (-1,-1), 0),
-        ('RIGHTPADDING', (0,0), (-1,-1), 0),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 2),
-        ('TOPPADDING', (0,0), (-1,-1), 2),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 0),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+        ('TOPPADDING', (0, 0), (-1, -1), 2),
     ]))
     story.append(tabela_totais)
     story.append(Spacer(1, 5))
-    
+
     # === TRATAMENTO DAS COLUNAS ===
     df_pdf = df.copy()
-    
+
     indices_feriado = []
     if "Data" in df_pdf.columns:
         indices_feriado = df_pdf[df_pdf["Data"].astype(str).str.strip().isin(feriados)].index.tolist()
 
     if "Data" in df_pdf.columns and "Dia da Semana" in df_pdf.columns:
-      # Removemos o .split('/')[0] para manter a data inteira
-      conteudo_combinado = [f"{str(row['Data'])}<br/>{row['Dia da Semana']}" for _, row in df_pdf.iterrows()]
-      df_pdf.insert(0, "Data / Dia", conteudo_combinado)
-      df_pdf = df_pdf.drop(columns=["Data", "Dia da Semana"])
+        conteudo_combinado = [
+            f"{str(row['Data'])}<br/>{row['Dia da Semana']}"
+            for _, row in df_pdf.iterrows()
+        ]
+        df_pdf.insert(0, "Data / Dia", conteudo_combinado)
+        df_pdf = df_pdf.drop(columns=["Data", "Dia da Semana"])
 
     colunas_manter = [c for c in df_pdf.columns if "justificativa" not in c.lower()]
     df_filtrado = df_pdf[colunas_manter]
-    
+
     idx_hora_extra = list(df_filtrado.columns).index("Hora Extra") if "Hora Extra" in df_filtrado.columns else -1
     colunas_obrigatorias = [c for c in df_filtrado.columns if 'observação' not in c.lower()]
-    
+
     # Identifica colunas locais para validação de preenchimento na listagem
     col_entrada_fil = next((c for c in df_filtrado.columns if c.lower() == 'entrada'), None)
     col_saida_fil = next((c for c in df_filtrado.columns if c.lower() in ['saida', 'saída']), None)
@@ -276,50 +353,83 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     # === CRIAÇÃO DA TABELA ===
     dados_tabela = [[Paragraph(f"<b>{col}</b>", header_style) for col in df_filtrado.columns]]
     estilos_tabela = [
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1E3A8A")),
-        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-        ('GRID', (0,0), (-1,-1), 0.3, colors.HexColor("#D1D5DB")),
-        ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor("#F9FAFB")]),
-        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('LEFTPADDING', (0,0), (-1,-1), 2),
-        ('RIGHTPADDING', (0,0), (-1,-1), 2),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#1E3A8A")),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('GRID', (0, 0), (-1, -1), 0.3, colors.HexColor("#D1D5DB")),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor("#F9FAFB")]),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 2),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 2),
     ]
-    
+
     for r_idx, (orig_idx, row) in enumerate(df_filtrado.iterrows(), start=1):
         texto_data = str(row.get("Data / Dia", "")).upper()
-        
-        eh_fds = "DOMINGO" in texto_data or "SÁBADO" in texto_data or "SABADO" in texto_data
+
+        eh_fds = (
+            "DOMINGO" in texto_data
+            or "SÁBADO" in texto_data
+            or "SABADO" in texto_data
+        )
         eh_feriado = orig_idx in indices_feriado
-        
+
         # Verifica se Entrada e Saída estão especificamente preenchidas
         val_entrada = str(row.get(col_entrada_fil, "")).strip() if col_entrada_fil else ""
         val_saida = str(row.get(col_saida_fil, "")).strip() if col_saida_fil else ""
-        horarios_preenchidos = val_entrada not in ["", "nan", "0", "0.0", "00:00"] and val_saida not in ["", "nan", "0", "0.0", "00:00"]
-        
-        linha_completa = all(str(row.get(col, "")).strip() not in ["", "nan", "0", "0.0"] for col in colunas_obrigatorias)
-        
-        # DEFINIÇÃO DE DESTAQUE DA LINHA (Pintar apenas se houver preenchimento dos horários)
+
+        horarios_preenchidos = (
+            val_entrada not in ["", "nan", "0", "0.0", "00:00"]
+            and val_saida not in ["", "nan", "0", "0.0", "00:00"]
+        )
+
+        marcar_saida_vermelha = False
+
+        if col_entrada_fil and col_saida_fil and horarios_preenchidos and not eh_fds and not eh_feriado:
+            minutos_entrada = _extrair_minutos(val_entrada)
+            minutos_saida = _extrair_minutos(val_saida)
+
+            if minutos_saida > minutos_entrada:
+                jornada_mins = minutos_saida - minutos_entrada
+                marcar_saida_vermelha = jornada_mins != 9 * 60
+
+        linha_completa = all(
+            str(row.get(col, "")).strip() not in ["", "nan", "0", "0.0"]
+            for col in colunas_obrigatorias
+        )
+
+        # DEFINIÇÃO DE DESTAQUE DA LINHA
         deve_destacar = (eh_feriado and horarios_preenchidos) or (eh_fds and linha_completa)
-        
+
         if deve_destacar:
-            estilos_tabela.append(('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor("#FEF08A")))
-        
+            estilos_tabela.append(
+                ('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor("#FEF08A"))
+            )
+
         val_he = str(row.get("Hora Extra", "")).strip()
         if idx_hora_extra != -1 and val_he not in ["", "0", "0.0", "00:00"]:
-            estilos_tabela.append(('BACKGROUND', (idx_hora_extra, r_idx), (idx_hora_extra, r_idx), colors.HexColor("#FEF08A")))
+            estilos_tabela.append(
+                ('BACKGROUND', (idx_hora_extra, r_idx), (idx_hora_extra, r_idx), colors.HexColor("#FEF08A"))
+            )
 
         linha = []
         for col_nome, val in row.items():
-            valor_str = "" if (col_nome == "Hora Extra" and val in ["00:00", "0", "0.0", ""]) else str(val)
-            # Aplica negrito apenas se a linha foi de fato destacada por atividade
-            linha.append(Paragraph(valor_str, cell_bold_style if deve_destacar else cell_style))
-            
+            valor_str = "" if (
+                col_nome == "Hora Extra"
+                and val in ["00:00", "0", "0.0", ""]
+            ) else str(val)
+
+            if col_nome == col_saida_fil and marcar_saida_vermelha:
+                estilo_celula = cell_red_bold_style if deve_destacar else cell_red_style
+            else:
+                estilo_celula = cell_bold_style if deve_destacar else cell_style
+
+            linha.append(Paragraph(valor_str, estilo_celula))
+
         dados_tabela.append(linha)
-    
+
     tabela = Table(dados_tabela, repeatRows=1)
     tabela.setStyle(TableStyle(estilos_tabela))
     story.append(tabela)
-    
+
     doc.build(story)
     output.seek(0)
     return output.getvalue()
