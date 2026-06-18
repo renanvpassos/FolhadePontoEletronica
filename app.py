@@ -12,6 +12,7 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from collections import defaultdict
+import time
 
 def converter_para_csv_integracao(df):
     """
