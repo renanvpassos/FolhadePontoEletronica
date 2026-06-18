@@ -12,6 +12,105 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from collections import defaultdict
+import streamlit.components.v1 as components
+
+# --- BLOQUEIO DE DISPOSITIVOS MÓVEIS ---
+components.html("""
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  #bloqueio-mobile {
+    display: none;
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    background-color: #f0f4ff;
+    z-index: 999999;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    font-family: 'Segoe UI', sans-serif;
+    text-align: center;
+    padding: 30px;
+    box-sizing: border-box;
+  }
+  #bloqueio-mobile .icone { font-size: 64px; margin-bottom: 16px; }
+  #bloqueio-mobile h1 { color: #1E3A8A; font-size: 22px; margin-bottom: 10px; }
+  #bloqueio-mobile p  { color: #4B5563; font-size: 15px; line-height: 1.6; max-width: 340px; }
+</style>
+</head>
+<body>
+<div id="bloqueio-mobile">
+  <div class="icone">🚫📱</div>
+  <h1>Acesso não permitido</h1>
+  <p>Este sistema está disponível <strong>apenas para computadores</strong>.<br><br>
+     Por favor, acesse pelo navegador de um <strong>desktop ou notebook</strong>.</p>
+</div>
+
+<script>
+  function isMobile() {
+    // 1. User-Agent (cobre a maioria dos casos, inclusive "modo desktop" de alguns navegadores)
+    var ua = navigator.userAgent || navigator.vendor || window.opera;
+    var uaMobile = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini|mobile|tablet/i.test(ua);
+
+    // 2. Largura real da tela física (independe do zoom ou modo desktop)
+    var larguraFisica = window.screen.width;
+    var telaPequena = larguraFisica < 1024;
+
+    // 3. Suporte a toque (verdadeiro em dispositivos touch, mesmo com UA de desktop)
+    var temTouch = (('ontouchstart' in window) || (navigator.maxTouchPoints > 0));
+
+    // 4. Orientação típica de celular (portrait com tela pequena)
+    var orientacaoMobile = (window.screen.height > window.screen.width) && telaPequena;
+
+    // Bloqueia se: UA mobile OU (tela pequena E touch) OU orientação portrait pequena
+    return uaMobile || (telaPequena && temTouch) || orientacaoMobile;
+  }
+
+  if (isMobile()) {
+    var bloqueio = document.getElementById('bloqueio-mobile');
+    bloqueio.style.display = 'flex';
+
+    // Propaga o bloqueio para o frame pai (a página real do Streamlit)
+    try {
+      window.parent.document.body.style.overflow = 'hidden';
+      var overlay = window.parent.document.createElement('div');
+      overlay.id = 'overlay-mobile-block';
+      overlay.style.cssText = [
+        'position:fixed', 'top:0', 'left:0',
+        'width:100vw', 'height:100vh',
+        'background:#f0f4ff',
+        'z-index:999999',
+        'display:flex',
+        'flex-direction:column',
+        'justify-content:center',
+        'align-items:center',
+        'font-family:Segoe UI,sans-serif',
+        'text-align:center',
+        'padding:30px',
+        'box-sizing:border-box'
+      ].join(';');
+      overlay.innerHTML = `
+        <div style="font-size:64px;margin-bottom:16px">🚫📱</div>
+        <h1 style="color:#1E3A8A;font-size:22px;margin-bottom:10px">Acesso não permitido</h1>
+        <p style="color:#4B5563;font-size:15px;line-height:1.6;max-width:340px">
+          Este sistema está disponível <strong>apenas para computadores</strong>.<br><br>
+          Por favor, acesse pelo navegador de um <strong>desktop ou notebook</strong>.
+        </p>
+      `;
+      // Remove overlay anterior se já existir (evita duplicatas em reruns)
+      var anterior = window.parent.document.getElementById('overlay-mobile-block');
+      if (anterior) anterior.remove();
+      window.parent.document.body.appendChild(overlay);
+    } catch(e) {
+      // Fallback: se não conseguir acessar o parent (cross-origin), o bloqueio interno já cobre
+    }
+  }
+</script>
+</body>
+</html>
+""", height=0)
 
 def converter_para_csv_integracao(df):
     """
