@@ -258,9 +258,10 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
         indices_feriado = df_pdf[df_pdf["Data"].astype(str).str.strip().isin(feriados)].index.tolist()
 
     if "Data" in df_pdf.columns and "Dia da Semana" in df_pdf.columns:
-        conteudo_combinado = [f"{str(row['Data']).split('/')[0]}<br/>{row['Dia da Semana']}" for _, row in df_pdf.iterrows()]
-        df_pdf.insert(0, "Data / Dia", conteudo_combinado)
-        df_pdf = df_pdf.drop(columns=["Data", "Dia da Semana"])
+      # Removemos o .split('/')[0] para manter a data inteira
+      conteudo_combinado = [f"{str(row['Data'])}<br/>{row['Dia da Semana']}" for _, row in df_pdf.iterrows()]
+      df_pdf.insert(0, "Data / Dia", conteudo_combinado)
+      df_pdf = df_pdf.drop(columns=["Data", "Dia da Semana"])
 
     colunas_manter = [c for c in df_pdf.columns if "justificativa" not in c.lower()]
     df_filtrado = df_pdf[colunas_manter]
