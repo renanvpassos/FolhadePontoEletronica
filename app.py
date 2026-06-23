@@ -159,7 +159,7 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     cell_style = ParagraphStyle(
         'CeluaPDF',
         parent=styles['Normal'],
-        fontSize=9.5,
+        fontSize=10.5,
         leading=9,
         fontName="Helvetica",
         alignment=1
@@ -167,7 +167,7 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     cell_bold_style = ParagraphStyle(
         'CelulaNegritoPDF',
         parent=styles['Normal'],
-        fontSize=9.5,
+        fontSize=10.5,
         leading=9,
         fontName="Helvetica-Bold",
         alignment=1
