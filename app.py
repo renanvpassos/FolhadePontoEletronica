@@ -451,8 +451,8 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
     title_style = ParagraphStyle('TituloPDF', parent=styles['Heading1'], fontSize=13, textColor=colors.HexColor("#1E3A8A"), spaceAfter=4)
     header_style = ParagraphStyle('HeaderPDF', parent=styles['Normal'], fontSize=9.5, leading=12, textColor=colors.white, fontName="Helvetica-Bold", alignment=1)
 
-    cell_style = ParagraphStyle('CeluaPDF', parent=styles['Normal'], fontSize=8.5, leading=11, fontName="Helvetica", alignment=1)
-    cell_bold_style = ParagraphStyle('CelulaNegritoPDF', parent=styles['Normal'], fontSize=8.5, leading=11, fontName="Helvetica-Bold", alignment=1)
+    cell_style = ParagraphStyle('CeluaPDF', parent=styles['Normal'], fontSize=10.5, leading=10, fontName="Helvetica", alignment=1)
+    cell_bold_style = ParagraphStyle('CelulaNegritoPDF', parent=styles['Normal'], fontSize=10.5, leading=10, fontName="Helvetica-Bold", alignment=1)
     cell_red_style = ParagraphStyle('CelulaVermelhaPDF', parent=cell_style, textColor=colors.red)
     cell_red_bold_style = ParagraphStyle('CelulaVermelhaNegritoPDF', parent=cell_bold_style, textColor=colors.red)
 
