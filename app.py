@@ -1800,17 +1800,29 @@ elif opcao == "RELATÓRIO":
         
         st.markdown(f"##### 📑 Histórico de Registros ({data_inicio.strftime('%d/%m/%Y')} até {data_fim.strftime('%d/%m/%Y')})")
         
-        # 1. Adicionado 'OBSERVAÇÃO' após 'Retorno Almoço' na visualização da tela
         ordem_colunas_tela = ["Dia da Semana", "Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", "Hora Extra", "Justificativa Entrada", "Justificativa Saída Almoço", "Justificativa Retorno Almoço", "Justificativa Saída", "OBSERVAÇÃO"]
+
+        feriados_2026 = {
+            "04/06/2026", "09/07/2026", "07/09/2026", "12/10/2026",
+            "02/11/2026", "15/11/2026", "20/11/2026", "25/12/2026",
+        }
+        
+        datas = pd.to_datetime(df_visualizacao["Data"], format="%d/%m/%Y", errors="coerce")
+        
+        df_visualizacao.loc[df_visualizacao["Data"].isin(feriados_2026), "OBSERVAÇÃO"] = "FERIADO"
+        df_visualizacao.loc[
+            ~df_visualizacao["Data"].isin(feriados_2026) & datas.dt.weekday.isin([5, 6]),
+            "OBSERVAÇÃO"
+        ] = "PLANTÃO"
         
         if cargo_usuario in ["Supervisor", "Master"]:
             st.warning("⚠️ **Atenção:** Confirme as alterações antes de salvar.")
             
             df_editado = st.data_editor(
-                df_visualizacao, 
-                use_container_width=True, 
+                df_visualizacao,
+                use_container_width=True,
                 hide_index=True,
-                disabled=["Dia da Semana", "Data", "Hora Extra"],  
+                disabled=["Dia da Semana", "Data", "Hora Extra"],
                 column_order=ordem_colunas_tela,
                 column_config={
                     "Dia da Semana": st.column_config.TextColumn("Dia da Semana"),
