@@ -136,8 +136,8 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     story = []
     styles = getSampleStyleSheet()
 
-    # === CONFIGURAÇÃO DE FERIADOS (Adicione novas datas aqui) ===
-    feriados = ["04/06/2026", "24/12/2026"]
+    # === CONFIGURAÇÃO DE FERIADOS ===
+    feriados = ["04/06/2026", "09/07/2026", "07/09/2026", "12/10/2026", "02/11/2026", "15/11/2026", "20/11/2026", "25/12/2026"]
 
     # Estilos
     title_style = ParagraphStyle(
@@ -444,8 +444,8 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
     story = []
     styles = getSampleStyleSheet()
 
-    # === CONFIGURAÇÃO DE FERIADOS (Adicione novas datas aqui) ===
-    feriados = ["04/06/2026", "24/12/2026"]
+    # === CONFIGURAÇÃO DE FERIADOS ===
+    feriados = ["04/06/2026", "09/07/2026", "07/09/2026", "12/10/2026", "02/11/2026", "15/11/2026", "20/11/2026", "25/12/2026"]
 
     # Estilos
     title_style = ParagraphStyle('TituloPDF', parent=styles['Heading1'], fontSize=13, textColor=colors.HexColor("#1E3A8A"), spaceAfter=4)
@@ -1036,7 +1036,7 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                     # --- VERIFICAÇÃO DE FINAL DE SEMANA OU FERIADO ---
                     # weekday() retorna 5 para sábado e 6 para domingo
                     is_fim_de_semana = hoje.weekday() in [5, 6]
-                    is_feriado = hoje.strftime('%d/%m/%Y') in ["04/06/2026", "24/12/2026"]
+                    is_feriado = hoje.strftime('%d/%m/%Y') in ["04/06/2026", "09/07/2026", "07/09/2026", "12/10/2026", "02/11/2026", "15/11/2026", "20/11/2026", "25/12/2026"]
                     dispensa_almoco = is_fim_de_semana or is_feriado
                     
                     # --- TRAVAS DE FLUXO DE PREENCHIMENTO ---
@@ -1481,9 +1481,14 @@ elif opcao == "RELATÓRIO":
             
             # 💡 ADICIONE AQUI AS NOVAS DATAS (Formato: "AAAA-MM-DD")
             datas_especiais = {
-                "04-06-2026",  # 04/06/2026
-                "24-12-2026",  # 24/12/2026
-                # "2026-12-25",  # Exemplo de como adicionar mais datas
+                "04-06-2026",  
+                "09/07/2026", 
+                "07/09/2026", 
+                "12/10/2026", 
+                "02/11/2026", 
+                "15/11/2026", 
+                "20/11/2026", 
+                "25/12/2026"
             }
             
             for dia_str, segundos_totais_do_dia in segundos_por_dia.items():
@@ -1532,7 +1537,7 @@ elif opcao == "RELATÓRIO":
             ordem_consolidada = ["Funcionário", "E-mail", "Dia da Semana", "Data", "Entrada", "Saída", "Hora Extra", "Saída Almoço", "Retorno Almoço", "Justificativa Entrada", "Justificativa Saída Almoço", "Justificativa Retorno Almoço", "Justificativa Saída", "OBSERVAÇÃO"]
             
             # Lista global de datas 100% dentro da função (Formato: DD/MM/AAAA)
-            datas_100_porcento = ["04/06/2026", "24/12/2026"]
+            datas_100_porcento = ["04/06/2026", "09/07/2026", "07/09/2026", "12/10/2026", "02/11/2026", "15/11/2026", "20/11/2026", "25/12/2026"]
         
             # --- FLUXO 1: CONSOLIDADO (incluir_usuario_info = True) ---
             if incluir_usuario_info:
