@@ -160,7 +160,7 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
         'CeluaPDF',
         parent=styles['Normal'],
         fontSize=10.5,
-        leading=11,
+        leading=10,
         fontName="Helvetica",
         alignment=1
     )
