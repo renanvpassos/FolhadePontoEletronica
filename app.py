@@ -1809,9 +1809,19 @@ elif opcao == "RELATÓRIO":
         
         datas = pd.to_datetime(df_visualizacao["Data"], format="%d/%m/%Y", errors="coerce")
         
-        df_visualizacao.loc[df_visualizacao["Data"].isin(feriados_2026), "OBSERVAÇÃO"] = "FERIADO"
+        entrada_preenchida = df_visualizacao["Entrada"].notna() & (
+            df_visualizacao["Entrada"].astype(str).str.strip() != ""
+        )
+        
         df_visualizacao.loc[
-            ~df_visualizacao["Data"].isin(feriados_2026) & datas.dt.weekday.isin([5, 6]),
+            entrada_preenchida & df_visualizacao["Data"].isin(feriados_2026),
+            "OBSERVAÇÃO"
+        ] = "FERIADO"
+        
+        df_visualizacao.loc[
+            entrada_preenchida
+            & ~df_visualizacao["Data"].isin(feriados_2026)
+            & datas.dt.weekday.isin([5, 6]),
             "OBSERVAÇÃO"
         ] = "PLANTÃO"
         
