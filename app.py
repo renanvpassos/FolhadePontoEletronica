@@ -101,7 +101,7 @@ components.html("""
 """, height=0)
 
 def exibir_intro():
-    """Exibe a intro com loading enquanto a página carrega"""
+    """Exibe a intro apenas com o logotipo durante o carregamento"""
     intro_placeholder = st.empty()
     logo_base64 = get_logo_base64()
     
@@ -136,7 +136,7 @@ def exibir_intro():
         .logo-image {{
             max-width: 400px;
             width: 80%;
-            margin: 0 auto 30px auto; /* Centraliza a imagem horizontalmente */
+            margin: 0 auto;
             display: block;
         }}
         @keyframes float {{
@@ -144,69 +144,11 @@ def exibir_intro():
             50% {{ transform: translateY(-10px); }}
             100% {{ transform: translateY(0px); }}
         }}
-        .loader-container {{
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            width: 100%;
-            gap: 20px;
-        }}
-        .dots {{
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 15px;
-            width: 100%;
-        }}
-        .dot {{
-            width: 20px;
-            height: 20px;
-            background: #1E3A8A;
-            border-radius: 50%;
-            animation: bounce 1.2s ease-in-out infinite;
-        }}
-        .dot:nth-child(1) {{ animation-delay: 0s; }}
-        .dot:nth-child(2) {{ animation-delay: 0.2s; }}
-        .dot:nth-child(3) {{ animation-delay: 0.4s; }}
-        .dot:nth-child(4) {{ animation-delay: 0.6s; }}
-        .dot:nth-child(5) {{ animation-delay: 0.8s; }}
-        
-        @keyframes bounce {{
-            0%, 100% {{ 
-                transform: scale(0.5);
-                opacity: 0.3;
-            }}
-            50% {{ 
-                transform: scale(1);
-                opacity: 1;
-            }}
-        }}
-        .loading-text {{
-            font-family: Arial, sans-serif;
-            color: #333;
-            font-size: 16px;
-            font-weight: 300;
-            letter-spacing: 4px;
-            margin-top: 10px;
-            text-align: center; /* Garante que o texto fique centralizado */
-            width: 100%;
-        }}
     </style>
     
     <div id="intro-container" class="intro-container">
         <div class="logo-container">
             <img src="data:image/png;base64,{logo_base64}" class="logo-image" alt="Logo">
-        </div>
-        <div class="loader-container">
-            <div class="dots">
-                <div class="dot"></div>
-                <div class="dot"></div>
-                <div class="dot"></div>
-                <div class="dot"></div>
-                <div class="dot"></div>
-            </div>
-            <div class="loading-text">CARREGANDO</div>
         </div>
     </div>
     
@@ -227,7 +169,7 @@ def exibir_intro():
                             container.style.display = 'none';
                         }}, 800);
                     }}
-                }}, 400);
+                }}, 300);
             }}
         }}, 100);
     </script>
