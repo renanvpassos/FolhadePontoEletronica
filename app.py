@@ -14,7 +14,7 @@ from reportlab.lib import colors
 from collections import defaultdict
 import streamlit.components.v1 as components
 import base64
-import time
+import time  # <--- CORREÇÃO 1: Importa o módulo time correto para o sleep (opcional se mantido)
 
 # --- BLOQUEIO DE DISPOSITIVOS MÓVEIS ---
 components.html("""
@@ -100,41 +100,10 @@ components.html("""
 </html>
 """, height=0)
 
-def obter_logo_html():
-    """
-    Retorna a tag HTML do logotipo.
-    Tenta carregar o PNG local em alta qualidade. 
-    Se não encontrar, gera um SVG vetorial de altíssima definição (relógio moderno).
-    """
-    caminho_logo = "logoMult.png"
-    if os.path.exists(caminho_logo):
-        try:
-            with open(caminho_logo, "rb") as img_file:
-                logo_base64 = base64.b64encode(img_file.read()).decode()
-            return f'<img src="data:image/png;base64,{logo_base64}" class="logo-image" alt="Logo">'
-        except:
-            pass
-            
-    # Fallback: Vetor SVG de Alta Definição (Ícone de Relógio Minimalista/Moderno)
-    return """
-    <svg class="logo-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="120" height="120" style="display: block; margin: 0 auto;">
-        <!-- Círculo externo -->
-        <circle cx="50" cy="50" r="42" fill="none" stroke="#1E3A8A" stroke-width="8"/>
-        <!-- Ponteiro das horas -->
-        <line x1="50" y1="50" x2="50" y2="25" stroke="#1E3A8A" stroke-width="8" stroke-linecap="round"/>
-        <!-- Ponteiro dos minutos -->
-        <line x1="50" y1="50" x2="70" y2="50" stroke="#1E3A8A" stroke-width="7" stroke-linecap="round"/>
-        <!-- Ponto central -->
-        <circle cx="50" cy="50" r="5" fill="#1E3A8A"/>
-    </svg>
-    """
-
 def exibir_intro():
-    """Exibe a intro apenas com o logotipo em alta resolução durante o carregamento"""
+    """Exibe a intro apenas com o logotipo durante o carregamento"""
     intro_placeholder = st.empty()
-    
-    # Obtém a tag HTML do logo (imagem ou vetor SVG)
-    logo_html = obter_logo_html()
+    logo_base64 = get_logo_base64()
     
     intro_html = f"""
     <style>
@@ -167,16 +136,8 @@ def exibir_intro():
         .logo-image {{
             max-width: 400px;
             width: 80%;
-            height: auto;
             margin: 0 auto;
             display: block;
-            /* Suaviza as bordas da imagem ao redimensionar */
-            image-rendering: -webkit-optimize-contrast;
-            image-rendering: crisp-edges;
-        }}
-        .logo-svg {{
-            /* Filtro de sombra suave para o SVG alternativo */
-            filter: drop-shadow(0px 10px 15px rgba(30, 58, 138, 0.2));
         }}
         @keyframes float {{
             0% {{ transform: translateY(0px); }}
@@ -187,7 +148,7 @@ def exibir_intro():
     
     <div id="intro-container" class="intro-container">
         <div class="logo-container">
-            {logo_html}
+            <img src="data:image/png;base64,{logo_base64}" class="logo-image" alt="Logo">
         </div>
     </div>
     
@@ -218,6 +179,20 @@ def exibir_intro():
     time.sleep(1.5)
     intro_placeholder.empty()
     return intro_placeholder
+
+def get_logo_base64():
+    try:
+        with open("logoMult.png", "rb") as img_file:
+            return base64.b64encode(img_file.read()).decode()
+    except:
+        return "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+
+# ==========================================
+# INICIALIZAÇÃO - EXIBE INTRO ENQUANTO CARREGA
+# ==========================================
+if 'intro_exibida' not in st.session_state:
+    exibir_intro()
+    st.session_state['intro_exibida'] = True
 
 def converter_para_csv_integracao(df):
     if df is None or df.empty:
