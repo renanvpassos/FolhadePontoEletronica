@@ -14,7 +14,7 @@ from reportlab.lib import colors
 from collections import defaultdict
 import streamlit.components.v1 as components
 import base64
-import time  # <--- CORREÇÃO 1: Importa o módulo time correto para o sleep (opcional se mantido)
+import time  
 
 # --- BLOQUEIO DE DISPOSITIVOS MÓVEIS ---
 components.html("""
