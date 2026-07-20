@@ -127,12 +127,17 @@ def exibir_intro():
             pointer-events: none;
         }}
         .logo-container {{
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
             animation: float 2s ease-in-out infinite;
         }}
         .logo-image {{
             max-width: 400px;
             width: 80%;
-            margin-bottom: 30px;
+            margin: 0 auto 30px auto; /* Centraliza a imagem horizontalmente */
+            display: block;
         }}
         @keyframes float {{
             0% {{ transform: translateY(0px); }}
@@ -143,16 +148,21 @@ def exibir_intro():
             display: flex;
             flex-direction: column;
             align-items: center;
+            justify-content: center;
+            width: 100%;
             gap: 20px;
         }}
         .dots {{
             display: flex;
+            justify-content: center;
+            align-items: center;
             gap: 15px;
+            width: 100%;
         }}
         .dot {{
             width: 20px;
             height: 20px;
-            background: #1E3A8A; /* <--- CORREÇÃO: Bolinhas agora são azuis */
+            background: #1E3A8A;
             border-radius: 50%;
             animation: bounce 1.2s ease-in-out infinite;
         }}
@@ -179,6 +189,8 @@ def exibir_intro():
             font-weight: 300;
             letter-spacing: 4px;
             margin-top: 10px;
+            text-align: center; /* Garante que o texto fique centralizado */
+            width: 100%;
         }}
     </style>
     
@@ -195,7 +207,6 @@ def exibir_intro():
                 <div class="dot"></div>
             </div>
             <div class="loading-text">CARREGANDO</div>
-            <!-- Div da porcentagem removida aqui -->
         </div>
     </div>
     
@@ -207,7 +218,6 @@ def exibir_intro():
             percent += Math.floor(Math.random() * 15) + 5;
             if (percent > 100) percent = 100;
             
-            // A lógica de contagem continua rodando apenas para engatilhar o fechamento no tempo correto
             if (percent >= 100) {{
                 clearInterval(interval);
                 setTimeout(function() {{
