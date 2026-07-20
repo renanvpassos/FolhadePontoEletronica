@@ -13,6 +13,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from collections import defaultdict
 import streamlit.components.v1 as components
+import base64
 
 # --- BLOQUEIO DE DISPOSITIVOS MÓVEIS ---
 components.html("""
@@ -111,6 +112,157 @@ components.html("""
 </body>
 </html>
 """, height=0)
+
+def exibir_intro():
+    """Exibe a intro com loading enquanto a página carrega"""
+    
+    # Cria um placeholder para a intro
+    intro_placeholder = st.empty()
+    
+    # Obtém a logo em base64
+    logo_base64 = get_logo_base64()
+    
+    # CSS para centralizar e estilizar a intro
+    intro_html = f"""
+    <style>
+        .intro-container {{
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 9999;
+            transition: opacity 0.8s ease-in-out;
+        }}
+        .intro-container.fade-out {{
+            opacity: 0;
+            pointer-events: none;
+        }}
+        .logo-container {{
+            animation: float 2s ease-in-out infinite;
+        }}
+        .logo-image {{
+            max-width: 400px;
+            width: 80%;
+            margin-bottom: 30px;
+        }}
+        @keyframes float {{
+            0% {{ transform: translateY(0px); }}
+            50% {{ transform: translateY(-10px); }}
+            100% {{ transform: translateY(0px); }}
+        }}
+        .loader-container {{
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }}
+        .dots {{
+            display: flex;
+            gap: 15px;
+        }}
+        .dot {{
+            width: 20px;
+            height: 20px;
+            background: #4CAF50;
+            border-radius: 50%;
+            animation: bounce 1.2s ease-in-out infinite;
+        }}
+        .dot:nth-child(1) {{ animation-delay: 0s; }}
+        .dot:nth-child(2) {{ animation-delay: 0.2s; }}
+        .dot:nth-child(3) {{ animation-delay: 0.4s; }}
+        .dot:nth-child(4) {{ animation-delay: 0.6s; }}
+        .dot:nth-child(5) {{ animation-delay: 0.8s; }}
+        
+        @keyframes bounce {{
+            0%, 100% {{ 
+                transform: scale(0.5);
+                opacity: 0.3;
+            }}
+            50% {{ 
+                transform: scale(1);
+                opacity: 1;
+            }}
+        }}
+        .loading-text {{
+            font-family: Arial, sans-serif;
+            color: #333;
+            font-size: 16px;
+            font-weight: 300;
+            letter-spacing: 4px;
+            margin-top: 10px;
+        }}
+        .loading-percent {{
+            font-family: Arial, sans-serif;
+            color: #4CAF50;
+            font-size: 14px;
+            font-weight: bold;
+            margin-top: 5px;
+        }}
+    </style>
+    
+    <div id="intro-container" class="intro-container">
+        <div class="logo-container">
+            <img src="data:image/png;base64,{logo_base64}" class="logo-image" alt="Logo">
+        </div>
+        <div class="loader-container">
+            <div class="dots">
+                <div class="dot"></div>
+                <div class="dot"></div>
+                <div class="dot"></div>
+                <div class="dot"></div>
+                <div class="dot"></div>
+            </div>
+            <div class="loading-text">CARREGANDO</div>
+            <div class="loading-percent" id="percent">0%</div>
+        </div>
+    </div>
+    
+    <script>
+        // Simula o progresso de carregamento
+        var percent = 0;
+        var interval = setInterval(function() {{
+            percent += Math.floor(Math.random() * 10) + 1;
+            if (percent > 100) percent = 100;
+            document.getElementById('percent').textContent = percent + '%';
+            if (percent >= 100) {{
+                clearInterval(interval);
+            }}
+        }}, 300);
+        
+        // Aguarda o carregamento completo e remove a intro
+        window.addEventListener('load', function() {{
+            setTimeout(function() {{
+                var container = document.getElementById('intro-container');
+                if (container) {{
+                    container.classList.add('fade-out');
+                    setTimeout(function() {{
+                        if (container) {{
+                            container.style.display = 'none';
+                        }}
+                    }}, 800);
+                }}
+            }}, 1000);
+        }});
+    </script>
+    """
+    
+    # Renderiza a intro
+    intro_placeholder.markdown(intro_html, unsafe_allow_html=True)
+    
+    # Simula o carregamento dos recursos
+    time.sleep(2)
+    
+    # Após o carregamento, limpa o placeholder
+    intro_placeholder.empty()
+    
+    return intro_placeholder
 
 def converter_para_csv_integracao(df):
     """
