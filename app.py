@@ -14,7 +14,7 @@ from reportlab.lib import colors
 from collections import defaultdict
 import streamlit.components.v1 as components
 import base64
-import time  # <--- CORREÇÃO 1: Importa o módulo time correto para o sleep (opcional se mantido)
+import time
 
 # --- BLOQUEIO DE DISPOSITIVOS MÓVEIS ---
 components.html("""
@@ -119,7 +119,7 @@ def exibir_intro():
             left: 0;
             right: 0;
             bottom: 0;
-            z-index: 99999; /* Z-index elevado para ficar acima do bloqueio se necessário */
+            z-index: 99999;
             transition: opacity 0.8s ease-in-out;
         }}
         .intro-container.fade-out {{
@@ -152,7 +152,7 @@ def exibir_intro():
         .dot {{
             width: 20px;
             height: 20px;
-            background: #4CAF50;
+            background: #1E3A8A; /* <--- CORREÇÃO: Bolinhas agora são azuis */
             border-radius: 50%;
             animation: bounce 1.2s ease-in-out infinite;
         }}
@@ -180,13 +180,6 @@ def exibir_intro():
             letter-spacing: 4px;
             margin-top: 10px;
         }}
-        .loading-percent {{
-            font-family: Arial, sans-serif;
-            color: #4CAF50;
-            font-size: 14px;
-            font-weight: bold;
-            margin-top: 5px;
-        }}
     </style>
     
     <div id="intro-container" class="intro-container">
@@ -202,25 +195,19 @@ def exibir_intro():
                 <div class="dot"></div>
             </div>
             <div class="loading-text">CARREGANDO</div>
-            <div class="loading-percent" id="percent">0%</div>
+            <!-- Div da porcentagem removida aqui -->
         </div>
     </div>
     
     <script>
-        // Simula o progresso de carregamento de forma mais rápida e fluida
         var percent = 0;
-        var percentEl = document.getElementById('percent');
         var container = document.getElementById('intro-container');
         
         var interval = setInterval(function() {{
-            percent += Math.floor(Math.random() * 15) + 5; // Aumenta de 5 a 20% por vez
+            percent += Math.floor(Math.random() * 15) + 5;
             if (percent > 100) percent = 100;
             
-            if (percentEl) {{
-                percentEl.textContent = percent + '%';
-            }}
-            
-            // CORREÇÃO 2: Quando atinge 100%, inicia o processo de fechamento imediatamente
+            // A lógica de contagem continua rodando apenas para engatilhar o fechamento no tempo correto
             if (percent >= 100) {{
                 clearInterval(interval);
                 setTimeout(function() {{
@@ -228,23 +215,17 @@ def exibir_intro():
                         container.classList.add('fade-out');
                         setTimeout(function() {{
                             container.style.display = 'none';
-                        }}, 800); // 800ms bate com o tempo de transition do CSS
+                        }}, 800);
                     }}
-                }}, 400); // Espera 400ms no "100%" antes de começar a sumir
+                }}, 400);
             }}
-        }}, 100); // Executa a cada 100ms para parecer uma barra de progresso viva
+        }}, 100);
     </script>
     """
     
     intro_placeholder.markdown(intro_html, unsafe_allow_html=True)
-    
-    # Mantemos uma pequena espera no Python apenas no carregamento inicial para que a página 
-    # seja montada em segundo plano enquanto o usuário assiste a introdução
     time.sleep(1.5)
-    
-    # Limpa o placeholder no final para não poluir o HTML
     intro_placeholder.empty()
-    
     return intro_placeholder
 
 def get_logo_base64():
