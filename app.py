@@ -14,6 +14,7 @@ from reportlab.lib import colors
 from collections import defaultdict
 import streamlit.components.v1 as components
 import base64
+import time  # <--- CORREÇÃO 1: Importa o módulo time correto para o sleep (opcional se mantido)
 
 # --- BLOQUEIO DE DISPOSITIVOS MÓVEIS ---
 components.html("""
@@ -51,29 +52,18 @@ components.html("""
 
 <script>
   function isMobile() {
-    // 1. User-Agent (cobre a maioria dos casos, inclusive "modo desktop" de alguns navegadores)
     var ua = navigator.userAgent || navigator.vendor || window.opera;
     var uaMobile = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini|mobile|tablet/i.test(ua);
-
-    // 2. Largura real da tela física (independe do zoom ou modo desktop)
     var larguraFisica = window.screen.width;
     var telaPequena = larguraFisica < 1024;
-
-    // 3. Suporte a toque (verdadeiro em dispositivos touch, mesmo com UA de desktop)
     var temTouch = (('ontouchstart' in window) || (navigator.maxTouchPoints > 0));
-
-    // 4. Orientação típica de celular (portrait com tela pequena)
     var orientacaoMobile = (window.screen.height > window.screen.width) && telaPequena;
-
-    // Bloqueia se: UA mobile OU (tela pequena E touch) OU orientação portrait pequena
     return uaMobile || (telaPequena && temTouch) || orientacaoMobile;
   }
 
   if (isMobile()) {
     var bloqueio = document.getElementById('bloqueio-mobile');
     bloqueio.style.display = 'flex';
-
-    // Propaga o bloqueio para o frame pai (a página real do Streamlit)
     try {
       window.parent.document.body.style.overflow = 'hidden';
       var overlay = window.parent.document.createElement('div');
@@ -100,13 +90,10 @@ components.html("""
           Por favor, acesse pelo navegador de um <strong>desktop ou notebook</strong>.
         </p>
       `;
-      // Remove overlay anterior se já existir (evita duplicatas em reruns)
       var anterior = window.parent.document.getElementById('overlay-mobile-block');
       if (anterior) anterior.remove();
       window.parent.document.body.appendChild(overlay);
-    } catch(e) {
-      // Fallback: se não conseguir acessar o parent (cross-origin), o bloqueio interno já cobre
-    }
+    } catch(e) {}
   }
 </script>
 </body>
@@ -115,14 +102,9 @@ components.html("""
 
 def exibir_intro():
     """Exibe a intro com loading enquanto a página carrega"""
-    
-    # Cria um placeholder para a intro
     intro_placeholder = st.empty()
-    
-    # Obtém a logo em base64
     logo_base64 = get_logo_base64()
     
-    # CSS para centralizar e estilizar a intro
     intro_html = f"""
     <style>
         .intro-container {{
@@ -137,7 +119,7 @@ def exibir_intro():
             left: 0;
             right: 0;
             bottom: 0;
-            z-index: 9999;
+            z-index: 99999; /* Z-index elevado para ficar acima do bloqueio se necessário */
             transition: opacity 0.8s ease-in-out;
         }}
         .intro-container.fade-out {{
@@ -225,57 +207,65 @@ def exibir_intro():
     </div>
     
     <script>
-        // Simula o progresso de carregamento
+        // Simula o progresso de carregamento de forma mais rápida e fluida
         var percent = 0;
+        var percentEl = document.getElementById('percent');
+        var container = document.getElementById('intro-container');
+        
         var interval = setInterval(function() {{
-            percent += Math.floor(Math.random() * 10) + 1;
+            percent += Math.floor(Math.random() * 15) + 5; // Aumenta de 5 a 20% por vez
             if (percent > 100) percent = 100;
-            document.getElementById('percent').textContent = percent + '%';
+            
+            if (percentEl) {{
+                percentEl.textContent = percent + '%';
+            }}
+            
+            // CORREÇÃO 2: Quando atinge 100%, inicia o processo de fechamento imediatamente
             if (percent >= 100) {{
                 clearInterval(interval);
-            }}
-        }}, 300);
-        
-        // Aguarda o carregamento completo e remove a intro
-        window.addEventListener('load', function() {{
-            setTimeout(function() {{
-                var container = document.getElementById('intro-container');
-                if (container) {{
-                    container.classList.add('fade-out');
-                    setTimeout(function() {{
-                        if (container) {{
+                setTimeout(function() {{
+                    if (container) {{
+                        container.classList.add('fade-out');
+                        setTimeout(function() {{
                             container.style.display = 'none';
-                        }}
-                    }}, 800);
-                }}
-            }}, 1000);
-        }});
+                        }}, 800); // 800ms bate com o tempo de transition do CSS
+                    }}
+                }}, 400); // Espera 400ms no "100%" antes de começar a sumir
+            }}
+        }}, 100); // Executa a cada 100ms para parecer uma barra de progresso viva
     </script>
     """
     
-    # Renderiza a intro
     intro_placeholder.markdown(intro_html, unsafe_allow_html=True)
     
-    # Simula o carregamento dos recursos
-    time.sleep(2)
+    # Mantemos uma pequena espera no Python apenas no carregamento inicial para que a página 
+    # seja montada em segundo plano enquanto o usuário assiste a introdução
+    time.sleep(1.5)
     
-    # Após o carregamento, limpa o placeholder
+    # Limpa o placeholder no final para não poluir o HTML
     intro_placeholder.empty()
     
     return intro_placeholder
 
+def get_logo_base64():
+    try:
+        with open("logoMult.png", "rb") as img_file:
+            return base64.b64encode(img_file.read()).decode()
+    except:
+        return "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+
+# ==========================================
+# INICIALIZAÇÃO - EXIBE INTRO ENQUANTO CARREGA
+# ==========================================
+if 'intro_exibida' not in st.session_state:
+    exibir_intro()
+    st.session_state['intro_exibida'] = True
+
 def converter_para_csv_integracao(df):
-    """
-    Gera o CSV de integração a partir de um DataFrame de relatório (individual ou consolidado).
-    Remove automaticamente todas as colunas de Justificativa, preservando a ordem das demais colunas.
-    """
     if df is None or df.empty:
         return "".encode("utf-8-sig")
-
     colunas_validas = [c for c in df.columns if "Justificativa" not in c]
     df_csv = df[colunas_validas].copy()
-
-    # separador ";" e BOM (utf-8-sig) para abrir corretamente no Excel em pt-BR
     return df_csv.to_csv(index=False, sep=";").encode("utf-8-sig")
 
 def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celulas):
@@ -288,10 +278,8 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     story = []
     styles = getSampleStyleSheet()
 
-    # === CONFIGURAÇÃO DE FERIADOS ===
     feriados = ["04/06/2026", "09/07/2026", "07/09/2026", "12/10/2026", "02/11/2026", "15/11/2026", "20/11/2026", "25/12/2026"]
 
-    # Estilos
     title_style = ParagraphStyle(
         'TituloPDF',
         parent=styles['Heading1'],
@@ -363,22 +351,18 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
         except:
             return 0
 
-    # === REGRA ESPECIAL: FERIADOS ===
     df = df.copy()
 
-    # Identifica a coluna que contém o total trabalhado
     coluna_total = None
     for col in df.columns:
         if col.lower() in ["total", "total trabalhado", "tempo trabalhado", "total horas"]:
             coluna_total = col
             break
 
-    # Se a coluna de total existir, copia o valor para 'Hora Extra' nos dias de feriado
     if "Data" in df.columns and "Hora Extra" in df.columns and coluna_total:
         eh_feriado = df["Data"].astype(str).str.strip().isin(feriados)
         df.loc[eh_feriado, "Hora Extra"] = df.loc[eh_feriado, coluna_total]
 
-    # === CÁLCULO DA JORNADA DE TRABALHO NO PERÍODO ===
     total_jornada_mins = 0
     col_entrada = next((c for c in df.columns if c.lower() == 'entrada'), None)
     col_saida = next((c for c in df.columns if c.lower() in ['saida', 'saída']), None)
@@ -395,7 +379,6 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
 
     total_jornada_str = f"{total_jornada_mins // 60:02d}:{total_jornada_mins % 60:02d}"
 
-    # === CÁLCULOS DE HORAS EXTRAS (Geral, 75% e 100%) ===
     total_mins = df["Hora Extra"].apply(_extrair_minutos).sum() if "Hora Extra" in df.columns else 0
     total_horas_str = f"{total_mins // 60:02d}:{total_mins % 60:02d}"
 
@@ -423,7 +406,6 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     horas_75_str = f"{mins_75 // 60:02d}:{mins_75 % 60:02d}"
     horas_100_str = f"{mins_100 // 60:02d}:{mins_100 % 60:02d}"
 
-    # === CONSTRUÇÃO DO DOCUMENTO ===
     celula = mapeamento_celulas.get(email, "Não Informada")
 
     if logo_existe:
@@ -477,7 +459,6 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     story.append(tabela_totais)
     story.append(Spacer(1, 5))
 
-    # === TRATAMENTO DAS COLUNAS ===
     df_pdf = df.copy()
 
     indices_feriado = []
@@ -498,11 +479,9 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     idx_hora_extra = list(df_filtrado.columns).index("Hora Extra") if "Hora Extra" in df_filtrado.columns else -1
     colunas_obrigatorias = [c for c in df_filtrado.columns if 'observação' not in c.lower()]
 
-    # Identifica colunas locais para validação de preenchimento na listagem
     col_entrada_fil = next((c for c in df_filtrado.columns if c.lower() == 'entrada'), None)
     col_saida_fil = next((c for c in df_filtrado.columns if c.lower() in ['saida', 'saída']), None)
 
-    # === CRIAÇÃO DA TABELA ===
     dados_tabela = [[Paragraph(f"<b>{col}</b>", header_style) for col in df_filtrado.columns]]
     estilos_tabela = [
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#1E3A8A")),
@@ -524,7 +503,6 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
         )
         eh_feriado = orig_idx in indices_feriado
 
-        # Verifica se Entrada e Saída estão especificamente preenchidas
         val_entrada = str(row.get(col_entrada_fil, "")).strip() if col_entrada_fil else ""
         val_saida = str(row.get(col_saida_fil, "")).strip() if col_saida_fil else ""
 
@@ -548,7 +526,6 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
             for col in colunas_obrigatorias
         )
 
-        # DEFINIÇÃO DE DESTAQUE DA LINHA
         deve_destacar = (eh_feriado and horarios_preenchidos) or (eh_fds and linha_completa)
 
         if deve_destacar:
@@ -596,10 +573,8 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
     story = []
     styles = getSampleStyleSheet()
 
-    # === CONFIGURAÇÃO DE FERIADOS ===
     feriados = ["04/06/2026", "09/07/2026", "07/09/2026", "12/10/2026", "02/11/2026", "15/11/2026", "20/11/2026", "25/12/2026"]
 
-    # Estilos
     title_style = ParagraphStyle('TituloPDF', parent=styles['Heading1'], fontSize=13, textColor=colors.HexColor("#1E3A8A"), spaceAfter=4)
     header_style = ParagraphStyle('HeaderPDF', parent=styles['Normal'], fontSize=9.5, leading=12, textColor=colors.white, fontName="Helvetica-Bold", alignment=1)
 
@@ -633,19 +608,6 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         except:
             return 0
 
-    def _extrair_apenas_o_dia(val):
-        if pd.isna(val) or str(val).strip() == "":
-            return ""
-        s = str(val).strip()
-        if "/" in s:
-            return s.split("/")[0]
-        if "-" in s:
-            return s.split("-")[-1]
-        try:
-            return pd.to_datetime(val).strftime('%d')
-        except:
-            return s
-
     df_copy = df.copy()
 
     novas_colunas = {}
@@ -673,7 +635,6 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         nome_funcionario = df_funcionario['Funcionário'].iloc[0] if 'Funcionário' in df_funcionario.columns else "Colaborador"
         celula = mapeamento_celulas.get(str(email).strip().lower(), "Não Informada")
 
-        # === REGRA ESPECIAL DE FERIADOS: OVERRIDE DA HORA EXTRA ===
         coluna_total_regra = None
         for col in df_funcionario.columns:
             if col.lower().strip() in ["total", "total trabalhado", "tempo trabalhado", "total horas", "horas trabalhadas"]:
@@ -684,7 +645,6 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
             eh_feriado_regra = df_funcionario["Data"].astype(str).str.strip().isin(feriados)
             df_funcionario.loc[eh_feriado_regra, "Hora Extra"] = df_funcionario.loc[eh_feriado_regra, coluna_total_regra]
 
-        # === CÁLCULO DA JORNADA DE TRABALHO NO PERÍODO ===
         total_mins_trab = 0
         if coluna_total_regra and df_funcionario[coluna_total_regra].apply(_extrair_minutos).sum() > 0:
             total_mins_trab = df_funcionario[coluna_total_regra].apply(_extrair_minutos).sum()
@@ -697,7 +657,6 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         minutos_trab = total_mins_trab % 60
         total_horas_trab_str = f"{horas_trab:02d}:{minutos_trab:02d}"
 
-        # === CÁLCULOS DE HORAS EXTRAS (Geral, 75% e 100%) ===
         total_mins = 0
         if "Hora Extra" in df_funcionario.columns:
             total_mins = df_funcionario["Hora Extra"].apply(_extrair_minutos).sum()
@@ -730,7 +689,6 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         horas_75_str = f"{mins_75 // 60:02d}:{mins_75 % 60:02d}"
         horas_100_str = f"{mins_100 // 60:02d}:{mins_100 % 60:02d}"
 
-        # === RENDERIZAÇÃO DO CABEÇALHO DO COLABORADOR ===
         if logo_existe:
             try:
                 logo_flowable = Image(caminho_logo, width=76, height=22)
@@ -747,7 +705,6 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         story.append(Paragraph(f"<b>E-mail:</b> {email} | <b>Célula:</b> {celula}", styles['Normal']))
         story.append(Spacer(1, 4))
 
-        # === TABELA DE TOTAIS ALINHADA ===
         totais_dados = [
             [
                 Paragraph(
@@ -788,7 +745,6 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         story.append(tabela_totais)
         story.append(Spacer(1, 5))
 
-        # === ESTRUTURAÇÃO DA TABELA DE PONTOS ===
         colunas_remover = ['funcionário', 'funcionario', 'e-mail', 'email', 'celula', 'célula']
         colunas_exibicao = [
             col for col in df_funcionario.columns
@@ -839,7 +795,6 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
             is_fim_de_semana = dia_sem_orig in ["sábado", "sabado", "domingo"]
             is_feriado = data_orig in feriados
 
-            # Validação condicional: verifica se Entrada e Saída estão registradas
             val_entrada = str(row.get(col_entrada_fil, "")).strip() if col_entrada_fil else ""
             val_saida = str(row.get(col_saida_fil, "")).strip() if col_saida_fil else ""
 
@@ -858,7 +813,6 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
                     jornada_mins = minutos_saida - minutos_entrada
                     marcar_saida_vermelha = jornada_mins < 9 * 60
 
-            # Feriado e fim de semana só destacam a linha toda se houver batimento válido
             deve_destacar_linha = (
                 (is_feriado and horarios_preenchidos)
                 or (is_fim_de_semana and horarios_preenchidos)
@@ -873,7 +827,6 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
                 if col_name == "Hora Extra" and val_str == "00:00":
                     val_str = ""
 
-                # Aplicação de estilos condicionais
                 if col_name == col_saida_fil and marcar_saida_vermelha:
                     estilo_celula = cell_red_bold_style if deve_destacar_linha else cell_red_style
                 elif deve_destacar_linha or col_name == "Hora Extra" or (is_fim_de_semana and col_name == "Dia / Data"):
@@ -885,7 +838,6 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
 
             dados_tabela.append(linha)
 
-            # Pintura de Fundo Condicional
             if deve_destacar_linha:
                 estilos_celulas_dinamicos.append(
                     ('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor("#FEF08A"))
@@ -945,11 +897,9 @@ st.markdown("""
 fuso_br = ZoneInfo("America/Sao_Paulo")
 
 def obter_agora_br():
-    """Retorna o datetime atual com o fuso horário de Brasília."""
     return datetime.now(fuso_br)
 
 def obter_hoje_br():
-    """Retorna a data atual com base no fuso horário de Brasília."""
     return obter_agora_br().date()
 
 # --- CONEXÃO COM O SUPABASE ---
@@ -957,11 +907,9 @@ url: str = st.secrets["supabase"]["url"]
 key: str = st.secrets["supabase"]["key"]
 supabase: Client = create_client(url, key)
 
-# --- FUNÇÃO PARA CRIPTOGRAFAR SENHAS ---
 def criptografar_senha(senha):
     return hashlib.sha256(senha.encode()).hexdigest()
 
-# --- FUNÇÕES DO BANCO DE DADOS (SUPABASE) ---
 def executar_query_supabase(operacao, data_dict=None, email=None, data_filtro=None, data_fim=None):
     if operacao == "buscar_hoje":
         res = supabase.table("registro_ponto").select("horario_entrada, saida_almoco, retorno_almoco, horario_saida").eq("email", email).eq("data", data_filtro).execute()
@@ -992,7 +940,6 @@ def executar_query_supabase(operacao, data_dict=None, email=None, data_filtro=No
         res = supabase.table("log_interno").select("*").order("data_alteracao", desc=True).execute()
         return res.data
 
-# --- FUNÇÕES AUXILIARES PARA GERAR EXCEL ---
 def converter_para_excel_individual(df_dados):
     output = BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
@@ -1009,7 +956,6 @@ def converter_para_excel_multiaba(df_geral):
             dados_aba.to_excel(writer, index=False, sheet_name=nome_aba)
     return output.getvalue()
 
-# --- SISTEMA NATIVO DE LOGIN E CADASTRO ---
 def gerenciar_acesso():
     if "connected" not in st.session_state:
         st.session_state["connected"] = False
@@ -1066,7 +1012,6 @@ def gerenciar_acesso():
 
 gerenciar_acesso()
 
-# --- CONFIGURAÇÃO DE USUÁRIO LOGADO ---
 user_info = st.session_state.get("user_info", {})
 user_email = user_info.get("email")
 user_name = user_info.get("name", "Colaborador")
@@ -1074,7 +1019,6 @@ user_name = user_info.get("name", "Colaborador")
 hoje = obter_hoje_br() 
 agora_br = obter_agora_br() 
 
-# --- DETECÇÃO PRÉVIA DO CARGO DO USUÁRIO LOGADO ---
 cargo_usuario = "Colaborador"
 celula_usuario = None
 try:
@@ -1085,7 +1029,6 @@ try:
 except Exception:
     pass
 
-# --- INTERFACE / MENU LATERAL ---
 st.sidebar.markdown(f"### 👤 Usuário Ativo")
 st.sidebar.write(f"Olá, **{user_name}**")
 st.sidebar.caption(user_email)
@@ -1093,7 +1036,6 @@ st.sidebar.markdown("---")
 
 st.sidebar.markdown("### 📋 Navegação")
 
-# Definição dinâmica das opções com base nas permissões do cargo Master
 opcoes_menu = ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA", "LOG", "RELATÓRIO"]
 if cargo_usuario == "Master":
     opcoes_menu.insert(opcoes_menu.index("LOG") + 1, "LOG INTERNO")
@@ -1105,7 +1047,6 @@ if st.sidebar.button("🚪 Sair / Desconectar", use_container_width=True, type="
     st.session_state.clear()
     st.rerun()
 
-# --- BUSCA HISTÓRICO DE HOJE ---
 dados_hoje = executar_query_supabase("buscar_hoje", email=user_email, data_filtro=hoje)
 
 pontos = {
@@ -1126,9 +1067,6 @@ for k, v in pontos.items():
     if v and isinstance(v, str):
         pontos[k] = datetime.fromisoformat(v).astimezone(fuso_br)
 
-# =====================================================================
-# --- MENU: REGISTRO DE HORÁRIOS ---
-# =====================================================================
 if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
     st.title(f"📍 Registro de {opcao.title()}")
     
@@ -1185,13 +1123,10 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                     hora_manual_objeto = datetime.strptime(hora_digitada, "%H:%M").time()
                     horario_final_gravacao = datetime.combine(hoje, hora_manual_objeto).replace(tzinfo=fuso_br)
                     
-                    # --- VERIFICAÇÃO DE FINAL DE SEMANA OU FERIADO ---
-                    # weekday() retorna 5 para sábado e 6 para domingo
                     is_fim_de_semana = hoje.weekday() in [5, 6]
                     is_feriado = hoje.strftime('%d/%m/%Y') in ["04/06/2026", "09/07/2026", "07/09/2026", "12/10/2026", "02/11/2026", "15/11/2026", "20/11/2026", "25/12/2026"]
                     dispensa_almoco = is_fim_de_semana or is_feriado
                     
-                    # --- TRAVAS DE FLUXO DE PREENCHIMENTO ---
                     if opcao != "ENTRADA" and not pontos["ENTRADA"]:
                         st.error("🛑 Bloqueado: Não é permitido preencher nenhum horário antes de registrar o horário de ENTRADA.")
                         erro_validacao = True
@@ -1205,7 +1140,6 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                         if not pontos["ENTRADA"]:
                             horarios_faltantes.append("**ENTRADA**")
                         
-                        # Só exige almoço se NÃO for fim de semana ou feriado configurado
                         if not dispensa_almoco:
                             if not pontos["SAÍDA ALMOÇO"]:
                                 horarios_faltantes.append("**SAÍDA ALMOÇO**")
@@ -1218,10 +1152,9 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
 
                     agora_br_sem_segundos = agora_br.replace(second=0, microsecond=0)
                     
-                    # --- REGRAS DE OBRIGATORIEDADE E TRAVAS ---
                     if not erro_validacao:
                         if opcao == "ENTRADA":
-                            horario_com_tolerancia = horario_final_gravacao + timedelta(minutes=10)
+                            horario_com_tolerancia = presidential_time = horario_final_gravacao + timedelta(minutes=10)
                             if horario_com_tolerancia < agora_br_sem_segundos:
                                 justificativa_obrigatoria = True
                                 
@@ -1525,7 +1458,6 @@ elif opcao == "RELATÓRIO":
     try:
         busca_mapeamento = supabase.table("usuarios_ponto").select("email, celula").execute()
         if busca_mapeamento.data:
-            # Correção: força minúsculo e remove espaços nas pontas dos e-mails mapeados
             mapeamento_celulas = {str(u['email']).strip().lower(): u.get('celula') for u in busca_mapeamento.data}
     except Exception:
         st.warning("Não foi possível carregar o mapeamento completo de células.")
@@ -1550,7 +1482,7 @@ elif opcao == "RELATÓRIO":
                 nova_celula = st.text_input(
                     "📍 Célula do Colaborador (Banco de Dados):",
                     value=celula_atual,
-                    key=f"celula_input_{email_busca}"  # garante que o campo reseta ao trocar de colaborador
+                    key=f"celula_input_{email_busca}"
                 )
     
                 houve_alteracao = nova_celula != celula_atual
@@ -1599,14 +1531,12 @@ elif opcao == "RELATÓRIO":
     with col2:
         data_fim = st.date_input("🗓️ Data Final", hoje, format="DD/MM/YYYY")
 
-    # --- NOVO BLOCO: CÁLCULO E EXIBIÇÃO DE TOTAIS EM TEMPO REAL ---
     if data_inicio <= data_fim:
         dados_pessoais_indicadores = executar_query_supabase("buscar_relatorio", email=email_busca, data_filtro=data_inicio, data_fim=data_fim)
         
         total_segundos_trabalhados = 0
         total_segundos_extras = 0
         
-        # Dicionário para acumular as horas trabalhadas agrupadas por data (ex: "2026-06-16")
         segundos_por_dia = defaultdict(int)
     
         if dados_pessoais_indicadores:
@@ -1622,16 +1552,13 @@ elif opcao == "RELATÓRIO":
                         segundos_trab = int((dt_sai - dt_ent).total_seconds())
                         
                         if segundos_trab > 0:
-                            # Agrupa pelo dia da entrada
                             dia_str = dt_ent.strftime("%d-%m-%Y")
                             segundos_por_dia[dia_str] += segundos_trab
                     except:
                         pass
     
-            # --- APLICAÇÃO DA REGRA DE NEGÓCIO POR DIA ---
-            jornada_limite = 9 * 3600  # 9 horas em segundos
+            jornada_limite = 9 * 3600
             
-            # 💡 ADICIONE AQUI AS NOVAS DATAS (Formato: "AAAA-MM-DD")
             datas_especiais = {
                 "04-06-2026",  
                 "09/07/2026", 
@@ -1644,27 +1571,19 @@ elif opcao == "RELATÓRIO":
             }
             
             for dia_str, segundos_totais_do_dia in segundos_por_dia.items():
-                # Acumula o total bruto trabalhado no período (independente de ser extra ou não)
                 total_segundos_trabalhados += segundos_totais_do_dia
-                
-                # Descobre o dia da semana a partir da data (0=Segunda, 5=Sábado, 6=Domingo)
                 dt_dia = datetime.strptime(dia_str, "%d-%m-%Y")
                 dia_da_semana = dt_dia.weekday()
                 
-                # REGRA SÁBADO, DOMINGO OU DATAS ESPECIAIS: Todo o tempo trabalhado vira hora extra
                 if dia_da_semana in (5, 6) or dia_str in datas_especiais:
                     total_segundos_extras += segundos_totais_do_dia
-                
-                # REGRA DIA DE SEMANA COMUM: Apenas o que passar de 9 horas vira hora extra
                 else:
                     if segundos_totais_do_dia > jornada_limite:
                         total_segundos_extras += (segundos_totais_do_dia - jornada_limite)
     
-        # Conversão dos totais acumulados para minutos
         def_total_minutos_trabalhados = total_segundos_trabalhados // 60
         def_total_minutos_extras = total_segundos_extras // 60
     
-        # Formatação das strings de exibição
         horas_trab_totais = f"{def_total_minutos_trabalhados // 60:02d}h {def_total_minutos_trabalhados % 60:02d}m"
         horas_ext_totais = f"{def_total_minutos_extras // 60:02d}h {def_total_minutos_extras % 60:02d}m"
     
@@ -1675,7 +1594,6 @@ elif opcao == "RELATÓRIO":
         with col_tot2:
             st.metric(label="🚀 Total de Horas Extras no Período", value=horas_ext_totais, 
                       delta=horas_ext_totais if def_total_minutos_extras > 0 else None, delta_color="normal")
-    # --- FIM DO NOVO BLOCO ---
         
     st.write("---")
      
@@ -1688,10 +1606,8 @@ elif opcao == "RELATÓRIO":
             ordem_individual = ["Dia da Semana", "Data", "Entrada", "Saída", "Hora Extra", "Saída Almoço", "Retorno Almoço", "Justificativa Entrada", "Justificativa Saída Almoço", "Justificativa Retorno Almoço", "Justificativa Saída", "OBSERVAÇÃO"]
             ordem_consolidada = ["Funcionário", "E-mail", "Dia da Semana", "Data", "Entrada", "Saída", "Hora Extra", "Saída Almoço", "Retorno Almoço", "Justificativa Entrada", "Justificativa Saída Almoço", "Justificativa Retorno Almoço", "Justificativa Saída", "OBSERVAÇÃO"]
             
-            # Lista global de datas 100% dentro da função (Formato: DD/MM/AAAA)
             datas_100_porcento = ["04/06/2026", "09/07/2026", "07/09/2026", "12/10/2026", "02/11/2026", "15/11/2026", "20/11/2026", "25/12/2026"]
         
-            # --- FLUXO 1: CONSOLIDADO (incluir_usuario_info = True) ---
             if incluir_usuario_info:
                 if not dados:
                     return pd.DataFrame()
@@ -1787,7 +1703,6 @@ elif opcao == "RELATÓRIO":
                 df_res = pd.DataFrame(linhas_processadas)
                 return df_res[[c for c in ordem_consolidada if c in df_res.columns]]
         
-            # --- FLUXO 2: INDIVIDUAL / TELA (incluir_usuario_info = False) ---
             lista_datas = []
             curr_date = dt_inicio
             while curr_date <= dt_fim:
@@ -1810,7 +1725,7 @@ elif opcao == "RELATÓRIO":
             linhas_processadas = []
             for dt in lista_datas: 
                 data_iso = dt.strftime("%Y-%m-%d")
-                data_atual_str = dt.strftime("%d/%m/%Y") # Formato para cruzar com datas_100_porcento
+                data_atual_str = dt.strftime("%d/%m/%Y")
                 item = dados_por_data.get(data_iso, {})
         
                 linha = {}
@@ -1847,7 +1762,6 @@ elif opcao == "RELATÓRIO":
                 if dt_entrada and dt_saida:
                     segundos_trabalhados = int((dt_saida - dt_entrada).total_seconds())
                     
-                    # CORREÇÃO AQUI: Adicionado a validação de data especial para a visualização individual da tela
                     if dia_da_semana_numero in [5, 6] or data_atual_str in datas_100_porcento:
                         segundos_extras = segundos_trabalhados
                     else:
@@ -1860,83 +1774,6 @@ elif opcao == "RELATÓRIO":
                         hora_extra_str = f"{horas_ext:02d}:{minutos_ext:02d}"
                 
                 linha["Hora Extra"] = hora_extra_str
-                linha["Justificativa Entrada"] = item.get("justificativa_entrada", "") or ""
-                linha["Justificativa Saída Almoço"] = item.get("justificativa_saida_almoco", "") or ""
-                linha["Justificativa Retorno Almoço"] = item.get("justificativa_retorno_almoco", "") or ""
-                linha["Justificativa Saída"] = item.get("justificativa_saida", "") or ""
-                linha["OBSERVAÇÃO"] = item.get("observacao", "") or ""
-                linhas_processadas.append(linha)
-        
-            df_res = pd.DataFrame(linhas_processadas)
-            return df_res[[c for c in ordem_individual if c in df_res.columns]]
-            
-            lista_datas = []
-            curr_date = dt_inicio
-            while curr_date <= dt_fim:
-                lista_datas.append(curr_date)
-                curr_date += timedelta(days=1)
-        
-            dados_por_data = {}
-            if dados:
-                for item in dados:
-                    dt_banco = item.get("data")
-                    if dt_banco:
-                        if isinstance(dt_banco, str):
-                            dt_key = dt_banco[:10]
-                        elif hasattr(dt_banco, "strftime"):
-                            dt_key = dt_banco.strftime("%Y-%m-%d")
-                        else:
-                            dt_key = str(dt_banco)[:10]
-                        dados_por_data[dt_key] = item
-        
-            linhas_processadas = []
-            for dt in lista_datas:
-                data_iso = dt.strftime("%Y-%m-%d")
-                item = dados_por_data.get(data_iso, {})
-        
-                linha = {}
-                linha["Dia da Semana"] = dias_semana[dt.weekday()]
-                
-                if formatar_data_br:
-                    linha["Data"] = dt.strftime("%d/%m/%Y")
-                else:
-                    linha["Data"] = data_iso
-        
-                dt_entrada, dt_saida = None, None
-                for col_banco, col_df in [
-                    ("horario_entrada", "Entrada"),
-                    ("saida_almoco", "Saída Almoço"),
-                    ("retorno_almoco", "Retorno Almoço"),
-                    ("horario_saida", "Saída")
-                ]:
-                    valor = item.get(col_banco)
-                    if valor:
-                        try:
-                            dt_objeto = datetime.fromisoformat(valor).astimezone(fuso_br)
-                            linha[col_df] = dt_objeto.strftime("%H:%M:%S")
-                            if col_banco == "horario_entrada":
-                                dt_entrada = dt_objeto
-                            elif col_banco == "horario_saida":
-                                dt_saida = dt_objeto
-                        except Exception:
-                            linha[col_df] = ""
-                    else:
-                        linha[col_df] = ""
-        
-                hora_extra_str = "00:00"
-                if dt_entrada and dt_saida:
-                    segundos_trabalhados = int((dt_saida - dt_entrada).total_seconds())
-                    jornada_limite_segundos = 9 * 3600
-                    if segundos_trabalhados > jornada_limite_segundos:
-                        segundos_extras = segundos_trabalhados - jornada_limite_segundos
-                        horas_ext = segundos_extras // 3600
-                        minutos_ext = (segundos_extras % 3600) // 60
-                        hora_extra_str = f"{horas_ext:02d}:{minutos_ext:02d}"
-                
-                linha["Hora Extra"] = hora_extra_str
-                
-                # 2. Capturando a observação do banco de dados no fluxo individual
-                
                 linha["Justificativa Entrada"] = item.get("justificativa_entrada", "") or ""
                 linha["Justificativa Saída Almoço"] = item.get("justificativa_saida_almoco", "") or ""
                 linha["Justificativa Retorno Almoço"] = item.get("justificativa_retorno_almoco", "") or ""
@@ -2009,12 +1846,10 @@ elif opcao == "RELATÓRIO":
 
             if gerar_csv_integracao:
                 with st.spinner("Gerando CSV(s) de integração..."):
-                    # --- CSV INDIVIDUAL (colaborador atualmente selecionado na tela) ---
                     df_csv_ind = processar_dados_ponto(dados_pessoais, data_inicio, data_fim, incluir_usuario_info=False, formatar_data_br=True)
                     st.session_state.csv_integ_individual = converter_para_csv_integracao(df_csv_ind)
                     st.session_state.csv_integ_individual_nome = f"CSV_Integracao_{nome_busca.replace(' ', '_')}_{data_inicio}_a_{data_fim}.csv"
 
-                    # --- CSV CONSOLIDADO (Supervisor -> própria célula | Master -> todos os colaboradores) ---
                     todos_usuarios_csv = []
                     inicio_pag, passo_pag = 0, 1000
                     while True:
@@ -2107,7 +1942,6 @@ elif opcao == "RELATÓRIO":
                     sucessos = 0
                     erros = 0
                     
-                    # 3. Mapeando a coluna para a tabela do Supabase ('observacao')
                     mapeamento_colunas_db = {
                         "Entrada": "horario_entrada",
                         "Justificativa Entrada": "justificativa_entrada",
@@ -2220,10 +2054,8 @@ elif opcao == "RELATÓRIO":
                         st.success(f"✅ Sucesso! Foram atualizadas as alterações de {sucessos} linha(s) para {nome_busca}.")
                         st.rerun()
         else:
-            # 4. Caso o usuário NÃO seja Supervisor/Master, renderiza apenas um DataFrame comum (Sem opção de edição)
             st.dataframe(df_visualizacao, use_container_width=True, hide_index=True, column_order=ordem_colunas_tela)
         
-        # --- PROCESSAMENTO E EXPORTAÇÃO INDIVIDUAL ---
         df_exportar_ind = processar_dados_ponto(dados_pessoais, data_inicio, data_fim, incluir_usuario_info=False, formatar_data_br=True)
         dados_excel_ind = converter_para_excel_individual(df_exportar_ind)
         dados_pdf_ind = converter_para_pdf_individual(df_exportar_ind, nome_busca, email_busca, mapeamento_celulas)
@@ -2248,7 +2080,6 @@ elif opcao == "RELATÓRIO":
                 use_container_width=True
             )
 
-        # --- SEÇÃO DE EXPORTAÇÃO CONSOLIDADA POR CARGOS GESTORES ---
         if cargo_usuario in ["Supervisor", "Master"]:
             st.write("---")
             st.markdown("### 🗂️ Exportação Geral da Equipe (Consolidada)")
@@ -2256,7 +2087,6 @@ elif opcao == "RELATÓRIO":
             opcao_consolidada = "Minha Célula"
             celulas_disponiveis = []
             
-            # 1. BUSCA PAGINADA DE USUÁRIOS (Evita que a própria lista de funcionários corte em 1000)
             todos_usuarios_banco = []
             inicio_user = 0
             passo_user = 1000
@@ -2301,7 +2131,6 @@ elif opcao == "RELATÓRIO":
             if st.button("📊 Processar e Gerar Relatório Consolidado", use_container_width=True, type="primary"):
                 with st.spinner("Processando dados e compilando relatórios da equipe..."):
                     
-                    # Filtragem inicial de quais usuários devem ser processados nesta rodada
                     if cargo_usuario == "Supervisor":
                         target_celula = str(celula_usuario).strip().lower()
                         usuarios_alvo = [u for u in todos_usuarios_banco if str(u.get("celula", "")).strip().lower() == target_celula]
@@ -2318,7 +2147,6 @@ elif opcao == "RELATÓRIO":
         
                     dfs_equipe = []
                     
-                    # 2. SEGREDO DO DRIBLE: Buscamos os pontos individualmente por funcionário (Igual à tela individual)
                     for u in usuarios_alvo:
                         u_email = str(u["email"]).strip().lower()
                         u_nome = str(u.get("nome", "Sem Nome")).strip()
@@ -2328,13 +2156,10 @@ elif opcao == "RELATÓRIO":
                             resposta_direta = supabase.table("registro_ponto").select("*").eq("email", u_email).execute()
                             
                             if resposta_direta.data:
-                                # 1. Padroniza as datas do Streamlit para string (YYYY-MM-DD)
                                 str_inicio = data_inicio.strftime("%Y-%m-%d") if hasattr(data_inicio, "strftime") else str(data_inicio)
                                 str_fim = data_fim.strftime("%Y-%m-%d") if hasattr(data_fim, "strftime") else str(data_fim)
                                 
-                                # 2. Filtra comparando strings de forma segura
                                 for r in resposta_direta.data:
-                                    # Captura o campo de data e garante que pegamos apenas os 10 primeiros caracteres (YYYY-MM-DD)
                                     data_crua = str(r.get("data") or r.get("data_registro") or "")
                                     data_linha = data_crua[:10] 
                                     
@@ -2345,11 +2170,9 @@ elif opcao == "RELATÓRIO":
                             st.error(f"Erro ao buscar dados no banco para {u_nome} ({u_email}): {db_err}")
                             continue
         
-                        # Roda a mesma esteira de tratamento do relatório individual
                         df_user_limpo = processar_dados_ponto(dados_pessoais_user, data_inicio, data_fim, incluir_usuario_info=False, formatar_data_br=True)
                         
                         if df_user_limpo is not None and not df_user_limpo.empty:
-                            # Injeta as colunas de controle essenciais para a montagem e ordenação do PDF estruturado
                             df_user_limpo["Funcionário"] = u_nome
                             df_user_limpo["E-mail"] = u_email
                             dfs_equipe.append(df_user_limpo)
@@ -2359,8 +2182,6 @@ elif opcao == "RELATÓRIO":
                         st.session_state.processamento_concluido = False
                     else:
                         df_filtrado = pd.concat(dfs_equipe, ignore_index=True)
-                        
-                        # Ordenação alfabética final garantida antes de ir para os arquivos
                         df_filtrado = df_filtrado.sort_values(by="Funcionário", key=lambda col: col.str.lower(), kind="mergesort")
                         
                         st.session_state.dados_excel_consolidado = converter_para_excel_multiaba(df_filtrado)
