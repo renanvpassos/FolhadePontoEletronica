@@ -264,24 +264,6 @@ def exibir_intro():
     
     return intro_placeholder
 
-def get_logo_base64():
-    """Obtém a logo em base64"""
-    try:
-        # Tenta carregar do arquivo local
-        with open("logoMult.png", "rb") as img_file:
-            return base64.b64encode(img_file.read()).decode()
-    except:
-        # Fallback: imagem placeholder
-        return "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
-
-# ==========================================
-# INICIALIZAÇÃO - EXIBE INTRO ENQUANTO CARREGA
-# ==========================================
-if 'intro_exibida' not in st.session_state:
-    # Exibe a intro
-    exibir_intro()
-    st.session_state['intro_exibida'] = True
-
 def converter_para_csv_integracao(df):
     """
     Gera o CSV de integração a partir de um DataFrame de relatório (individual ou consolidado).
