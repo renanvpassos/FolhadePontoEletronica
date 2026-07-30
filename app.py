@@ -805,6 +805,152 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
     doc.build(story)
     output.seek(0)
     return output.getvalue()
+
+
+def converter_para_pdf_consolidado_tabela(df, data_inicio, data_fim):
+    output = BytesIO()
+    doc = SimpleDocTemplate(
+        output,
+        pagesize=landscape(A4),
+        rightMargin=15, leftMargin=15, topMargin=12, bottomMargin=12
+    )
+    story = []
+    styles = getSampleStyleSheet()
+
+    title_style = ParagraphStyle(
+        'TituloTabelaPDF',
+        parent=styles['Heading1'],
+        fontSize=13,
+        textColor=colors.HexColor("#1E3A8A"),
+        spaceAfter=6,
+        alignment=1
+    )
+    subtitulo_style = ParagraphStyle(
+        'SubtituloTabelaPDF',
+        parent=styles['Normal'],
+        fontSize=9,
+        leading=11,
+        textColor=colors.HexColor("#374151"),
+        spaceAfter=8
+    )
+    header_style = ParagraphStyle(
+        'HeaderTabelaPDF',
+        parent=styles['Normal'],
+        fontSize=8.2,
+        leading=10,
+        textColor=colors.white,
+        fontName="Helvetica-Bold",
+        alignment=1
+    )
+    cell_style = ParagraphStyle(
+        'CelulaTabelaPDF',
+        parent=styles['Normal'],
+        fontSize=8,
+        leading=9,
+        fontName="Helvetica",
+        alignment=1
+    )
+    nome_style = ParagraphStyle(
+        'NomeColaboradorPDF',
+        parent=styles['Normal'],
+        fontSize=9.5,
+        leading=10,
+        fontName="Helvetica-Bold",
+        textColor=colors.HexColor("#1F2937"),
+        spaceBefore=6,
+        spaceAfter=4
+    )
+
+    df_copy = df.copy()
+    df_copy = df_copy.rename(columns={
+        "Funcionário": "Nome colaborador",
+        "Entrada": "Horário da Entrada",
+        "Saída Almoço": "Horário Saída Almoço",
+        "Retorno Almoço": "Retorno Almoço",
+        "Saída": "Saída"
+    })
+
+    colunas_necessarias = [
+        "Dia da Semana",
+        "Data",
+        "Nome colaborador",
+        "Horário da Entrada",
+        "Horário Saída Almoço",
+        "Retorno Almoço",
+        "Saída"
+    ]
+
+    df_copy = df_copy[[c for c in colunas_necessarias if c in df_copy.columns]].copy()
+    df_copy = df_copy.fillna("")
+
+    if "Data" in df_copy.columns:
+        df_copy["__data_ord"] = pd.to_datetime(df_copy["Data"], format="%d/%m/%Y", errors="coerce")
+        df_copy = df_copy.sort_values(by=["Nome colaborador", "__data_ord"], key=lambda col: col.str.lower() if col.name != "__data_ord" else col, kind="mergesort")
+        df_copy = df_copy.drop(columns=["__data_ord"])
+
+    story.append(Paragraph("Relatório Consolidado em Tabela", title_style))
+    story.append(Paragraph(
+        f"Período: {data_inicio.strftime('%d/%m/%Y')} a {data_fim.strftime('%d/%m/%Y')}",
+        subtitulo_style
+    ))
+    story.append(Spacer(1, 4))
+
+    nomes_colaboradores = sorted(
+        df_copy["Nome colaborador"].astype(str).str.strip().unique(),
+        key=lambda valor: valor.lower()
+    )
+
+    for idx, nome_colab in enumerate(nomes_colaboradores):
+        dados_colab = df_copy[df_copy["Nome colaborador"].astype(str).str.strip() == nome_colab].copy()
+        if dados_colab.empty:
+            continue
+
+        dados_tabela = [[
+            Paragraph("Dia da semana", header_style),
+            Paragraph("Data", header_style),
+            Paragraph("Nome colaborador", header_style),
+            Paragraph("Horário da Entrada", header_style),
+            Paragraph("Horário Saída Almoço", header_style),
+            Paragraph("Retorno Almoço", header_style),
+            Paragraph("Saída", header_style),
+        ]]
+
+        for _, row in dados_colab.iterrows():
+            dados_tabela.append([
+                Paragraph(str(row.get("Dia da Semana", "")), cell_style),
+                Paragraph(str(row.get("Data", "")), cell_style),
+                Paragraph(str(row.get("Nome colaborador", "")), cell_style),
+                Paragraph(str(row.get("Horário da Entrada", "")), cell_style),
+                Paragraph(str(row.get("Horário Saída Almoço", "")), cell_style),
+                Paragraph(str(row.get("Retorno Almoço", "")), cell_style),
+                Paragraph(str(row.get("Saída", "")), cell_style),
+            ])
+
+        tabela = Table(
+            dados_tabela,
+            colWidths=[70, 70, 120, 90, 90, 80, 70],
+            repeatRows=1
+        )
+        tabela.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#1E3A8A")),
+            ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor("#D1D5DB")),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor("#F9FAFB")]),
+            ('TOPPADDING', (0, 0), (-1, -1), 3),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+            ('LEFTPADDING', (0, 0), (-1, -1), 3),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+        ]))
+
+        story.append(Paragraph(f"<b>{nome_colab}</b>", nome_style))
+        story.append(tabela)
+        if idx < len(nomes_colaboradores) - 1:
+            story.append(Spacer(1, 8))
+
+    doc.build(story)
+    output.seek(0)
+    return output.getvalue()
     
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Sistema de Ponto Eletrônico", page_icon="⏱️", layout="centered")
@@ -2056,6 +2202,8 @@ elif opcao == "RELATÓRIO":
                 st.session_state.dados_excel_consolidado = None
             if "dados_pdf_consolidado" not in st.session_state:
                 st.session_state.dados_pdf_consolidado = None
+            if "dados_pdf_consolidado_tabela" not in st.session_state:
+                st.session_state.dados_pdf_consolidado_tabela = None
             if "nome_arquivo_base" not in st.session_state:
                 st.session_state.nome_arquivo_base = ""
             if "processamento_concluido" not in st.session_state:
@@ -2119,13 +2267,14 @@ elif opcao == "RELATÓRIO":
                         
                         st.session_state.dados_excel_consolidado = converter_para_excel_multiaba(df_filtrado)
                         st.session_state.dados_pdf_consolidado = converter_para_pdf_consolidado(df_filtrado, mapeamento_celulas_db, data_inicio, data_fim)
+                        st.session_state.dados_pdf_consolidado_tabela = converter_para_pdf_consolidado_tabela(df_filtrado, data_inicio, data_fim)
                         st.session_state.nome_arquivo_base = prefixo_nome
                         st.session_state.processamento_concluido = True
         
             if st.session_state.processamento_concluido:
                 st.success("✅ Relatórios consolidados gerados com sucesso! Escolha o formato para baixar:")
                 
-                col_down1, col_down2 = st.columns(2)
+                col_down1, col_down2, col_down3 = st.columns(3)
                 with col_down1:
                     st.download_button(
                         label="📥 Baixar em Excel (.xlsx)",
@@ -2139,6 +2288,14 @@ elif opcao == "RELATÓRIO":
                         label="📄 Baixar em PDF (.pdf)",
                         data=st.session_state.dados_pdf_consolidado,
                         file_name=f"{st.session_state.nome_arquivo_base}_{data_inicio}_a_{data_fim}.pdf",
+                        mime="application/pdf",
+                        use_container_width=True
+                    )
+                with col_down3:
+                    st.download_button(
+                        label="📋 Baixar em PDF (Tabela)",
+                        data=st.session_state.dados_pdf_consolidado_tabela,
+                        file_name=f"{st.session_state.nome_arquivo_base}_Tabela_{data_inicio}_a_{data_fim}.pdf",
                         mime="application/pdf",
                         use_container_width=True
                     )
