@@ -196,7 +196,7 @@ if 'intro_exibida' not in st.session_state:
 
 # Adicione esta função NO INÍCIO do arquivo, junto com as outras funções de conversão
 
-def converter_para_pdf_tabela_resumida(df_tabela, nome_empresa="Empresa"):
+def converter_para_pdf_tabela_resumida(df_tabela, nome_empresa="Empresa", data_inicio=None, data_fim=None):
     """
     Converte a tabela resumida para PDF
     Formato: Nome colaborador, Horário de entrada, Horário de saida de almoço,
@@ -210,6 +210,30 @@ def converter_para_pdf_tabela_resumida(df_tabela, nome_empresa="Empresa"):
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.enums import TA_CENTER, TA_LEFT
     from datetime import datetime
+    
+    # Verifica se o DataFrame está vazio
+    if df_tabela is None or df_tabela.empty:
+        # Retorna um PDF vazio com mensagem
+        output = BytesIO()
+        doc = SimpleDocTemplate(
+            output,
+            pagesize=landscape(A4),
+            rightMargin=30,
+            leftMargin=30,
+            topMargin=30,
+            bottomMargin=30
+        )
+        
+        styles = getSampleStyleSheet()
+        elementos = []
+        titulo = Paragraph("RELATÓRIO CONSOLIDADO - COLABORADORES", styles['Heading1'])
+        elementos.append(titulo)
+        elementos.append(Spacer(1, 20))
+        mensagem = Paragraph("Nenhum dado encontrado para o período selecionado.", styles['Normal'])
+        elementos.append(mensagem)
+        doc.build(elementos)
+        output.seek(0)
+        return output.getvalue()
     
     output = BytesIO()
     
@@ -268,27 +292,48 @@ def converter_para_pdf_tabela_resumida(df_tabela, nome_empresa="Empresa"):
     elementos.append(titulo)
     
     # Subtítulo com período
-    periodo = f"Período: {data_inicio.strftime('%d/%m/%Y')} a {data_fim.strftime('%d/%m/%Y')}"
-    subtitulo = Paragraph(periodo, subtitulo_style)
-    elementos.append(subtitulo)
-    elementos.append(Spacer(1, 10))
+    if data_inicio and data_fim:
+        if hasattr(data_inicio, 'strftime'):
+            periodo = f"Período: {data_inicio.strftime('%d/%m/%Y')} a {data_fim.strftime('%d/%m/%Y')}"
+        else:
+            periodo = f"Período: {data_inicio} a {data_fim}"
+        subtitulo = Paragraph(periodo, subtitulo_style)
+        elementos.append(subtitulo)
+        elementos.append(Spacer(1, 10))
     
     # Define as colunas (somente as solicitadas)
     colunas = ["Funcionário", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída"]
+    
+    # Verifica quais colunas existem no DataFrame
+    colunas_existentes = [col for col in colunas if col in df_tabela.columns]
+    
+    # Se não houver colunas existentes, usa as que estão disponíveis
+    if not colunas_existentes:
+        colunas_existentes = list(df_tabela.columns)
     
     # Prepara os dados para a tabela
     dados_tabela = []
     
     # Adiciona cabeçalho
-    dados_tabela.append([Paragraph(col, cabecalho_style) for col in colunas])
+    dados_tabela.append([Paragraph(col, cabecalho_style) for col in colunas_existentes])
     
-    # Adiciona os dados
-    for _, row in df_tabela.iterrows():
-        linha = []
-        for col in colunas:
-            valor = str(row.get(col, "")) if row.get(col) else ""
-            linha.append(Paragraph(valor, celula_style))
-        dados_tabela.append(linha)
+    # Adiciona os dados - corrigido o erro de iteração
+    try:
+        for idx in range(len(df_tabela)):
+            row = df_tabela.iloc[idx]
+            linha = []
+            for col in colunas_existentes:
+                valor = str(row.get(col, "")) if col in row.index and row.get(col) is not None else ""
+                linha.append(Paragraph(valor, celula_style))
+            dados_tabela.append(linha)
+    except Exception as e:
+        # Fallback: iterar usando iterrows
+        for _, row in df_tabela.iterrows():
+            linha = []
+            for col in colunas_existentes:
+                valor = str(row.get(col, "")) if col in row.index and row.get(col) is not None else ""
+                linha.append(Paragraph(valor, celula_style))
+            dados_tabela.append(linha)
     
     # Cria a tabela
     tabela = Table(dados_tabela, repeatRows=1, hAlign='CENTER')
@@ -304,11 +349,9 @@ def converter_para_pdf_tabela_resumida(df_tabela, nome_empresa="Empresa"):
         ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
         ('TOPPADDING', (0, 0), (-1, 0), 8),
         # Linhas
-        ('BACKGROUND', (0, 1), (-1, -1), colors.white),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
         ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
         ('FONTSIZE', (0, 1), (-1, -1), 8),
-        ('ALIGN', (1, 1), (-1, -1), 'CENTER'),  # Centraliza os horários
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('BOTTOMPADDING', (0, 1), (-1, -1), 5),
         ('TOPPADDING', (0, 1), (-1, -1), 5),
@@ -316,9 +359,8 @@ def converter_para_pdf_tabela_resumida(df_tabela, nome_empresa="Empresa"):
         ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f5f5f5')]),
     ])
     
-    # Aplica estilo à tabela
-    for i, col in enumerate(colunas):
-        # Define largura das colunas
+    # Define largura das colunas
+    for i, col in enumerate(colunas_existentes):
         if col == "Funcionário":
             estilo_tabela.add('COLWIDTHS', (i, i), 180)
         else:
@@ -2357,18 +2399,20 @@ elif opcao == "RELATÓRIO":
                       st.session_state.dados_pdf_consolidado = converter_para_pdf_consolidado(df_filtrado, mapeamento_celulas_db, data_inicio, data_fim)
                       
                       # Gera o PDF resumido se a opção estiver selecionada
-                      if opcao_visualizacao == "Tabela de Colaboradores (Resumo - PDF)":
-                          try:
-                              st.session_state.dados_pdf_resumido = converter_para_pdf_tabela_resumida(df_resumido)
-                          except Exception as e:
-                              st.error(f"Erro ao gerar PDF resumido: {e}")
-                              st.session_state.dados_pdf_resumido = None
-                      
-                      st.session_state.nome_arquivo_base = prefixo_nome
-                      st.session_state.processamento_concluido = True
-      
-          if st.session_state.processamento_concluido:
-              st.success("✅ Relatórios consolidados gerados com sucesso!")
+                     if opcao_visualizacao == "Tabela de Colaboradores (Resumo - PDF)":
+                        try:
+                            # Passa os parâmetros corretamente
+                            st.session_state.dados_pdf_resumido = converter_para_pdf_tabela_resumida(
+                                df_resumido, 
+                                data_inicio=data_inicio, 
+                                data_fim=data_fim
+                            )
+                        except Exception as e:
+                            st.error(f"Erro ao gerar PDF resumido: {e}")
+                            st.session_state.dados_pdf_resumido = None
+        
+            if st.session_state.processamento_concluido:
+                st.success("✅ Relatórios consolidados gerados com sucesso!")
               
               if opcao_visualizacao == "Tabela de Colaboradores (Resumo - PDF)":
                   # Botão para baixar apenas o PDF resumido
