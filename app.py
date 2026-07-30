@@ -208,7 +208,7 @@ def converter_para_pdf_tabela_resumida(df_tabela, data_inicio=None, data_fim=Non
     from datetime import datetime
     import pandas as pd
     
-    # Verifica se o DataFrame está vazio ou None
+    # Verifica se o DataFrame está vazio
     if df_tabela is None or df_tabela.empty:
         output = BytesIO()
         doc = SimpleDocTemplate(output, pagesize=landscape(A4))
@@ -221,30 +221,36 @@ def converter_para_pdf_tabela_resumida(df_tabela, data_inicio=None, data_fim=Non
         output.seek(0)
         return output.getvalue()
     
-    # Define as colunas que queremos
-    colunas_desejadas = ["Funcionário", "Dia da Semana", "Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída"]
+    # Define as colunas que queremos (ordem específica)
+    colunas_ordem = ["Funcionário", "Dia da Semana", "Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída"]
     
-    # Filtra apenas as colunas que existem no DataFrame
-    colunas_existentes = [col for col in colunas_desejadas if col in df_tabela.columns]
+    # Verifica quais colunas existem no DataFrame
+    colunas_existentes = []
+    for col in colunas_ordem:
+        if col in df_tabela.columns:
+            colunas_existentes.append(col)
     
-    # Se não encontrar nenhuma coluna, usa todas as colunas do DataFrame
+    # Se não encontrar nenhuma coluna, usa todas
     if not colunas_existentes:
         colunas_existentes = list(df_tabela.columns)
     
     # Prepara os dados para a tabela
     dados_tabela = []
     
-    # Adiciona cabeçalho
+    # Cabeçalho
     dados_tabela.append(colunas_existentes)
     
     # Adiciona os dados linha por linha
-    for i in range(len(df_tabela)):
+    for idx in range(len(df_tabela)):
         linha = []
         for col in colunas_existentes:
-            valor = df_tabela.iloc[i][col] if col in df_tabela.columns else ""
-            if pd.isna(valor):
-                valor = ""
-            linha.append(str(valor))
+            try:
+                valor = df_tabela.iloc[idx][col]
+                if pd.isna(valor):
+                    valor = ""
+                linha.append(str(valor))
+            except:
+                linha.append("")
         dados_tabela.append(linha)
     
     # Cria o PDF
@@ -2270,106 +2276,84 @@ elif opcao == "RELATÓRIO":
               st.session_state.processamento_concluido = False
       
           if st.button("📊 Processar e Gerar Relatório Consolidado", use_container_width=True, type="primary"):
-              with st.spinner("Processando dados e compilando relatórios da equipe..."):
-                  
-                  if cargo_usuario == "Supervisor":
-                      target_celula = str(celula_usuario).strip().lower()
-                      usuarios_alvo = [u for u in todos_usuarios_banco if str(u.get("celula", "")).strip().lower() == target_celula]
-                      prefixo_nome = f"Relatorio_Consolidado_Celula_{celula_usuario.replace(' ', '_')}"
-                  else:  
-                      if opcao_consolidada == "Todos os Colaboradores":
-                          usuarios_alvo = todos_usuarios_banco
-                          target_celula = "todos"
-                          prefixo_nome = "Relatorio_Consolidado_Todos_Colaboradores"
-                      else:
-                          target_celula = str(opcao_consolidada).strip().lower()
-                          usuarios_alvo = [u for u in todos_usuarios_banco if str(u.get("celula", "")).strip().lower() == target_celula]
-                          prefixo_nome = f"Relatorio_Consolidado_Celula_{opcao_consolidada.replace(' ', '_')}"
-      
-                  dfs_equipe = []
-                  dados_para_tabela = []
-                  
-                  for u in usuarios_alvo:
-                      u_email = str(u["email"]).strip().lower()
-                      u_nome = str(u.get("nome", "Sem Nome")).strip()
-                      
-                      dados_pessoais_user = []
-                      try:
-                          resposta_direta = supabase.table("registro_ponto").select("*").eq("email", u_email).execute()
-                          
-                          if resposta_direta.data:
-                              str_inicio = data_inicio.strftime("%Y-%m-%d") if hasattr(data_inicio, "strftime") else str(data_inicio)
-                              str_fim = data_fim.strftime("%Y-%m-%d") if hasattr(data_fim, "strftime") else str(data_fim)
-                              
-                              for r in resposta_direta.data:
-                                  data_crua = str(r.get("data") or r.get("data_registro") or "")
-                                  data_linha = data_crua[:10] 
-                                  
-                                  if str_inicio <= data_linha <= str_fim:
-                                      dados_pessoais_user.append(r)
-                                      
-                      except Exception as db_err:
-                          st.error(f"Erro ao buscar dados no banco para {u_nome} ({u_email}): {db_err}")
-                          continue
-      
-                      df_user_limpo = processar_dados_ponto(dados_pessoais_user, data_inicio, data_fim, incluir_usuario_info=False, formatar_data_br=True)
-                      
-                      if df_user_limpo is not None and not df_user_limpo.empty:
-                          df_user_limpo["Funcionário"] = u_nome
-                          df_user_limpo["E-mail"] = u_email
-                          dfs_equipe.append(df_user_limpo)
-                          
-                          # Coleta dados para o PDF resumido
-                          for _, row in df_user_limpo.iterrows():
-                              dados_para_tabela.append({
-                                  "Funcionário": u_nome,
-                                  "Data": row.get("Data", ""),
-                                  "Dia da Semana": row.get("Dia da Semana", ""),
-                                  "Entrada": row.get("Entrada", ""),
-                                  "Saída Almoço": row.get("Saída Almoço", ""),
-                                  "Retorno Almoço": row.get("Retorno Almoço", ""),
-                                  "Saída": row.get("Saída", "")
-                              })
-                  
-                  if not dfs_equipe:
-                      st.warning("Nenhum dado de ponto localizado para os critérios e período selecionados.")
-                      st.session_state.processamento_concluido = False
-                      st.session_state.dados_pdf_resumido = None
-                  else:
-                      df_filtrado = pd.concat(dfs_equipe, ignore_index=True)
-                      df_filtrado = df_filtrado.sort_values(by="Funcionário", key=lambda col: col.str.lower(), kind="mergesort")
-                      
-                      df_resumido = pd.DataFrame(dados_para_tabela)
-                      
-                      # Verifica se o DataFrame não está vazio e tem as colunas necessárias
-                      if not df_resumido.empty:
-                          # Garante que as colunas essenciais existam
-                          colunas_essenciais = ["Funcionário", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída"]
-                          for col in colunas_essenciais:
-                              if col not in df_resumido.columns:
-                                  df_resumido[col] = ""
-                          
-                          df_resumido = df_resumido.sort_values(["Funcionário", "Data"])
-                      else:
-                          # Cria um DataFrame com as colunas necessárias mesmo vazio
-                          df_resumido = pd.DataFrame(columns=["Funcionário", "Data", "Dia da Semana", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída"])
-                      
-                      # Armazena dados
-                      st.session_state.dados_excel_consolidado = converter_para_excel_multiaba(df_filtrado)
-                      st.session_state.dados_pdf_consolidado = converter_para_pdf_consolidado(df_filtrado, mapeamento_celulas_db, data_inicio, data_fim)
-                      
-                      # Gera o PDF resumido se a opção estiver selecionada
-                      if opcao_visualizacao == "Tabela de Colaboradores (Resumo - PDF)":
+            with st.spinner("Processando dados e compilando relatórios da equipe..."):
+                
+                if cargo_usuario == "Supervisor":
+                    target_celula = str(celula_usuario).strip().lower()
+                    usuarios_alvo = [u for u in todos_usuarios_banco if str(u.get("celula", "")).strip().lower() == target_celula]
+                    prefixo_nome = f"Relatorio_Consolidado_Celula_{celula_usuario.replace(' ', '_')}"
+                else:  
+                    if opcao_consolidada == "Todos os Colaboradores":
+                        usuarios_alvo = todos_usuarios_banco
+                        target_celula = "todos"
+                        prefixo_nome = "Relatorio_Consolidado_Todos_Colaboradores"
+                    else:
+                        target_celula = str(opcao_consolidada).strip().lower()
+                        usuarios_alvo = [u for u in todos_usuarios_banco if str(u.get("celula", "")).strip().lower() == target_celula]
+                        prefixo_nome = f"Relatorio_Consolidado_Celula_{opcao_consolidada.replace(' ', '_')}"
+        
+                dfs_equipe = []
+                
+                for u in usuarios_alvo:
+                    u_email = str(u["email"]).strip().lower()
+                    u_nome = str(u.get("nome", "Sem Nome")).strip()
+                    
+                    dados_pessoais_user = []
+                    try:
+                        resposta_direta = supabase.table("registro_ponto").select("*").eq("email", u_email).execute()
+                        
+                        if resposta_direta.data:
+                            str_inicio = data_inicio.strftime("%Y-%m-%d") if hasattr(data_inicio, "strftime") else str(data_inicio)
+                            str_fim = data_fim.strftime("%Y-%m-%d") if hasattr(data_fim, "strftime") else str(data_fim)
+                            
+                            for r in resposta_direta.data:
+                                data_crua = str(r.get("data") or r.get("data_registro") or "")
+                                data_linha = data_crua[:10] 
+                                
+                                if str_inicio <= data_linha <= str_fim:
+                                    dados_pessoais_user.append(r)
+                                    
+                    except Exception as db_err:
+                        st.error(f"Erro ao buscar dados no banco para {u_nome} ({u_email}): {db_err}")
+                        continue
+        
+                    df_user_limpo = processar_dados_ponto(dados_pessoais_user, data_inicio, data_fim, incluir_usuario_info=False, formatar_data_br=True)
+                    
+                    if df_user_limpo is not None and not df_user_limpo.empty:
+                        df_user_limpo["Funcionário"] = u_nome
+                        df_user_limpo["E-mail"] = u_email
+                        dfs_equipe.append(df_user_limpo)
+                
+                if not dfs_equipe:
+                    st.warning("Nenhum dado de ponto localizado para os critérios e período selecionados.")
+                    st.session_state.processamento_concluido = False
+                    st.session_state.dados_pdf_resumido = None
+                else:
+                    # Concatena todos os DataFrames
+                    df_filtrado = pd.concat(dfs_equipe, ignore_index=True)
+                    df_filtrado = df_filtrado.sort_values(by="Funcionário", key=lambda col: col.str.lower(), kind="mergesort")
+                    
+                    # Armazena o DataFrame completo
+                    st.session_state.df_consolidado = df_filtrado
+                    
+                    # Gera os relatórios
+                    st.session_state.dados_excel_consolidado = converter_para_excel_multiaba(df_filtrado)
+                    st.session_state.dados_pdf_consolidado = converter_para_pdf_consolidado(df_filtrado, mapeamento_celulas_db, data_inicio, data_fim)
+                    
+                    # Gera o PDF resumido usando o DataFrame consolidado
+                    if opcao_visualizacao == "Tabela de Colaboradores (Resumo - PDF)":
                         try:
-                            # Pega apenas as colunas necessárias para o PDF
+                            # Pega apenas as colunas desejadas do DataFrame consolidado
                             colunas_pdf = ["Funcionário", "Dia da Semana", "Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída"]
                             
                             # Filtra o DataFrame para ter apenas essas colunas
-                            df_pdf = df_resumido[colunas_pdf].copy() if not df_resumido.empty else pd.DataFrame(columns=colunas_pdf)
+                            df_pdf = df_filtrado[colunas_pdf].copy()
+                            
+                            # Remove linhas onde todos os horários estão vazios (opcional)
+                            # df_pdf = df_pdf[df_pdf[["Entrada", "Saída Almoço", "Retorno Almoço", "Saída"]].notna().any(axis=1)]
                             
                             # Ordena por Funcionário e Data
-                            if not df_pdf.empty:
-                                df_pdf = df_pdf.sort_values(["Funcionário", "Data"])
+                            df_pdf = df_pdf.sort_values(["Funcionário", "Data"])
                             
                             st.session_state.dados_pdf_resumido = converter_para_pdf_tabela_resumida(
                                 df_pdf, 
@@ -2378,7 +2362,12 @@ elif opcao == "RELATÓRIO":
                             )
                         except Exception as e:
                             st.error(f"Erro ao gerar PDF resumido: {e}")
+                            import traceback
+                            st.error(traceback.format_exc())
                             st.session_state.dados_pdf_resumido = None
+                    
+                    st.session_state.nome_arquivo_base = prefixo_nome
+                    st.session_state.processamento_concluido = True
       
           if st.session_state.processamento_concluido:
               st.success("✅ Relatórios consolidados gerados com sucesso!")
