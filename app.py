@@ -900,6 +900,13 @@ def converter_para_pdf_consolidado_tabela(df, data_inicio, data_fim):
         key=lambda valor: valor.lower()
     )
 
+    maior_nome_colaborador = max(
+        [nome for nome in nomes_colaboradores if str(nome).strip()],
+        key=lambda valor: len(str(valor).strip()),
+        default=""
+    )
+    largura_nome = max(120, min(260, len(str(maior_nome_colaborador).strip()) * 7 + 20))
+
     for idx, nome_colab in enumerate(nomes_colaboradores):
         dados_colab = df_copy[df_copy["Nome colaborador"].astype(str).str.strip() == nome_colab].copy()
         if dados_colab.empty:
@@ -926,7 +933,6 @@ def converter_para_pdf_consolidado_tabela(df, data_inicio, data_fim):
                 Paragraph(str(row.get("Saída", "")), cell_style),
             ])
 
-        largura_nome = max(120, min(240, len(nome_colab) * 7 + 20))
         colunas_larguras = [70, 70, largura_nome, 90, 90, 80, 70]
         tabela = Table(
             dados_tabela,
