@@ -194,11 +194,10 @@ if 'intro_exibida' not in st.session_state:
     exibir_intro()
     st.session_state['intro_exibida'] = True
 
-def converter_para_pdf_tabela_resumida(df_tabela, nome_empresa="Empresa", data_inicio=None, data_fim=None):
+def converter_para_pdf_tabela_resumida(df_tabela, data_inicio=None, data_fim=None):
     """
     Converte a tabela resumida para PDF
-    Formato: Nome colaborador, Horário de entrada, Horário de saida de almoço,
-    horário de retorno de almoço e horário de saida
+    Colunas: Colaborador, Dia da semana, Data, Entrada, Saída Almoço, Retorno Almoço, Saída
     """
     from io import BytesIO
     from reportlab.lib.pagesizes import A4, landscape
@@ -207,246 +206,136 @@ def converter_para_pdf_tabela_resumida(df_tabela, nome_empresa="Empresa", data_i
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.enums import TA_CENTER, TA_LEFT
     from datetime import datetime
+    import pandas as pd
     
     # Verifica se o DataFrame está vazio ou None
-    if df_tabela is None:
-        df_tabela = pd.DataFrame()
-    
-    if df_tabela.empty:
-        # Retorna um PDF com mensagem de dados vazios
+    if df_tabela is None or df_tabela.empty:
         output = BytesIO()
-        doc = SimpleDocTemplate(
-            output,
-            pagesize=landscape(A4),
-            rightMargin=30,
-            leftMargin=30,
-            topMargin=30,
-            bottomMargin=30
-        )
-        
+        doc = SimpleDocTemplate(output, pagesize=landscape(A4))
         styles = getSampleStyleSheet()
         elementos = []
-        titulo = Paragraph("RELATÓRIO CONSOLIDADO - COLABORADORES", styles['Heading1'])
-        elementos.append(titulo)
+        elementos.append(Paragraph("RELATÓRIO CONSOLIDADO - COLABORADORES", styles['Heading1']))
         elementos.append(Spacer(1, 20))
-        
-        # Período
-        if data_inicio and data_fim:
-            if hasattr(data_inicio, 'strftime'):
-                periodo = f"Período: {data_inicio.strftime('%d/%m/%Y')} a {data_fim.strftime('%d/%m/%Y')}"
-            else:
-                periodo = f"Período: {data_inicio} a {data_fim}"
-            subtitulo = Paragraph(periodo, styles['Normal'])
-            elementos.append(subtitulo)
-            elementos.append(Spacer(1, 10))
-        
-        mensagem = Paragraph("Nenhum dado encontrado para o período selecionado.", styles['Normal'])
-        elementos.append(mensagem)
+        elementos.append(Paragraph("Nenhum dado encontrado para o período selecionado.", styles['Normal']))
         doc.build(elementos)
         output.seek(0)
         return output.getvalue()
     
-    output = BytesIO()
+    # Define as colunas que queremos
+    colunas_desejadas = ["Funcionário", "Dia da Semana", "Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída"]
     
-    # Configura o documento em modo paisagem
-    doc = SimpleDocTemplate(
-        output,
-        pagesize=landscape(A4),
-        rightMargin=30,
-        leftMargin=30,
-        topMargin=30,
-        bottomMargin=30
-    )
+    # Filtra apenas as colunas que existem no DataFrame
+    colunas_existentes = [col for col in colunas_desejadas if col in df_tabela.columns]
     
-    # Estilos
-    styles = getSampleStyleSheet()
-    titulo_style = ParagraphStyle(
-        'TituloStyle',
-        parent=styles['Heading1'],
-        fontSize=14,
-        alignment=TA_CENTER,
-        spaceAfter=20,
-        fontName='Helvetica-Bold'
-    )
-    
-    subtitulo_style = ParagraphStyle(
-        'SubtituloStyle',
-        parent=styles['Normal'],
-        fontSize=10,
-        alignment=TA_CENTER,
-        spaceAfter=15,
-        fontName='Helvetica'
-    )
-    
-    cabecalho_style = ParagraphStyle(
-        'CabecalhoStyle',
-        parent=styles['Normal'],
-        fontSize=9,
-        alignment=TA_CENTER,
-        fontName='Helvetica-Bold',
-        textColor=colors.white
-    )
-    
-    celula_style = ParagraphStyle(
-        'CelulaStyle',
-        parent=styles['Normal'],
-        fontSize=8,
-        alignment=TA_LEFT,
-        fontName='Helvetica'
-    )
-    
-    # Prepara os dados para a tabela
-    elementos = []
-    
-    # Título
-    titulo = Paragraph("RELATÓRIO CONSOLIDADO - COLABORADORES", titulo_style)
-    elementos.append(titulo)
-    
-    # Subtítulo com período
-    if data_inicio and data_fim:
-        if hasattr(data_inicio, 'strftime'):
-            periodo = f"Período: {data_inicio.strftime('%d/%m/%Y')} a {data_fim.strftime('%d/%m/%Y')}"
-        else:
-            periodo = f"Período: {data_inicio} a {data_fim}"
-        subtitulo = Paragraph(periodo, subtitulo_style)
-        elementos.append(subtitulo)
-        elementos.append(Spacer(1, 10))
-    
-    # Define as colunas que devem ser exibidas
-    colunas_desejadas = ["Funcionário", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída"]
-    
-    # Verifica quais colunas existem no DataFrame
-    colunas_existentes = []
-    for col in colunas_desejadas:
-        if col in df_tabela.columns:
-            colunas_existentes.append(col)
-    
-    # Se nenhuma coluna desejada existir, usa todas as colunas do DataFrame
+    # Se não encontrar nenhuma coluna, usa todas as colunas do DataFrame
     if not colunas_existentes:
         colunas_existentes = list(df_tabela.columns)
-        # Remove colunas que não são necessárias se houver muitas
-        colunas_existentes = [col for col in colunas_existentes if col not in ['E-mail', 'Dia da Semana', 'Data', 'Hora Extra', 'OBSERVAÇÃO']]
-        if not colunas_existentes:
-            colunas_existentes = list(df_tabela.columns)
     
     # Prepara os dados para a tabela
     dados_tabela = []
     
     # Adiciona cabeçalho
-    cabecalho = []
-    for col in colunas_existentes:
-        cabecalho.append(Paragraph(col, cabecalho_style))
-    dados_tabela.append(cabecalho)
+    dados_tabela.append(colunas_existentes)
     
-    # Adiciona os dados - usando iteração segura
-    try:
-        # Tenta usar iterrows primeiro (mais seguro)
-        for index, row in df_tabela.iterrows():
-            linha = []
-            for col in colunas_existentes:
+    # Adiciona os dados linha por linha
+    for i in range(len(df_tabela)):
+        linha = []
+        for col in colunas_existentes:
+            valor = df_tabela.iloc[i][col] if col in df_tabela.columns else ""
+            if pd.isna(valor):
                 valor = ""
-                if col in row.index and row[col] is not None:
-                    valor = str(row[col])
-                linha.append(Paragraph(valor, celula_style))
-            dados_tabela.append(linha)
-    except Exception as e:
-        # Fallback: usar iloc
-        try:
-            for i in range(len(df_tabela)):
-                linha = []
-                for col in colunas_existentes:
-                    valor = ""
-                    if col in df_tabela.columns:
-                        val = df_tabela.iloc[i][col]
-                        if val is not None:
-                            valor = str(val)
-                    linha.append(Paragraph(valor, celula_style))
-                dados_tabela.append(linha)
-        except Exception as e2:
-            # Último fallback: usar valores do DataFrame diretamente
-            for i in range(len(df_tabela)):
-                linha = []
-                for col in colunas_existentes:
-                    valor = ""
-                    try:
-                        val = df_tabela[col].iloc[i]
-                        if val is not None:
-                            valor = str(val)
-                    except:
-                        valor = ""
-                    linha.append(Paragraph(valor, celula_style))
-                dados_tabela.append(linha)
+            linha.append(str(valor))
+        dados_tabela.append(linha)
+    
+    # Cria o PDF
+    output = BytesIO()
+    doc = SimpleDocTemplate(
+        output,
+        pagesize=landscape(A4),
+        rightMargin=20,
+        leftMargin=20,
+        topMargin=30,
+        bottomMargin=30
+    )
+    
+    styles = getSampleStyleSheet()
+    elementos = []
+    
+    # Título
+    titulo_style = ParagraphStyle(
+        'TituloStyle',
+        parent=styles['Heading1'],
+        fontSize=14,
+        alignment=TA_CENTER,
+        spaceAfter=10,
+        fontName='Helvetica-Bold'
+    )
+    elementos.append(Paragraph("RELATÓRIO CONSOLIDADO - COLABORADORES", titulo_style))
+    
+    # Período
+    if data_inicio and data_fim:
+        if hasattr(data_inicio, 'strftime'):
+            periodo = f"Período: {data_inicio.strftime('%d/%m/%Y')} a {data_fim.strftime('%d/%m/%Y')}"
+        else:
+            periodo = f"Período: {data_inicio} a {data_fim}"
+        subtitulo_style = ParagraphStyle(
+            'SubtituloStyle',
+            parent=styles['Normal'],
+            fontSize=10,
+            alignment=TA_CENTER,
+            spaceAfter=15
+        )
+        elementos.append(Paragraph(periodo, subtitulo_style))
     
     # Cria a tabela
-    try:
-        tabela = Table(dados_tabela, repeatRows=1, hAlign='CENTER')
-        
-        # Estiliza a tabela
-        estilo_tabela = TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1f77b4')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 9),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
-            ('TOPPADDING', (0, 0), (-1, 0), 8),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 1), (-1, -1), 8),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('BOTTOMPADDING', (0, 1), (-1, -1), 5),
-            ('TOPPADDING', (0, 1), (-1, -1), 5),
-            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f5f5f5')]),
-        ])
-        
-        # Define largura das colunas
-        for i, col in enumerate(colunas_existentes):
-            if col == "Funcionário":
-                estilo_tabela.add('COLWIDTHS', (i, i), 180)
-            else:
-                estilo_tabela.add('COLWIDTHS', (i, i), 80)
-        
-        tabela.setStyle(estilo_tabela)
-        elementos.append(tabela)
-        
-        # Adiciona rodapé
-        rodape_style = ParagraphStyle(
-            'RodapeStyle',
-            parent=styles['Normal'],
-            fontSize=8,
-            alignment=TA_LEFT,
-            fontName='Helvetica',
-            textColor=colors.grey
-        )
-        elementos.append(Spacer(1, 20))
-        data_geracao = datetime.now().strftime('%d/%m/%Y %H:%M')
-        rodape = Paragraph(f"Documento gerado em: {data_geracao}", rodape_style)
-        elementos.append(rodape)
-        
-        # Gera o PDF
-        doc.build(elementos)
-        output.seek(0)
-        
-    except Exception as e:
-        # Se falhar, retorna um PDF com erro
-        output = BytesIO()
-        doc = SimpleDocTemplate(
-            output,
-            pagesize=landscape(A4),
-            rightMargin=30,
-            leftMargin=30,
-            topMargin=30,
-            bottomMargin=30
-        )
-        styles = getSampleStyleSheet()
-        elementos = []
-        titulo = Paragraph("RELATÓRIO CONSOLIDADO - COLABORADORES", styles['Heading1'])
-        elementos.append(titulo)
-        elementos.append(Spacer(1, 20))
-        erro_msg = Paragraph(f"Erro ao gerar o relatório: {str(e)}", styles['Normal'])
-        elementos.append(erro_msg)
-        doc.build(elementos)
-        output.seek(0)
+    tabela = Table(dados_tabela, repeatRows=1, hAlign='CENTER')
+    
+    # Estiliza a tabela
+    style = TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1f77b4')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 9),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+        ('TOPPADDING', (0, 0), (-1, 0), 8),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 1), (-1, -1), 8),
+        ('ALIGN', (0, 1), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 5),
+        ('TOPPADDING', (0, 1), (-1, -1), 5),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f5f5f5')]),
+    ])
+    
+    # Define largura das colunas
+    for i in range(len(colunas_existentes)):
+        if colunas_existentes[i] == "Funcionário":
+            style.add('COLWIDTHS', (i, i), 150)
+        elif colunas_existentes[i] == "Dia da Semana":
+            style.add('COLWIDTHS', (i, i), 100)
+        else:
+            style.add('COLWIDTHS', (i, i), 70)
+    
+    tabela.setStyle(style)
+    elementos.append(tabela)
+    
+    # Rodapé
+    elementos.append(Spacer(1, 20))
+    rodape_style = ParagraphStyle(
+        'RodapeStyle',
+        parent=styles['Normal'],
+        fontSize=8,
+        alignment=TA_LEFT,
+        textColor=colors.grey
+    )
+    data_geracao = datetime.now().strftime('%d/%m/%Y %H:%M')
+    elementos.append(Paragraph(f"Documento gerado em: {data_geracao}", rodape_style))
+    
+    # Gera o PDF
+    doc.build(elementos)
+    output.seek(0)
     
     return output.getvalue()
 
@@ -2471,18 +2360,25 @@ elif opcao == "RELATÓRIO":
                       
                       # Gera o PDF resumido se a opção estiver selecionada
                       if opcao_visualizacao == "Tabela de Colaboradores (Resumo - PDF)":
-                          try:
-                              st.session_state.dados_pdf_resumido = converter_para_pdf_tabela_resumida(
-                                  df_resumido, 
-                                  data_inicio=data_inicio, 
-                                  data_fim=data_fim
-                              )
-                          except Exception as e:
-                              st.error(f"Erro ao gerar PDF resumido: {e}")
-                              st.session_state.dados_pdf_resumido = None
-                      
-                      st.session_state.nome_arquivo_base = prefixo_nome
-                      st.session_state.processamento_concluido = True
+                        try:
+                            # Pega apenas as colunas necessárias para o PDF
+                            colunas_pdf = ["Funcionário", "Dia da Semana", "Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída"]
+                            
+                            # Filtra o DataFrame para ter apenas essas colunas
+                            df_pdf = df_resumido[colunas_pdf].copy() if not df_resumido.empty else pd.DataFrame(columns=colunas_pdf)
+                            
+                            # Ordena por Funcionário e Data
+                            if not df_pdf.empty:
+                                df_pdf = df_pdf.sort_values(["Funcionário", "Data"])
+                            
+                            st.session_state.dados_pdf_resumido = converter_para_pdf_tabela_resumida(
+                                df_pdf, 
+                                data_inicio=data_inicio, 
+                                data_fim=data_fim
+                            )
+                        except Exception as e:
+                            st.error(f"Erro ao gerar PDF resumido: {e}")
+                            st.session_state.dados_pdf_resumido = None
       
           if st.session_state.processamento_concluido:
               st.success("✅ Relatórios consolidados gerados com sucesso!")
