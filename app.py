@@ -194,8 +194,6 @@ if 'intro_exibida' not in st.session_state:
     exibir_intro()
     st.session_state['intro_exibida'] = True
 
-# Adicione esta função NO INÍCIO do arquivo, junto com as outras funções de conversão
-
 def converter_para_pdf_tabela_resumida(df_tabela, nome_empresa="Empresa", data_inicio=None, data_fim=None):
     """
     Converte a tabela resumida para PDF
@@ -206,14 +204,12 @@ def converter_para_pdf_tabela_resumida(df_tabela, nome_empresa="Empresa", data_i
     from reportlab.lib.pagesizes import A4, landscape
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
     from reportlab.lib import colors
-    from reportlab.lib.units import inch
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.enums import TA_CENTER, TA_LEFT
     from datetime import datetime
     
     # Verifica se o DataFrame está vazio
     if df_tabela is None or df_tabela.empty:
-        # Retorna um PDF vazio com mensagem
         output = BytesIO()
         doc = SimpleDocTemplate(
             output,
@@ -317,23 +313,13 @@ def converter_para_pdf_tabela_resumida(df_tabela, nome_empresa="Empresa", data_i
     # Adiciona cabeçalho
     dados_tabela.append([Paragraph(col, cabecalho_style) for col in colunas_existentes])
     
-    # Adiciona os dados - corrigido o erro de iteração
-    try:
-        for idx in range(len(df_tabela)):
-            row = df_tabela.iloc[idx]
-            linha = []
-            for col in colunas_existentes:
-                valor = str(row.get(col, "")) if col in row.index and row.get(col) is not None else ""
-                linha.append(Paragraph(valor, celula_style))
-            dados_tabela.append(linha)
-    except Exception as e:
-        # Fallback: iterar usando iterrows
-        for _, row in df_tabela.iterrows():
-            linha = []
-            for col in colunas_existentes:
-                valor = str(row.get(col, "")) if col in row.index and row.get(col) is not None else ""
-                linha.append(Paragraph(valor, celula_style))
-            dados_tabela.append(linha)
+    # Adiciona os dados
+    for _, row in df_tabela.iterrows():
+        linha = []
+        for col in colunas_existentes:
+            valor = str(row.get(col, "")) if col in row.index and row.get(col) is not None else ""
+            linha.append(Paragraph(valor, celula_style))
+        dados_tabela.append(linha)
     
     # Cria a tabela
     tabela = Table(dados_tabela, repeatRows=1, hAlign='CENTER')
