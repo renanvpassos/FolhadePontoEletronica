@@ -931,6 +931,7 @@ def converter_para_pdf_consolidado_tabela(df, data_inicio, data_fim):
             colWidths=[70, 70, 120, 90, 90, 80, 70],
             repeatRows=1
         )
+        tabela.hAlign = 'LEFT'
         tabela.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#1E3A8A")),
             ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor("#D1D5DB")),
@@ -943,7 +944,6 @@ def converter_para_pdf_consolidado_tabela(df, data_inicio, data_fim):
             ('RIGHTPADDING', (0, 0), (-1, -1), 3),
         ]))
 
-        story.append(Paragraph(f"<b>{nome_colab}</b>", nome_style))
         story.append(tabela)
         if idx < len(nomes_colaboradores) - 1:
             story.append(Spacer(1, 8))
