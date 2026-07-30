@@ -194,28 +194,158 @@ if 'intro_exibida' not in st.session_state:
     exibir_intro()
     st.session_state['intro_exibida'] = True
 
-def converter_para_excel_tabela_resumida(df_tabela):
-          """
-          Converte a tabela resumida para Excel
-          """
-          from io import BytesIO
-          import pandas as pd
-          
-          output = BytesIO()
-          with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-              # Escreve os dados
-              df_tabela.to_excel(writer, sheet_name='Resumo', index=False)
-              
-              # Ajusta a largura das colunas
-              workbook = writer.book
-              worksheet = writer.sheets['Resumo']
-              
-              # Formatação básica
-              for i, col in enumerate(df_tabela.columns):
-                  max_len = max(df_tabela[col].astype(str).map(len).max(), len(col)) + 2
-                  worksheet.set_column(i, i, min(max_len, 30))
-          
-          return output.getvalue()
+# Adicione esta função NO INÍCIO do arquivo, junto com as outras funções de conversão
+
+def converter_para_pdf_tabela_resumida(df_tabela, nome_empresa="Empresa"):
+    """
+    Converte a tabela resumida para PDF
+    Formato: Nome colaborador, Horário de entrada, Horário de saida de almoço,
+    horário de retorno de almoço e horário de saida
+    """
+    from io import BytesIO
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib import colors
+    from reportlab.lib.units import inch
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT
+    from datetime import datetime
+    
+    output = BytesIO()
+    
+    # Configura o documento em modo paisagem para caber mais colunas
+    doc = SimpleDocTemplate(
+        output,
+        pagesize=landscape(A4),
+        rightMargin=30,
+        leftMargin=30,
+        topMargin=30,
+        bottomMargin=30
+    )
+    
+    # Estilos
+    styles = getSampleStyleSheet()
+    titulo_style = ParagraphStyle(
+        'TituloStyle',
+        parent=styles['Heading1'],
+        fontSize=14,
+        alignment=TA_CENTER,
+        spaceAfter=20,
+        fontName='Helvetica-Bold'
+    )
+    
+    subtitulo_style = ParagraphStyle(
+        'SubtituloStyle',
+        parent=styles['Normal'],
+        fontSize=10,
+        alignment=TA_CENTER,
+        spaceAfter=15,
+        fontName='Helvetica'
+    )
+    
+    cabecalho_style = ParagraphStyle(
+        'CabecalhoStyle',
+        parent=styles['Normal'],
+        fontSize=9,
+        alignment=TA_CENTER,
+        fontName='Helvetica-Bold',
+        textColor=colors.white
+    )
+    
+    celula_style = ParagraphStyle(
+        'CelulaStyle',
+        parent=styles['Normal'],
+        fontSize=8,
+        alignment=TA_LEFT,
+        fontName='Helvetica'
+    )
+    
+    # Prepara os dados para a tabela
+    elementos = []
+    
+    # Título
+    titulo = Paragraph("RELATÓRIO CONSOLIDADO - COLABORADORES", titulo_style)
+    elementos.append(titulo)
+    
+    # Subtítulo com período
+    periodo = f"Período: {data_inicio.strftime('%d/%m/%Y')} a {data_fim.strftime('%d/%m/%Y')}"
+    subtitulo = Paragraph(periodo, subtitulo_style)
+    elementos.append(subtitulo)
+    elementos.append(Spacer(1, 10))
+    
+    # Define as colunas (somente as solicitadas)
+    colunas = ["Funcionário", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída"]
+    
+    # Prepara os dados para a tabela
+    dados_tabela = []
+    
+    # Adiciona cabeçalho
+    dados_tabela.append([Paragraph(col, cabecalho_style) for col in colunas])
+    
+    # Adiciona os dados
+    for _, row in df_tabela.iterrows():
+        linha = []
+        for col in colunas:
+            valor = str(row.get(col, "")) if row.get(col) else ""
+            linha.append(Paragraph(valor, celula_style))
+        dados_tabela.append(linha)
+    
+    # Cria a tabela
+    tabela = Table(dados_tabela, repeatRows=1, hAlign='CENTER')
+    
+    # Estiliza a tabela
+    estilo_tabela = TableStyle([
+        # Cabeçalho
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1f77b4')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 9),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+        ('TOPPADDING', (0, 0), (-1, 0), 8),
+        # Linhas
+        ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 1), (-1, -1), 8),
+        ('ALIGN', (1, 1), (-1, -1), 'CENTER'),  # Centraliza os horários
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 5),
+        ('TOPPADDING', (0, 1), (-1, -1), 5),
+        # Alterna cores das linhas
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f5f5f5')]),
+    ])
+    
+    # Aplica estilo à tabela
+    for i, col in enumerate(colunas):
+        # Define largura das colunas
+        if col == "Funcionário":
+            estilo_tabela.add('COLWIDTHS', (i, i), 180)
+        else:
+            estilo_tabela.add('COLWIDTHS', (i, i), 80)
+    
+    tabela.setStyle(estilo_tabela)
+    elementos.append(tabela)
+    
+    # Adiciona rodapé com data de geração
+    rodape_style = ParagraphStyle(
+        'RodapeStyle',
+        parent=styles['Normal'],
+        fontSize=8,
+        alignment=TA_LEFT,
+        fontName='Helvetica',
+        textColor=colors.grey
+    )
+    elementos.append(Spacer(1, 20))
+    data_geracao = datetime.now().strftime('%d/%m/%Y %H:%M')
+    rodape = Paragraph(f"Documento gerado em: {data_geracao}", rodape_style)
+    elementos.append(rodape)
+    
+    # Gera o PDF
+    doc.build(elementos)
+    output.seek(0)
+    
+    return output.getvalue()
 
 def processar_dados_consolidado_tabela(dados_equipe, data_inicio, data_fim):
     """
@@ -2097,7 +2227,7 @@ elif opcao == "RELATÓRIO":
           # Adiciona as novas opções de visualização
           opcao_visualizacao = st.radio(
               "Selecione o tipo de visualização:",
-              ["Relatório Consolidado Completo", "Tabela de Colaboradores (Resumo)"],
+              ["Relatório Consolidado Completo", "Tabela de Colaboradores (Resumo - PDF)"],
               horizontal=True
           )
           
@@ -2140,14 +2270,12 @@ elif opcao == "RELATÓRIO":
               st.session_state.dados_excel_consolidado = None
           if "dados_pdf_consolidado" not in st.session_state:
               st.session_state.dados_pdf_consolidado = None
-          if "dados_tabela_consolidado" not in st.session_state:
-              st.session_state.dados_tabela_consolidado = None
+          if "dados_pdf_resumido" not in st.session_state:
+              st.session_state.dados_pdf_resumido = None
           if "nome_arquivo_base" not in st.session_state:
               st.session_state.nome_arquivo_base = ""
           if "processamento_concluido" not in st.session_state:
               st.session_state.processamento_concluido = False
-          if "processamento_tabela" not in st.session_state:
-              st.session_state.processamento_tabela = False
       
           if st.button("📊 Processar e Gerar Relatório Consolidado", use_container_width=True, type="primary"):
               with st.spinner("Processando dados e compilando relatórios da equipe..."):
@@ -2167,7 +2295,7 @@ elif opcao == "RELATÓRIO":
                           prefixo_nome = f"Relatorio_Consolidado_Celula_{opcao_consolidada.replace(' ', '_')}"
       
                   dfs_equipe = []
-                  dados_para_tabela = []  # Para a nova visualização em tabela
+                  dados_para_tabela = []
                   
                   for u in usuarios_alvo:
                       u_email = str(u["email"]).strip().lower()
@@ -2195,103 +2323,87 @@ elif opcao == "RELATÓRIO":
                       df_user_limpo = processar_dados_ponto(dados_pessoais_user, data_inicio, data_fim, incluir_usuario_info=False, formatar_data_br=True)
                       
                       if df_user_limpo is not None and not df_user_limpo.empty:
-                          # Adiciona informações do funcionário
                           df_user_limpo["Funcionário"] = u_nome
                           df_user_limpo["E-mail"] = u_email
                           dfs_equipe.append(df_user_limpo)
                           
-                          # Coleta dados para a tabela resumida
+                          # Coleta dados para o PDF resumido
                           for _, row in df_user_limpo.iterrows():
                               dados_para_tabela.append({
                                   "Funcionário": u_nome,
-                                  "E-mail": u_email,
                                   "Data": row.get("Data", ""),
                                   "Dia da Semana": row.get("Dia da Semana", ""),
                                   "Entrada": row.get("Entrada", ""),
                                   "Saída Almoço": row.get("Saída Almoço", ""),
                                   "Retorno Almoço": row.get("Retorno Almoço", ""),
-                                  "Saída": row.get("Saída", ""),
-                                  "Hora Extra": row.get("Hora Extra", ""),
-                                  "OBSERVAÇÃO": row.get("OBSERVAÇÃO", "")
+                                  "Saída": row.get("Saída", "")
                               })
                   
                   if not dfs_equipe:
                       st.warning("Nenhum dado de ponto localizado para os critérios e período selecionados.")
                       st.session_state.processamento_concluido = False
-                      st.session_state.processamento_tabela = False
+                      st.session_state.dados_pdf_resumido = None
                   else:
                       df_filtrado = pd.concat(dfs_equipe, ignore_index=True)
                       df_filtrado = df_filtrado.sort_values(by="Funcionário", key=lambda col: col.str.lower(), kind="mergesort")
                       
-                      # Armazena dados para os diferentes formatos
+                      # Cria DataFrame para o PDF resumido
+                      df_resumido = pd.DataFrame(dados_para_tabela)
+                      if not df_resumido.empty:
+                          df_resumido = df_resumido.sort_values(["Funcionário", "Data"])
+                      
+                      # Armazena dados
                       st.session_state.dados_excel_consolidado = converter_para_excel_multiaba(df_filtrado)
                       st.session_state.dados_pdf_consolidado = converter_para_pdf_consolidado(df_filtrado, mapeamento_celulas_db, data_inicio, data_fim)
-                      st.session_state.dados_tabela_consolidado = dados_para_tabela  # Dados para a tabela resumida
+                      
+                      # Gera o PDF resumido se a opção estiver selecionada
+                      if opcao_visualizacao == "Tabela de Colaboradores (Resumo - PDF)":
+                          try:
+                              st.session_state.dados_pdf_resumido = converter_para_pdf_tabela_resumida(df_resumido)
+                          except Exception as e:
+                              st.error(f"Erro ao gerar PDF resumido: {e}")
+                              st.session_state.dados_pdf_resumido = None
+                      
                       st.session_state.nome_arquivo_base = prefixo_nome
                       st.session_state.processamento_concluido = True
-                      st.session_state.processamento_tabela = True
       
-          # Exibe a nova visualização em tabela se os dados estiverem disponíveis
-          if st.session_state.processamento_tabela and st.session_state.dados_tabela_consolidado:
+          if st.session_state.processamento_concluido:
               st.success("✅ Relatórios consolidados gerados com sucesso!")
               
-              # Exibe a tabela resumida se a opção for selecionada
-              if opcao_visualizacao == "Tabela de Colaboradores (Resumo)":
-                  st.markdown("### 📋 Resumo de Colaboradores por Período")
-                  
-                  df_tabela = pd.DataFrame(st.session_state.dados_tabela_consolidado)
-                  
-                  # Filtra as colunas conforme solicitado
-                  colunas_tabela = ["Funcionário", "Data", "Dia da Semana", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída"]
-                  df_tabela = df_tabela[[c for c in colunas_tabela if c in df_tabela.columns]]
-                  
-                  # Ordena por Funcionário e Data
-                  df_tabela = df_tabela.sort_values(["Funcionário", "Data"])
-                  
-                  # Exibe a tabela com formatação
-                  st.dataframe(
-                      df_tabela,
-                      use_container_width=True,
-                      hide_index=True,
-                      column_config={
-                          "Funcionário": st.column_config.TextColumn("Funcionário", width="medium"),
-                          "Data": st.column_config.TextColumn("Data", width="small"),
-                          "Dia da Semana": st.column_config.TextColumn("Dia da Semana", width="medium"),
-                          "Entrada": st.column_config.TextColumn("Entrada", width="small"),
-                          "Saída Almoço": st.column_config.TextColumn("Saída Almoço", width="small"),
-                          "Retorno Almoço": st.column_config.TextColumn("Retorno Almoço", width="small"),
-                          "Saída": st.column_config.TextColumn("Saída", width="small")
-                      }
-                  )
-                  
-                  # Botão para baixar a tabela em Excel
-                  st.download_button(
-                      label="📥 Baixar Tabela Resumida (Excel)",
-                      data=converter_para_excel_tabela_resumida(df_tabela),
-                      file_name=f"Tabela_Resumida_{st.session_state.nome_arquivo_base}_{data_inicio}_a_{data_fim}.xlsx",
-                      mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                      use_container_width=True
-                  )
+              if opcao_visualizacao == "Tabela de Colaboradores (Resumo - PDF)":
+                  # Botão para baixar apenas o PDF resumido
+                  if st.session_state.dados_pdf_resumido:
+                      st.download_button(
+                          label="📄 Baixar PDF Resumido (Colaboradores)",
+                          data=st.session_state.dados_pdf_resumido,
+                          file_name=f"Relatorio_Resumido_Colaboradores_{st.session_state.nome_arquivo_base}_{data_inicio.strftime('%Y%m%d')}_a_{data_fim.strftime('%Y%m%d')}.pdf",
+                          mime="application/pdf",
+                          use_container_width=True,
+                          type="primary"
+                      )
+                  else:
+                      st.warning("PDF resumido não disponível. Tente processar novamente.")
               
-              # Mantém os botões de download para o relatório completo
-              if opcao_visualizacao == "Relatório Consolidado Completo":
+              elif opcao_visualizacao == "Relatório Consolidado Completo":
                   st.markdown("### 📄 Relatório Consolidado Completo")
                   
                   col_down1, col_down2 = st.columns(2)
                   with col_down1:
-                      st.download_button(
-                          label="📥 Baixar em Excel (.xlsx)",
-                          data=st.session_state.dados_excel_consolidado,
-                          file_name=f"{st.session_state.nome_arquivo_base}_{data_inicio}_a_{data_fim}.xlsx",
-                          mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                          use_container_width=True
-                      )
+                      if st.session_state.dados_excel_consolidado:
+                          st.download_button(
+                              label="📥 Baixar em Excel (.xlsx)",
+                              data=st.session_state.dados_excel_consolidado,
+                              file_name=f"{st.session_state.nome_arquivo_base}_{data_inicio.strftime('%Y%m%d')}_a_{data_fim.strftime('%Y%m%d')}.xlsx",
+                              mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                              use_container_width=True
+                          )
                   with col_down2:
-                      st.download_button(
-                          label="📄 Baixar em PDF (.pdf)",
-                          data=st.session_state.dados_pdf_consolidado,
-                          file_name=f"{st.session_state.nome_arquivo_base}_{data_inicio}_a_{data_fim}.pdf",
-                          mime="application/pdf",
-                          use_container_width=True
-                      )
+                      if st.session_state.dados_pdf_consolidado:
+                          st.download_button(
+                              label="📄 Baixar em PDF (.pdf)",
+                              data=st.session_state.dados_pdf_consolidado,
+                              file_name=f"{st.session_state.nome_arquivo_base}_{data_inicio.strftime('%Y%m%d')}_a_{data_fim.strftime('%Y%m%d')}.pdf",
+                              mime="application/pdf",
+                              use_container_width=True
+                          )
       
