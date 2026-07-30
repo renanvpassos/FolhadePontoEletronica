@@ -208,8 +208,12 @@ def converter_para_pdf_tabela_resumida(df_tabela, nome_empresa="Empresa", data_i
     from reportlab.lib.enums import TA_CENTER, TA_LEFT
     from datetime import datetime
     
-    # Verifica se o DataFrame está vazio
-    if df_tabela is None or df_tabela.empty:
+    # Verifica se o DataFrame está vazio ou None
+    if df_tabela is None:
+        df_tabela = pd.DataFrame()
+    
+    if df_tabela.empty:
+        # Retorna um PDF com mensagem de dados vazios
         output = BytesIO()
         doc = SimpleDocTemplate(
             output,
@@ -225,6 +229,17 @@ def converter_para_pdf_tabela_resumida(df_tabela, nome_empresa="Empresa", data_i
         titulo = Paragraph("RELATÓRIO CONSOLIDADO - COLABORADORES", styles['Heading1'])
         elementos.append(titulo)
         elementos.append(Spacer(1, 20))
+        
+        # Período
+        if data_inicio and data_fim:
+            if hasattr(data_inicio, 'strftime'):
+                periodo = f"Período: {data_inicio.strftime('%d/%m/%Y')} a {data_fim.strftime('%d/%m/%Y')}"
+            else:
+                periodo = f"Período: {data_inicio} a {data_fim}"
+            subtitulo = Paragraph(periodo, styles['Normal'])
+            elementos.append(subtitulo)
+            elementos.append(Spacer(1, 10))
+        
         mensagem = Paragraph("Nenhum dado encontrado para o período selecionado.", styles['Normal'])
         elementos.append(mensagem)
         doc.build(elementos)
@@ -233,7 +248,7 @@ def converter_para_pdf_tabela_resumida(df_tabela, nome_empresa="Empresa", data_i
     
     output = BytesIO()
     
-    # Configura o documento em modo paisagem para caber mais colunas
+    # Configura o documento em modo paisagem
     doc = SimpleDocTemplate(
         output,
         pagesize=landscape(A4),
@@ -297,81 +312,141 @@ def converter_para_pdf_tabela_resumida(df_tabela, nome_empresa="Empresa", data_i
         elementos.append(subtitulo)
         elementos.append(Spacer(1, 10))
     
-    # Define as colunas (somente as solicitadas)
-    colunas = ["Funcionário", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída"]
+    # Define as colunas que devem ser exibidas
+    colunas_desejadas = ["Funcionário", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída"]
     
     # Verifica quais colunas existem no DataFrame
-    colunas_existentes = [col for col in colunas if col in df_tabela.columns]
+    colunas_existentes = []
+    for col in colunas_desejadas:
+        if col in df_tabela.columns:
+            colunas_existentes.append(col)
     
-    # Se não houver colunas existentes, usa as que estão disponíveis
+    # Se nenhuma coluna desejada existir, usa todas as colunas do DataFrame
     if not colunas_existentes:
         colunas_existentes = list(df_tabela.columns)
+        # Remove colunas que não são necessárias se houver muitas
+        colunas_existentes = [col for col in colunas_existentes if col not in ['E-mail', 'Dia da Semana', 'Data', 'Hora Extra', 'OBSERVAÇÃO']]
+        if not colunas_existentes:
+            colunas_existentes = list(df_tabela.columns)
     
     # Prepara os dados para a tabela
     dados_tabela = []
     
     # Adiciona cabeçalho
-    dados_tabela.append([Paragraph(col, cabecalho_style) for col in colunas_existentes])
+    cabecalho = []
+    for col in colunas_existentes:
+        cabecalho.append(Paragraph(col, cabecalho_style))
+    dados_tabela.append(cabecalho)
     
-    # Adiciona os dados
-    for _, row in df_tabela.iterrows():
-        linha = []
-        for col in colunas_existentes:
-            valor = str(row.get(col, "")) if col in row.index and row.get(col) is not None else ""
-            linha.append(Paragraph(valor, celula_style))
-        dados_tabela.append(linha)
+    # Adiciona os dados - usando iteração segura
+    try:
+        # Tenta usar iterrows primeiro (mais seguro)
+        for index, row in df_tabela.iterrows():
+            linha = []
+            for col in colunas_existentes:
+                valor = ""
+                if col in row.index and row[col] is not None:
+                    valor = str(row[col])
+                linha.append(Paragraph(valor, celula_style))
+            dados_tabela.append(linha)
+    except Exception as e:
+        # Fallback: usar iloc
+        try:
+            for i in range(len(df_tabela)):
+                linha = []
+                for col in colunas_existentes:
+                    valor = ""
+                    if col in df_tabela.columns:
+                        val = df_tabela.iloc[i][col]
+                        if val is not None:
+                            valor = str(val)
+                    linha.append(Paragraph(valor, celula_style))
+                dados_tabela.append(linha)
+        except Exception as e2:
+            # Último fallback: usar valores do DataFrame diretamente
+            for i in range(len(df_tabela)):
+                linha = []
+                for col in colunas_existentes:
+                    valor = ""
+                    try:
+                        val = df_tabela[col].iloc[i]
+                        if val is not None:
+                            valor = str(val)
+                    except:
+                        valor = ""
+                    linha.append(Paragraph(valor, celula_style))
+                dados_tabela.append(linha)
     
     # Cria a tabela
-    tabela = Table(dados_tabela, repeatRows=1, hAlign='CENTER')
-    
-    # Estiliza a tabela
-    estilo_tabela = TableStyle([
-        # Cabeçalho
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1f77b4')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 9),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
-        ('TOPPADDING', (0, 0), (-1, 0), 8),
-        # Linhas
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 1), (-1, -1), 8),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('BOTTOMPADDING', (0, 1), (-1, -1), 5),
-        ('TOPPADDING', (0, 1), (-1, -1), 5),
-        # Alterna cores das linhas
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f5f5f5')]),
-    ])
-    
-    # Define largura das colunas
-    for i, col in enumerate(colunas_existentes):
-        if col == "Funcionário":
-            estilo_tabela.add('COLWIDTHS', (i, i), 180)
-        else:
-            estilo_tabela.add('COLWIDTHS', (i, i), 80)
-    
-    tabela.setStyle(estilo_tabela)
-    elementos.append(tabela)
-    
-    # Adiciona rodapé com data de geração
-    rodape_style = ParagraphStyle(
-        'RodapeStyle',
-        parent=styles['Normal'],
-        fontSize=8,
-        alignment=TA_LEFT,
-        fontName='Helvetica',
-        textColor=colors.grey
-    )
-    elementos.append(Spacer(1, 20))
-    data_geracao = datetime.now().strftime('%d/%m/%Y %H:%M')
-    rodape = Paragraph(f"Documento gerado em: {data_geracao}", rodape_style)
-    elementos.append(rodape)
-    
-    # Gera o PDF
-    doc.build(elementos)
-    output.seek(0)
+    try:
+        tabela = Table(dados_tabela, repeatRows=1, hAlign='CENTER')
+        
+        # Estiliza a tabela
+        estilo_tabela = TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1f77b4')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 9),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+            ('TOPPADDING', (0, 0), (-1, 0), 8),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 1), (-1, -1), 8),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('BOTTOMPADDING', (0, 1), (-1, -1), 5),
+            ('TOPPADDING', (0, 1), (-1, -1), 5),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f5f5f5')]),
+        ])
+        
+        # Define largura das colunas
+        for i, col in enumerate(colunas_existentes):
+            if col == "Funcionário":
+                estilo_tabela.add('COLWIDTHS', (i, i), 180)
+            else:
+                estilo_tabela.add('COLWIDTHS', (i, i), 80)
+        
+        tabela.setStyle(estilo_tabela)
+        elementos.append(tabela)
+        
+        # Adiciona rodapé
+        rodape_style = ParagraphStyle(
+            'RodapeStyle',
+            parent=styles['Normal'],
+            fontSize=8,
+            alignment=TA_LEFT,
+            fontName='Helvetica',
+            textColor=colors.grey
+        )
+        elementos.append(Spacer(1, 20))
+        data_geracao = datetime.now().strftime('%d/%m/%Y %H:%M')
+        rodape = Paragraph(f"Documento gerado em: {data_geracao}", rodape_style)
+        elementos.append(rodape)
+        
+        # Gera o PDF
+        doc.build(elementos)
+        output.seek(0)
+        
+    except Exception as e:
+        # Se falhar, retorna um PDF com erro
+        output = BytesIO()
+        doc = SimpleDocTemplate(
+            output,
+            pagesize=landscape(A4),
+            rightMargin=30,
+            leftMargin=30,
+            topMargin=30,
+            bottomMargin=30
+        )
+        styles = getSampleStyleSheet()
+        elementos = []
+        titulo = Paragraph("RELATÓRIO CONSOLIDADO - COLABORADORES", styles['Heading1'])
+        elementos.append(titulo)
+        elementos.append(Spacer(1, 20))
+        erro_msg = Paragraph(f"Erro ao gerar o relatório: {str(e)}", styles['Normal'])
+        elementos.append(erro_msg)
+        doc.build(elementos)
+        output.seek(0)
     
     return output.getvalue()
 
@@ -2375,10 +2450,20 @@ elif opcao == "RELATÓRIO":
                       df_filtrado = pd.concat(dfs_equipe, ignore_index=True)
                       df_filtrado = df_filtrado.sort_values(by="Funcionário", key=lambda col: col.str.lower(), kind="mergesort")
                       
-                      # Cria DataFrame para o PDF resumido
                       df_resumido = pd.DataFrame(dados_para_tabela)
+                      
+                      # Verifica se o DataFrame não está vazio e tem as colunas necessárias
                       if not df_resumido.empty:
+                          # Garante que as colunas essenciais existam
+                          colunas_essenciais = ["Funcionário", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída"]
+                          for col in colunas_essenciais:
+                              if col not in df_resumido.columns:
+                                  df_resumido[col] = ""
+                          
                           df_resumido = df_resumido.sort_values(["Funcionário", "Data"])
+                      else:
+                          # Cria um DataFrame com as colunas necessárias mesmo vazio
+                          df_resumido = pd.DataFrame(columns=["Funcionário", "Data", "Dia da Semana", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída"])
                       
                       # Armazena dados
                       st.session_state.dados_excel_consolidado = converter_para_excel_multiaba(df_filtrado)
