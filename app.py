@@ -926,9 +926,11 @@ def converter_para_pdf_consolidado_tabela(df, data_inicio, data_fim):
                 Paragraph(str(row.get("Saída", "")), cell_style),
             ])
 
+        largura_nome = max(120, min(240, len(nome_colab) * 7 + 20))
+        colunas_larguras = [70, 70, largura_nome, 90, 90, 80, 70]
         tabela = Table(
             dados_tabela,
-            colWidths=[70, 70, 120, 90, 90, 80, 70],
+            colWidths=colunas_larguras,
             repeatRows=1
         )
         tabela.hAlign = 'LEFT'
