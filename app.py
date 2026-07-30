@@ -194,6 +194,60 @@ if 'intro_exibida' not in st.session_state:
     exibir_intro()
     st.session_state['intro_exibida'] = True
 
+def processar_dados_consolidado_tabela(dados_equipe, data_inicio, data_fim):
+    """
+    Processa os dados consolidados para exibição em tabela com colaboradores em linhas
+    Formato: Nome colaborador, Horário de entrada, Horário de saida de almoço, 
+    horário de retorno de almoço e horário de saida
+    """
+    if not dados_equipe:
+        return pd.DataFrame()
+    
+    # Agrupa os dados por funcionário e data
+    dados_agrupados = {}
+    
+    for item in dados_equipe:
+        email = item.get("E-mail", "")
+        nome = item.get("Funcionário", "")
+        data = item.get("Data", "")
+        entrada = item.get("Entrada", "")
+        saida_almoco = item.get("Saída Almoço", "")
+        retorno_almoco = item.get("Retorno Almoço", "")
+        saida = item.get("Saída", "")
+        
+        chave = f"{nome}|{email}|{data}"
+        
+        if chave not in dados_agrupados:
+            dados_agrupados[chave] = {
+                "Nome": nome,
+                "E-mail": email,
+                "Data": data,
+                "Entrada": entrada,
+                "Saída Almoço": saida_almoco,
+                "Retorno Almoço": retorno_almoco,
+                "Saída": saida,
+                "Dia da Semana": item.get("Dia da Semana", "")
+            }
+        else:
+            # Atualiza com os dados mais recentes se houver
+            if entrada:
+                dados_agrupados[chave]["Entrada"] = entrada
+            if saida_almoco:
+                dados_agrupados[chave]["Saída Almoço"] = saida_almoco
+            if retorno_almoco:
+                dados_agrupados[chave]["Retorno Almoço"] = retorno_almoco
+            if saida:
+                dados_agrupados[chave]["Saída"] = saida
+    
+    # Converte para DataFrame
+    df_resultado = pd.DataFrame(list(dados_agrupados.values()))
+    
+    # Ordena por Nome e Data
+    if not df_resultado.empty:
+        df_resultado = df_resultado.sort_values(["Nome", "Data"])
+    
+    return df_resultado
+
 def converter_para_csv_integracao(df):
     if df is None or df.empty:
         return "".encode("utf-8-sig")
@@ -2014,131 +2068,230 @@ elif opcao == "RELATÓRIO":
             )
 
         if cargo_usuario in ["Supervisor", "Master"]:
-            st.write("---")
-            st.markdown("### 🗂️ Exportação Geral da Equipe (Consolidada)")
-            
-            opcao_consolidada = "Minha Célula"
-            celulas_disponiveis = []
-            
-            todos_usuarios_banco = []
-            inicio_user = 0
-            passo_user = 1000
-            
-            while True:
-                try:
-                    busca_page = supabase.table("usuarios_ponto").select("email, nome, celula").range(inicio_user, inicio_user + passo_user - 1).execute()
-                    if not busca_page.data:
-                        break
-                    todos_usuarios_banco.extend(busca_page.data)
-                    if len(busca_page.data) < passo_user:
-                        break
-                    inicio_user += passo_user
-                except Exception as e:
-                    st.error(f"Erro ao validar lista de colaboradores no banco de dados: {e}")
-                    break
-                
-            mapeamento_celulas_db = {
-                str(u["email"]).strip().lower(): str(u.get("celula", "")).strip()
-                for u in todos_usuarios_banco if u.get("email")
-            }
-                
-            if cargo_usuario == "Master":
-                st.caption("Escolha qual célula extrair ou se deseja consolidar todas as células.")
-                if todos_usuarios_banco:
-                    celulas_disponiveis = sorted(list(set([str(u["celula"]).strip() for u in todos_usuarios_banco if u.get("celula")])))
-                
-                opcoes_master = ["Todos os Colaboradores"] + celulas_disponiveis
-                opcao_consolidada = st.selectbox("Selecione abaixo a célula desejada:", options=opcoes_master)
-            else:
-                st.caption(f"Gera o arquivo contendo os espelhos de ponto consolidados de sua célula ativa: **{celula_usuario}**")
-        
-            if "dados_excel_consolidado" not in st.session_state:
-                st.session_state.dados_excel_consolidado = None
-            if "dados_pdf_consolidado" not in st.session_state:
-                st.session_state.dados_pdf_consolidado = None
-            if "nome_arquivo_base" not in st.session_state:
-                st.session_state.nome_arquivo_base = ""
-            if "processamento_concluido" not in st.session_state:
-                st.session_state.processamento_concluido = False
-        
-            if st.button("📊 Processar e Gerar Relatório Consolidado", use_container_width=True, type="primary"):
-                with st.spinner("Processando dados e compilando relatórios da equipe..."):
-                    
-                    if cargo_usuario == "Supervisor":
-                        target_celula = str(celula_usuario).strip().lower()
-                        usuarios_alvo = [u for u in todos_usuarios_banco if str(u.get("celula", "")).strip().lower() == target_celula]
-                        prefixo_nome = f"Relatorio_Consolidado_Celula_{celula_usuario.replace(' ', '_')}"
-                    else:  
-                        if opcao_consolidada == "Todos os Colaboradores":
-                            usuarios_alvo = todos_usuarios_banco
-                            target_celula = "todos"
-                            prefixo_nome = "Relatorio_Consolidado_Todos_Colaboradores"
-                        else:
-                            target_celula = str(opcao_consolidada).strip().lower()
-                            usuarios_alvo = [u for u in todos_usuarios_banco if str(u.get("celula", "")).strip().lower() == target_celula]
-                            prefixo_nome = f"Relatorio_Consolidado_Celula_{opcao_consolidada.replace(' ', '_')}"
-        
-                    dfs_equipe = []
-                    
-                    for u in usuarios_alvo:
-                        u_email = str(u["email"]).strip().lower()
-                        u_nome = str(u.get("nome", "Sem Nome")).strip()
-                        
-                        dados_pessoais_user = []
-                        try:
-                            resposta_direta = supabase.table("registro_ponto").select("*").eq("email", u_email).execute()
-                            
-                            if resposta_direta.data:
-                                str_inicio = data_inicio.strftime("%Y-%m-%d") if hasattr(data_inicio, "strftime") else str(data_inicio)
-                                str_fim = data_fim.strftime("%Y-%m-%d") if hasattr(data_fim, "strftime") else str(data_fim)
-                                
-                                for r in resposta_direta.data:
-                                    data_crua = str(r.get("data") or r.get("data_registro") or "")
-                                    data_linha = data_crua[:10] 
-                                    
-                                    if str_inicio <= data_linha <= str_fim:
-                                        dados_pessoais_user.append(r)
-                                        
-                        except Exception as db_err:
-                            st.error(f"Erro ao buscar dados no banco para {u_nome} ({u_email}): {db_err}")
-                            continue
-        
-                        df_user_limpo = processar_dados_ponto(dados_pessoais_user, data_inicio, data_fim, incluir_usuario_info=False, formatar_data_br=True)
-                        
-                        if df_user_limpo is not None and not df_user_limpo.empty:
-                            df_user_limpo["Funcionário"] = u_nome
-                            df_user_limpo["E-mail"] = u_email
-                            dfs_equipe.append(df_user_limpo)
-                    
-                    if not dfs_equipe:
-                        st.warning("Nenhum dado de ponto localizado para os critérios e período selecionados.")
-                        st.session_state.processamento_concluido = False
-                    else:
-                        df_filtrado = pd.concat(dfs_equipe, ignore_index=True)
-                        df_filtrado = df_filtrado.sort_values(by="Funcionário", key=lambda col: col.str.lower(), kind="mergesort")
-                        
-                        st.session_state.dados_excel_consolidado = converter_para_excel_multiaba(df_filtrado)
-                        st.session_state.dados_pdf_consolidado = converter_para_pdf_consolidado(df_filtrado, mapeamento_celulas_db, data_inicio, data_fim)
-                        st.session_state.nome_arquivo_base = prefixo_nome
-                        st.session_state.processamento_concluido = True
-        
-            if st.session_state.processamento_concluido:
-                st.success("✅ Relatórios consolidados gerados com sucesso! Escolha o formato para baixar:")
-                
-                col_down1, col_down2 = st.columns(2)
-                with col_down1:
-                    st.download_button(
-                        label="📥 Baixar em Excel (.xlsx)",
-                        data=st.session_state.dados_excel_consolidado,
-                        file_name=f"{st.session_state.nome_arquivo_base}_{data_inicio}_a_{data_fim}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        use_container_width=True
-                    )
-                with col_down2:
-                    st.download_button(
-                        label="📄 Baixar em PDF (.pdf)",
-                        data=st.session_state.dados_pdf_consolidado,
-                        file_name=f"{st.session_state.nome_arquivo_base}_{data_inicio}_a_{data_fim}.pdf",
-                        mime="application/pdf",
-                        use_container_width=True
-                    )
+          st.write("---")
+          st.markdown("### 🗂️ Exportação Geral da Equipe (Consolidada)")
+          
+          # Adiciona as novas opções de visualização
+          opcao_visualizacao = st.radio(
+              "Selecione o tipo de visualização:",
+              ["Relatório Consolidado Completo", "Tabela de Colaboradores (Resumo)"],
+              horizontal=True
+          )
+          
+          opcao_consolidada = "Minha Célula"
+          celulas_disponiveis = []
+          
+          todos_usuarios_banco = []
+          inicio_user = 0
+          passo_user = 1000
+          
+          while True:
+              try:
+                  busca_page = supabase.table("usuarios_ponto").select("email, nome, celula").range(inicio_user, inicio_user + passo_user - 1).execute()
+                  if not busca_page.data:
+                      break
+                  todos_usuarios_banco.extend(busca_page.data)
+                  if len(busca_page.data) < passo_user:
+                      break
+                  inicio_user += passo_user
+              except Exception as e:
+                  st.error(f"Erro ao validar lista de colaboradores no banco de dados: {e}")
+                  break
+              
+          mapeamento_celulas_db = {
+              str(u["email"]).strip().lower(): str(u.get("celula", "")).strip()
+              for u in todos_usuarios_banco if u.get("email")
+          }
+              
+          if cargo_usuario == "Master":
+              st.caption("Escolha qual célula extrair ou se deseja consolidar todas as células.")
+              if todos_usuarios_banco:
+                  celulas_disponiveis = sorted(list(set([str(u["celula"]).strip() for u in todos_usuarios_banco if u.get("celula")])))
+              
+              opcoes_master = ["Todos os Colaboradores"] + celulas_disponiveis
+              opcao_consolidada = st.selectbox("Selecione abaixo a célula desejada:", options=opcoes_master)
+          else:
+              st.caption(f"Gera o arquivo contendo os espelhos de ponto consolidados de sua célula ativa: **{celula_usuario}**")
+          
+          if "dados_excel_consolidado" not in st.session_state:
+              st.session_state.dados_excel_consolidado = None
+          if "dados_pdf_consolidado" not in st.session_state:
+              st.session_state.dados_pdf_consolidado = None
+          if "dados_tabela_consolidado" not in st.session_state:
+              st.session_state.dados_tabela_consolidado = None
+          if "nome_arquivo_base" not in st.session_state:
+              st.session_state.nome_arquivo_base = ""
+          if "processamento_concluido" not in st.session_state:
+              st.session_state.processamento_concluido = False
+          if "processamento_tabela" not in st.session_state:
+              st.session_state.processamento_tabela = False
+      
+          if st.button("📊 Processar e Gerar Relatório Consolidado", use_container_width=True, type="primary"):
+              with st.spinner("Processando dados e compilando relatórios da equipe..."):
+                  
+                  if cargo_usuario == "Supervisor":
+                      target_celula = str(celula_usuario).strip().lower()
+                      usuarios_alvo = [u for u in todos_usuarios_banco if str(u.get("celula", "")).strip().lower() == target_celula]
+                      prefixo_nome = f"Relatorio_Consolidado_Celula_{celula_usuario.replace(' ', '_')}"
+                  else:  
+                      if opcao_consolidada == "Todos os Colaboradores":
+                          usuarios_alvo = todos_usuarios_banco
+                          target_celula = "todos"
+                          prefixo_nome = "Relatorio_Consolidado_Todos_Colaboradores"
+                      else:
+                          target_celula = str(opcao_consolidada).strip().lower()
+                          usuarios_alvo = [u for u in todos_usuarios_banco if str(u.get("celula", "")).strip().lower() == target_celula]
+                          prefixo_nome = f"Relatorio_Consolidado_Celula_{opcao_consolidada.replace(' ', '_')}"
+      
+                  dfs_equipe = []
+                  dados_para_tabela = []  # Para a nova visualização em tabela
+                  
+                  for u in usuarios_alvo:
+                      u_email = str(u["email"]).strip().lower()
+                      u_nome = str(u.get("nome", "Sem Nome")).strip()
+                      
+                      dados_pessoais_user = []
+                      try:
+                          resposta_direta = supabase.table("registro_ponto").select("*").eq("email", u_email).execute()
+                          
+                          if resposta_direta.data:
+                              str_inicio = data_inicio.strftime("%Y-%m-%d") if hasattr(data_inicio, "strftime") else str(data_inicio)
+                              str_fim = data_fim.strftime("%Y-%m-%d") if hasattr(data_fim, "strftime") else str(data_fim)
+                              
+                              for r in resposta_direta.data:
+                                  data_crua = str(r.get("data") or r.get("data_registro") or "")
+                                  data_linha = data_crua[:10] 
+                                  
+                                  if str_inicio <= data_linha <= str_fim:
+                                      dados_pessoais_user.append(r)
+                                      
+                      except Exception as db_err:
+                          st.error(f"Erro ao buscar dados no banco para {u_nome} ({u_email}): {db_err}")
+                          continue
+      
+                      df_user_limpo = processar_dados_ponto(dados_pessoais_user, data_inicio, data_fim, incluir_usuario_info=False, formatar_data_br=True)
+                      
+                      if df_user_limpo is not None and not df_user_limpo.empty:
+                          # Adiciona informações do funcionário
+                          df_user_limpo["Funcionário"] = u_nome
+                          df_user_limpo["E-mail"] = u_email
+                          dfs_equipe.append(df_user_limpo)
+                          
+                          # Coleta dados para a tabela resumida
+                          for _, row in df_user_limpo.iterrows():
+                              dados_para_tabela.append({
+                                  "Funcionário": u_nome,
+                                  "E-mail": u_email,
+                                  "Data": row.get("Data", ""),
+                                  "Dia da Semana": row.get("Dia da Semana", ""),
+                                  "Entrada": row.get("Entrada", ""),
+                                  "Saída Almoço": row.get("Saída Almoço", ""),
+                                  "Retorno Almoço": row.get("Retorno Almoço", ""),
+                                  "Saída": row.get("Saída", ""),
+                                  "Hora Extra": row.get("Hora Extra", ""),
+                                  "OBSERVAÇÃO": row.get("OBSERVAÇÃO", "")
+                              })
+                  
+                  if not dfs_equipe:
+                      st.warning("Nenhum dado de ponto localizado para os critérios e período selecionados.")
+                      st.session_state.processamento_concluido = False
+                      st.session_state.processamento_tabela = False
+                  else:
+                      df_filtrado = pd.concat(dfs_equipe, ignore_index=True)
+                      df_filtrado = df_filtrado.sort_values(by="Funcionário", key=lambda col: col.str.lower(), kind="mergesort")
+                      
+                      # Armazena dados para os diferentes formatos
+                      st.session_state.dados_excel_consolidado = converter_para_excel_multiaba(df_filtrado)
+                      st.session_state.dados_pdf_consolidado = converter_para_pdf_consolidado(df_filtrado, mapeamento_celulas_db, data_inicio, data_fim)
+                      st.session_state.dados_tabela_consolidado = dados_para_tabela  # Dados para a tabela resumida
+                      st.session_state.nome_arquivo_base = prefixo_nome
+                      st.session_state.processamento_concluido = True
+                      st.session_state.processamento_tabela = True
+      
+          # Exibe a nova visualização em tabela se os dados estiverem disponíveis
+          if st.session_state.processamento_tabela and st.session_state.dados_tabela_consolidado:
+              st.success("✅ Relatórios consolidados gerados com sucesso!")
+              
+              # Exibe a tabela resumida se a opção for selecionada
+              if opcao_visualizacao == "Tabela de Colaboradores (Resumo)":
+                  st.markdown("### 📋 Resumo de Colaboradores por Período")
+                  
+                  df_tabela = pd.DataFrame(st.session_state.dados_tabela_consolidado)
+                  
+                  # Filtra as colunas conforme solicitado
+                  colunas_tabela = ["Funcionário", "Data", "Dia da Semana", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída"]
+                  df_tabela = df_tabela[[c for c in colunas_tabela if c in df_tabela.columns]]
+                  
+                  # Ordena por Funcionário e Data
+                  df_tabela = df_tabela.sort_values(["Funcionário", "Data"])
+                  
+                  # Exibe a tabela com formatação
+                  st.dataframe(
+                      df_tabela,
+                      use_container_width=True,
+                      hide_index=True,
+                      column_config={
+                          "Funcionário": st.column_config.TextColumn("Funcionário", width="medium"),
+                          "Data": st.column_config.TextColumn("Data", width="small"),
+                          "Dia da Semana": st.column_config.TextColumn("Dia da Semana", width="medium"),
+                          "Entrada": st.column_config.TextColumn("Entrada", width="small"),
+                          "Saída Almoço": st.column_config.TextColumn("Saída Almoço", width="small"),
+                          "Retorno Almoço": st.column_config.TextColumn("Retorno Almoço", width="small"),
+                          "Saída": st.column_config.TextColumn("Saída", width="small")
+                      }
+                  )
+                  
+                  # Botão para baixar a tabela em Excel
+                  st.download_button(
+                      label="📥 Baixar Tabela Resumida (Excel)",
+                      data=converter_para_excel_tabela_resumida(df_tabela),
+                      file_name=f"Tabela_Resumida_{st.session_state.nome_arquivo_base}_{data_inicio}_a_{data_fim}.xlsx",
+                      mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                      use_container_width=True
+                  )
+              
+              # Mantém os botões de download para o relatório completo
+              if opcao_visualizacao == "Relatório Consolidado Completo":
+                  st.markdown("### 📄 Relatório Consolidado Completo")
+                  
+                  col_down1, col_down2 = st.columns(2)
+                  with col_down1:
+                      st.download_button(
+                          label="📥 Baixar em Excel (.xlsx)",
+                          data=st.session_state.dados_excel_consolidado,
+                          file_name=f"{st.session_state.nome_arquivo_base}_{data_inicio}_a_{data_fim}.xlsx",
+                          mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                          use_container_width=True
+                      )
+                  with col_down2:
+                      st.download_button(
+                          label="📄 Baixar em PDF (.pdf)",
+                          data=st.session_state.dados_pdf_consolidado,
+                          file_name=f"{st.session_state.nome_arquivo_base}_{data_inicio}_a_{data_fim}.pdf",
+                          mime="application/pdf",
+                          use_container_width=True
+                      )
+      
+      # Adicione esta função para converter a tabela resumida para Excel
+      def converter_para_excel_tabela_resumida(df_tabela):
+          """
+          Converte a tabela resumida para Excel
+          """
+          from io import BytesIO
+          import pandas as pd
+          
+          output = BytesIO()
+          with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+              # Escreve os dados
+              df_tabela.to_excel(writer, sheet_name='Resumo', index=False)
+              
+              # Ajusta a largura das colunas
+              workbook = writer.book
+              worksheet = writer.sheets['Resumo']
+              
+              # Formatação básica
+              for i, col in enumerate(df_tabela.columns):
+                  max_len = max(df_tabela[col].astype(str).map(len).max(), len(col)) + 2
+                  worksheet.set_column(i, i, min(max_len, 30))
+          
+          return output.getvalue()
