@@ -2400,16 +2400,16 @@ elif opcao == "RELATÓRIO":
                       
                       # Gera o PDF resumido se a opção estiver selecionada
                      if opcao_visualizacao == "Tabela de Colaboradores (Resumo - PDF)":
-                        try:
-                            # Passa os parâmetros corretamente
-                            st.session_state.dados_pdf_resumido = converter_para_pdf_tabela_resumida(
-                                df_resumido, 
-                                data_inicio=data_inicio, 
-                                data_fim=data_fim
-                            )
-                        except Exception as e:
-                            st.error(f"Erro ao gerar PDF resumido: {e}")
-                            st.session_state.dados_pdf_resumido = None
+                      try:
+                          # Passa os parâmetros corretamente
+                          st.session_state.dados_pdf_resumido = converter_para_pdf_tabela_resumida(
+                              df_resumido, 
+                              data_inicio=data_inicio, 
+                              data_fim=data_fim
+                          )
+                      except Exception as e:
+                          st.error(f"Erro ao gerar PDF resumido: {e}")
+                          st.session_state.dados_pdf_resumido = None
         
             if st.session_state.processamento_concluido:
                 st.success("✅ Relatórios consolidados gerados com sucesso!")
