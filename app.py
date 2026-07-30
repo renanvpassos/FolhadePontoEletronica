@@ -2399,20 +2399,22 @@ elif opcao == "RELATÓRIO":
                       st.session_state.dados_pdf_consolidado = converter_para_pdf_consolidado(df_filtrado, mapeamento_celulas_db, data_inicio, data_fim)
                       
                       # Gera o PDF resumido se a opção estiver selecionada
-                     if opcao_visualizacao == "Tabela de Colaboradores (Resumo - PDF)":
-                      try:
-                          # Passa os parâmetros corretamente
-                          st.session_state.dados_pdf_resumido = converter_para_pdf_tabela_resumida(
-                              df_resumido, 
-                              data_inicio=data_inicio, 
-                              data_fim=data_fim
-                          )
-                      except Exception as e:
-                          st.error(f"Erro ao gerar PDF resumido: {e}")
-                          st.session_state.dados_pdf_resumido = None
-        
-            if st.session_state.processamento_concluido:
-                st.success("✅ Relatórios consolidados gerados com sucesso!")
+                      if opcao_visualizacao == "Tabela de Colaboradores (Resumo - PDF)":
+                          try:
+                              st.session_state.dados_pdf_resumido = converter_para_pdf_tabela_resumida(
+                                  df_resumido, 
+                                  data_inicio=data_inicio, 
+                                  data_fim=data_fim
+                              )
+                          except Exception as e:
+                              st.error(f"Erro ao gerar PDF resumido: {e}")
+                              st.session_state.dados_pdf_resumido = None
+                      
+                      st.session_state.nome_arquivo_base = prefixo_nome
+                      st.session_state.processamento_concluido = True
+      
+          if st.session_state.processamento_concluido:
+              st.success("✅ Relatórios consolidados gerados com sucesso!")
               
               if opcao_visualizacao == "Tabela de Colaboradores (Resumo - PDF)":
                   # Botão para baixar apenas o PDF resumido
@@ -2450,4 +2452,3 @@ elif opcao == "RELATÓRIO":
                               mime="application/pdf",
                               use_container_width=True
                           )
-      
