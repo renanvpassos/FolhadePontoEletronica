@@ -194,6 +194,29 @@ if 'intro_exibida' not in st.session_state:
     exibir_intro()
     st.session_state['intro_exibida'] = True
 
+def converter_para_excel_tabela_resumida(df_tabela):
+          """
+          Converte a tabela resumida para Excel
+          """
+          from io import BytesIO
+          import pandas as pd
+          
+          output = BytesIO()
+          with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+              # Escreve os dados
+              df_tabela.to_excel(writer, sheet_name='Resumo', index=False)
+              
+              # Ajusta a largura das colunas
+              workbook = writer.book
+              worksheet = writer.sheets['Resumo']
+              
+              # Formatação básica
+              for i, col in enumerate(df_tabela.columns):
+                  max_len = max(df_tabela[col].astype(str).map(len).max(), len(col)) + 2
+                  worksheet.set_column(i, i, min(max_len, 30))
+          
+          return output.getvalue()
+
 def processar_dados_consolidado_tabela(dados_equipe, data_inicio, data_fim):
     """
     Processa os dados consolidados para exibição em tabela com colaboradores em linhas
@@ -2272,26 +2295,3 @@ elif opcao == "RELATÓRIO":
                           use_container_width=True
                       )
       
-      # Adicione esta função para converter a tabela resumida para Excel
-      def converter_para_excel_tabela_resumida(df_tabela):
-          """
-          Converte a tabela resumida para Excel
-          """
-          from io import BytesIO
-          import pandas as pd
-          
-          output = BytesIO()
-          with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-              # Escreve os dados
-              df_tabela.to_excel(writer, sheet_name='Resumo', index=False)
-              
-              # Ajusta a largura das colunas
-              workbook = writer.book
-              worksheet = writer.sheets['Resumo']
-              
-              # Formatação básica
-              for i, col in enumerate(df_tabela.columns):
-                  max_len = max(df_tabela[col].astype(str).map(len).max(), len(col)) + 2
-                  worksheet.set_column(i, i, min(max_len, 30))
-          
-          return output.getvalue()
