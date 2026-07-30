@@ -1381,764 +1381,289 @@ elif opcao == "LOG INTERNO":
                 )
                 st.markdown(html_log_interno, unsafe_allow_html=True)
 
-# --- MENU: RELATÓRIO ---
-elif opcao == "RELATÓRIO":
-    st.title("📊 Espelho de Ponto Pessoal")
-    email_busca = user_email
-    nome_busca = user_name
-    
-    mapeamento_celulas = {}
-    try:
-        busca_mapeamento = supabase.table("usuarios_ponto").select("email, celula").execute()
-        if busca_mapeamento.data:
-            mapeamento_celulas = {str(u['email']).strip().lower(): u.get('celula') for u in busca_mapeamento.data}
-    except Exception:
-        st.warning("Não foi possível carregar o mapeamento completo de células.")
+# Adicione esta nova função no início do arquivo, após as outras funções de processamento
 
-    lista_todos_usuarios = []
+def processar_dados_consolidado_tabela(dados_equipe, data_inicio, data_fim):
+    """
+    Processa os dados consolidados para exibição em tabela com colaboradores em linhas
+    Formato: Nome colaborador, Horário de entrada, Horário de saida de almoço, 
+    horário de retorno de almoço e horário de saida
+    """
+    if not dados_equipe:
+        return pd.DataFrame()
     
-    if cargo_usuario == "Master":
-        st.markdown("### 🔑 Painel de Gestão (Master)")
-        try:
-            usuarios_banco = supabase.table("usuarios_ponto").select("email, nome, celula").execute()
-            if usuarios_banco.data:
-                lista_todos_usuarios = sorted(usuarios_banco.data, key=lambda x: x.get("nome", "").lower())
-                opcoes_usuarios = {f"{u['nome']} ({u['email']}) - Célula: {u.get('celula') or 'Sem célula'}": u for u in lista_todos_usuarios}
+    # Agrupa os dados por funcionário e data
+    dados_agrupados = {}
     
-                usuario_selecionado_str = st.selectbox("Selecione o colaborador que deseja consultar na tela:", options=list(opcoes_usuarios.keys()))
-                colaborador_escolhido = opcoes_usuarios[usuario_selecionado_str]
-                email_busca = colaborador_escolhido["email"]
-                nome_busca = colaborador_escolhido["nome"]
-                celula_busca = colaborador_escolhido.get("celula")
-    
-                celula_atual = celula_busca or ""
-                nova_celula = st.text_input(
-                    "📍 Célula do Colaborador (Banco de Dados):",
-                    value=celula_atual,
-                    key=f"celula_input_{email_busca}"
-                )
-    
-                houve_alteracao = nova_celula != celula_atual
-    
-                if st.button("✅ Confirmar alteração", disabled=not houve_alteracao):
-                    try:
-                        supabase.table("usuarios_ponto").update({"celula": nova_celula}).eq("email", email_busca).execute()
-                        st.success(f"Célula de {nome_busca} atualizada com sucesso!")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Erro ao atualizar célula: {e}")
-                elif houve_alteracao:
-                    st.info("Alteração pendente — clique em **Confirmar alteração** para salvar.")
-        except Exception:
-            st.error("Erro ao carregar a lista completa de funcionários.")
-    
-    elif cargo_usuario == "Supervisor":
-        st.markdown("### 🔑 Painel de Gestão (Supervisor)")
-        if celula_usuario:
-            st.info(f"📍 Sua Célula atual: **{celula_usuario}**")
-        if not celula_usuario:
-            st.warning("Você é Supervisor, mas não está vinculado a nenhuma célula no banco de dados.")
-        else:
-            try:
-                usuarios_banco = supabase.table("usuarios_ponto").select("email, nome, celula").eq("celula", celula_usuario).execute()
-                if usuarios_banco.data:
-                    lista_todos_usuarios = sorted(usuarios_banco.data, key=lambda x: x.get("nome", "").lower())
-                    opcoes_usuarios = {f"{u['nome']} ({u['email']})": u for u in lista_todos_usuarios}
-                    
-                    usuario_selecionado_str = st.selectbox("Selecione o colaborador que deseja consultar na tela:", options=list(opcoes_usuarios.keys()))
-                    colaborador_escolhido = opcoes_usuarios[usuario_selecionado_str]
-                    email_busca = colaborador_escolhido["email"]
-                    nome_busca = colaborador_escolhido["nome"]
-            except Exception:
-                st.error("Erro ao carregar a lista de funcionários da sua célula.")
-                
-    elif cargo_usuario == "Colaborador":
-        if celula_usuario:
-            st.info(f"📍 Sua Célula atual: **{celula_usuario}**")
-                
-    st.caption(f"Filtro e exportação de folhas e históricos para: **{nome_busca}**")
-     
-    col1, col2 = st.columns(2)
-    with col1:
-        data_inicio = st.date_input("🗓️ Data Inicial", hoje - timedelta(days=14), format="DD/MM/YYYY")
-    with col2:
-        data_fim = st.date_input("🗓️ Data Final", hoje, format="DD/MM/YYYY")
-
-    if data_inicio <= data_fim:
-        dados_pessoais_indicadores = executar_query_supabase("buscar_relatorio", email=email_busca, data_filtro=data_inicio, data_fim=data_fim)
+    for item in dados_equipe:
+        email = item.get("E-mail", "")
+        nome = item.get("Funcionário", "")
+        data = item.get("Data", "")
+        entrada = item.get("Entrada", "")
+        saida_almoco = item.get("Saída Almoço", "")
+        retorno_almoco = item.get("Retorno Almoço", "")
+        saida = item.get("Saída", "")
         
-        total_segundos_trabalhados = 0
-        total_segundos_extras = 0
+        chave = f"{nome}|{email}|{data}"
         
-        segundos_por_dia = defaultdict(int)
-    
-        if dados_pessoais_indicadores:
-            for item in dados_pessoais_indicadores:
-                val_ent = item.get("horario_entrada")
-                val_sai = item.get("horario_saida")
-                
-                if val_ent and val_sai:
-                    try:
-                        dt_ent = datetime.fromisoformat(val_ent).astimezone(fuso_br)
-                        dt_sai = datetime.fromisoformat(val_sai).astimezone(fuso_br)
-                        
-                        segundos_trab = int((dt_sai - dt_ent).total_seconds())
-                        
-                        if segundos_trab > 0:
-                            dia_str = dt_ent.strftime("%d-%m-%Y")
-                            segundos_por_dia[dia_str] += segundos_trab
-                    except:
-                        pass
-    
-            jornada_limite = 9 * 3600
-            
-            datas_especiais = {
-                "04-06-2026",  
-                "09/07/2026", 
-                "07/09/2026", 
-                "12/10/2026", 
-                "02/11/2026", 
-                "15/11/2026", 
-                "20/11/2026", 
-                "25/12/2026"
+        if chave not in dados_agrupados:
+            dados_agrupados[chave] = {
+                "Nome": nome,
+                "E-mail": email,
+                "Data": data,
+                "Entrada": entrada,
+                "Saída Almoço": saida_almoco,
+                "Retorno Almoço": retorno_almoco,
+                "Saída": saida,
+                "Dia da Semana": item.get("Dia da Semana", "")
             }
-            
-            for dia_str, segundos_totais_do_dia in segundos_por_dia.items():
-                total_segundos_trabalhados += segundos_totais_do_dia
-                dt_dia = datetime.strptime(dia_str, "%d-%m-%Y")
-                dia_da_semana = dt_dia.weekday()
-                
-                if dia_da_semana in (5, 6) or dia_str in datas_especiais:
-                    total_segundos_extras += segundos_totais_do_dia
-                else:
-                    if segundos_totais_do_dia > jornada_limite:
-                        total_segundos_extras += (segundos_totais_do_dia - jornada_limite)
+        else:
+            # Atualiza com os dados mais recentes se houver
+            if entrada:
+                dados_agrupados[chave]["Entrada"] = entrada
+            if saida_almoco:
+                dados_agrupados[chave]["Saída Almoço"] = saida_almoco
+            if retorno_almoco:
+                dados_agrupados[chave]["Retorno Almoço"] = retorno_almoco
+            if saida:
+                dados_agrupados[chave]["Saída"] = saida
     
-        def_total_minutos_trabalhados = total_segundos_trabalhados // 60
-        def_total_minutos_extras = total_segundos_extras // 60
+    # Converte para DataFrame
+    df_resultado = pd.DataFrame(list(dados_agrupados.values()))
     
-        horas_trab_totais = f"{def_total_minutos_trabalhados // 60:02d}h {def_total_minutos_trabalhados % 60:02d}m"
-        horas_ext_totais = f"{def_total_minutos_extras // 60:02d}h {def_total_minutos_extras % 60:02d}m"
+    # Ordena por Nome e Data
+    if not df_resultado.empty:
+        df_resultado = df_resultado.sort_values(["Nome", "Data"])
     
-        st.write("")
-        col_tot1, col_tot2 = st.columns(2)
-        with col_tot1:
-            st.metric(label="⏱️ Total de Horas Trabalhadas no Período", value=horas_trab_totais)
-        with col_tot2:
-            st.metric(label="🚀 Total de Horas Extras no Período", value=horas_ext_totais, 
-                      delta=horas_ext_totais if def_total_minutos_extras > 0 else None, delta_color="normal")
-        
-    st.write("---")
-     
-    if data_inicio > data_fim:
-        st.error("Erro: A data inicial não pode ser maior que a data final.")
-    else:
-        def processar_dados_ponto(dados, dt_inicio, dt_fim, incluir_usuario_info=False, formatar_data_br=False):
-            dias_semana = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"]
-            
-            ordem_individual = ["Dia da Semana", "Data", "Entrada", "Saída", "Hora Extra", "Saída Almoço", "Retorno Almoço", "Justificativa Entrada", "Justificativa Saída Almoço", "Justificativa Retorno Almoço", "Justificativa Saída", "OBSERVAÇÃO"]
-            ordem_consolidada = ["Funcionário", "E-mail", "Dia da Semana", "Data", "Entrada", "Saída", "Hora Extra", "Saída Almoço", "Retorno Almoço", "Justificativa Entrada", "Justificativa Saída Almoço", "Justificativa Retorno Almoço", "Justificativa Saída", "OBSERVAÇÃO"]
-            
-            datas_100_porcento = ["04/06/2026", "09/07/2026", "07/09/2026", "12/10/2026", "02/11/2026", "15/11/2026", "20/11/2026", "25/12/2026"]
-        
-            if incluir_usuario_info:
-                if not dados:
-                    return pd.DataFrame()
-                dados_ordenados = sorted(dados, key=lambda x: str(x.get("data", "")))
-                linhas_processadas = []
-                for item in dados_ordenados:
-                    linha = {}
-                    linha["Funcionário"] = item.get("nome_completo", "")
-                    linha["E-mail"] = item.get("email", "")
-                    
-                    data_banco = item.get("data", "")
-                    dia_semana_str = ""
-                    dt_obj = None 
-                    if data_banco:
-                        try:
-                            if isinstance(data_banco, str):
-                                dt_obj = datetime.strptime(data_banco[:10], "%Y-%m-%d")
-                            elif hasattr(data_banco, "weekday"):
-                                dt_obj = data_banco
-                            else:
-                                dt_obj = datetime.strptime(str(data_banco)[:10], "%Y-%m-%d")
-                            dia_semana_str = dias_semana[dt_obj.weekday()]
-                        except Exception:
-                            pass
-                    
-                    linha["Dia da Semana"] = dia_semana_str
-                    
-                    if formatar_data_br and data_banco:
-                        try:
-                            if isinstance(data_banco, str):
-                                dt_obj_for = datetime.strptime(data_banco[:10], "%Y-%m-%d")
-                            elif hasattr(data_banco, "strftime"):
-                                dt_obj_for = data_banco
-                            else:
-                                dt_obj_for = datetime.strptime(str(data_banco)[:10], "%Y-%m-%d")
-                            linha["Data"] = dt_obj_for.strftime("%d/%m/%Y")
-                        except Exception:
-                            linha["Data"] = str(data_banco)
-                    else:
-                        if isinstance(data_banco, str):
-                            linha["Data"] = data_banco[:10]
-                        elif hasattr(data_banco, "strftime"):
-                            linha["Data"] = data_banco.strftime("%Y-%m-%d")
-                        else:
-                            linha["Data"] = str(data_banco)[:10] if data_banco else ""
-        
-                    dt_entrada, dt_saida = None, None
-                    for col_banco, col_df in [
-                        ("horario_entrada", "Entrada"),
-                        ("saida_almoco", "Saída Almoço"),
-                        ("retorno_almoco", "Retorno Almoço"),
-                        ("horario_saida", "Saída")
-                    ]:
-                        valor = item.get(col_banco)
-                        if valor:
-                            try:
-                                dt_objeto = datetime.fromisoformat(valor).astimezone(fuso_br)
-                                linha[col_df] = dt_objeto.strftime("%H:%M:%S")
-                                if col_banco == "horario_entrada":
-                                    dt_entrada = dt_objeto
-                                elif col_banco == "horario_saida":
-                                    dt_saida = dt_objeto
-                            except Exception:
-                                linha[col_df] = ""
-                        else:
-                            linha[col_df] = ""
-        
-                    hora_extra_str = "00:00"
-                    if dt_entrada and dt_saida and dt_obj:
-                        segundos_trabalhados = int((dt_saida - dt_entrada).total_seconds())
-                        dia_da_semana_numero = dt_obj.weekday()
-                        data_atual_str = dt_obj.strftime("%d/%m/%Y")
-                        
-                        if dia_da_semana_numero in [5, 6] or data_atual_str in datas_100_porcento:
-                            segundos_extras = segundos_trabalhados
-                        else:
-                            jornada_limite_segundos = 9 * 3600
-                            segundos_extras = max(0, segundos_trabalhados - jornada_limite_segundos)
-                        
-                        if segundos_extras > 0:
-                            horas_ext = segundos_extras // 3600
-                            minutos_ext = (segundos_extras % 3600) // 60
-                            hora_extra_str = f"{horas_ext:02d}:{minutos_ext:02d}"
-                    
-                    linha["Hora Extra"] = hora_extra_str
-                    linha["Justificativa Entrada"] = item.get("justificativa_entrada", "") or ""
-                    linha["Justificativa Saída Almoço"] = item.get("justificativa_saida_almoco", "") or ""
-                    linha["Justificativa Retorno Almoço"] = item.get("justificativa_retorno_almoco", "") or ""
-                    linha["Justificativa Saída"] = item.get("justificativa_saida", "") or ""
-                    linha["OBSERVAÇÃO"] = item.get("observacao", "") or ""
-                    linhas_processadas.append(linha)
-                
-                df_res = pd.DataFrame(linhas_processadas)
-                return df_res[[c for c in ordem_consolidada if c in df_res.columns]]
-        
-            lista_datas = []
-            curr_date = dt_inicio
-            while curr_date <= dt_fim:
-                lista_datas.append(curr_date)
-                curr_date += timedelta(days=1)
-        
-            dados_por_data = {}
-            if dados:
-                for item in dados:
-                    dt_banco = item.get("data")
-                    if dt_banco:
-                        if isinstance(dt_banco, str):
-                            dt_key = dt_banco[:10]
-                        elif hasattr(dt_banco, "strftime"):
-                            dt_key = dt_banco.strftime("%Y-%m-%d")
-                        else:
-                            dt_key = str(dt_banco)[:10]
-                        dados_por_data[dt_key] = item
-        
-            linhas_processadas = []
-            for dt in lista_datas: 
-                data_iso = dt.strftime("%Y-%m-%d")
-                data_atual_str = dt.strftime("%d/%m/%Y")
-                item = dados_por_data.get(data_iso, {})
-        
-                linha = {}
-                dia_da_semana_numero = dt.weekday()
-                linha["Dia da Semana"] = dias_semana[dia_da_semana_numero]
-                
-                if formatar_data_br:
-                    linha["Data"] = data_atual_str
-                else:
-                    linha["Data"] = data_iso
-        
-                dt_entrada, dt_saida = None, None
-                for col_banco, col_df in [
-                    ("horario_entrada", "Entrada"),
-                    ("saida_almoco", "Saída Almoço"),
-                    ("retorno_almoco", "Retorno Almoço"),
-                    ("horario_saida", "Saída")
-                ]:
-                    valor = item.get(col_banco)
-                    if valor:
-                        try:
-                            dt_objeto = datetime.fromisoformat(valor).astimezone(fuso_br)
-                            linha[col_df] = dt_objeto.strftime("%H:%M:%S")
-                            if col_banco == "horario_entrada":
-                                dt_entrada = dt_objeto
-                            elif col_banco == "horario_saida":
-                                dt_saida = dt_objeto
-                        except Exception:
-                            linha[col_df] = ""
-                    else:
-                        linha[col_df] = ""
-        
-                hora_extra_str = "00:00"
-                if dt_entrada and dt_saida:
-                    segundos_trabalhados = int((dt_saida - dt_entrada).total_seconds())
-                    
-                    if dia_da_semana_numero in [5, 6] or data_atual_str in datas_100_porcento:
-                        segundos_extras = segundos_trabalhados
-                    else:
-                        jornada_limite_segundos = 9 * 3600
-                        segundos_extras = max(0, segundos_trabalhados - jornada_limite_segundos)
-                    
-                    if segundos_extras > 0:
-                        horas_ext = segundos_extras // 3600
-                        minutos_ext = (segundos_extras % 3600) // 60
-                        hora_extra_str = f"{horas_ext:02d}:{minutos_ext:02d}"
-                
-                linha["Hora Extra"] = hora_extra_str
-                linha["Justificativa Entrada"] = item.get("justificativa_entrada", "") or ""
-                linha["Justificativa Saída Almoço"] = item.get("justificativa_saida_almoco", "") or ""
-                linha["Justificativa Retorno Almoço"] = item.get("justificativa_retorno_almoco", "") or ""
-                linha["Justificativa Saída"] = item.get("justificativa_saida", "") or ""
-                linha["OBSERVAÇÃO"] = item.get("observacao", "") or ""
-                linhas_processadas.append(linha)
-        
-            df_res = pd.DataFrame(linhas_processadas)
-            return df_res[[c for c in ordem_individual if c in df_res.columns]]
-        
-        dados_pessoais = executar_query_supabase("buscar_relatorio", email=email_busca, data_filtro=data_inicio, data_fim=data_fim)
-        df_visualizacao = processar_dados_ponto(dados_pessoais, data_inicio, data_fim, incluir_usuario_info=False, formatar_data_br=True)
-        
-        st.markdown(f"##### 📑 Histórico de Registros ({data_inicio.strftime('%d/%m/%Y')} até {data_fim.strftime('%d/%m/%Y')})")
-        
-        ordem_colunas_tela = ["Dia da Semana", "Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", "Hora Extra", "Justificativa Entrada", "Justificativa Saída Almoço", "Justificativa Retorno Almoço", "Justificativa Saída", "OBSERVAÇÃO"]
+    return df_resultado
 
-        feriados_2026 = {
-            "04/06/2026", "09/07/2026", "07/09/2026", "12/10/2026",
-            "02/11/2026", "15/11/2026", "20/11/2026", "25/12/2026",
-        }
+# Modifique a seção de "Exportação Geral da Equipe (Consolidada)" para incluir a nova opção
+
+if cargo_usuario in ["Supervisor", "Master"]:
+    st.write("---")
+    st.markdown("### 🗂️ Exportação Geral da Equipe (Consolidada)")
+    
+    # Adiciona as novas opções de visualização
+    opcao_visualizacao = st.radio(
+        "Selecione o tipo de visualização:",
+        ["Relatório Consolidado Completo", "Tabela de Colaboradores (Resumo)"],
+        horizontal=True
+    )
+    
+    opcao_consolidada = "Minha Célula"
+    celulas_disponiveis = []
+    
+    todos_usuarios_banco = []
+    inicio_user = 0
+    passo_user = 1000
+    
+    while True:
+        try:
+            busca_page = supabase.table("usuarios_ponto").select("email, nome, celula").range(inicio_user, inicio_user + passo_user - 1).execute()
+            if not busca_page.data:
+                break
+            todos_usuarios_banco.extend(busca_page.data)
+            if len(busca_page.data) < passo_user:
+                break
+            inicio_user += passo_user
+        except Exception as e:
+            st.error(f"Erro ao validar lista de colaboradores no banco de dados: {e}")
+            break
         
-        datas = pd.to_datetime(df_visualizacao["Data"], format="%d/%m/%Y", errors="coerce")
+    mapeamento_celulas_db = {
+        str(u["email"]).strip().lower(): str(u.get("celula", "")).strip()
+        for u in todos_usuarios_banco if u.get("email")
+    }
         
-        entrada_preenchida = df_visualizacao["Entrada"].notna() & (
-            df_visualizacao["Entrada"].astype(str).str.strip() != ""
-        )
+    if cargo_usuario == "Master":
+        st.caption("Escolha qual célula extrair ou se deseja consolidar todas as células.")
+        if todos_usuarios_banco:
+            celulas_disponiveis = sorted(list(set([str(u["celula"]).strip() for u in todos_usuarios_banco if u.get("celula")])))
         
-        df_visualizacao.loc[
-            entrada_preenchida & df_visualizacao["Data"].isin(feriados_2026),
-            "OBSERVAÇÃO"
-        ] = "FERIADO"
-        
-        df_visualizacao.loc[
-            entrada_preenchida
-            & ~df_visualizacao["Data"].isin(feriados_2026)
-            & datas.dt.weekday.isin([5, 6]),
-            "OBSERVAÇÃO"
-        ] = "PLANTÃO"
-        
-        if cargo_usuario in ["Supervisor", "Master"]:
-            st.warning("⚠️ **Atenção:** Confirme as alterações antes de salvar.")
+        opcoes_master = ["Todos os Colaboradores"] + celulas_disponiveis
+        opcao_consolidada = st.selectbox("Selecione abaixo a célula desejada:", options=opcoes_master)
+    else:
+        st.caption(f"Gera o arquivo contendo os espelhos de ponto consolidados de sua célula ativa: **{celula_usuario}**")
+    
+    if "dados_excel_consolidado" not in st.session_state:
+        st.session_state.dados_excel_consolidado = None
+    if "dados_pdf_consolidado" not in st.session_state:
+        st.session_state.dados_pdf_consolidado = None
+    if "dados_tabela_consolidado" not in st.session_state:
+        st.session_state.dados_tabela_consolidado = None
+    if "nome_arquivo_base" not in st.session_state:
+        st.session_state.nome_arquivo_base = ""
+    if "processamento_concluido" not in st.session_state:
+        st.session_state.processamento_concluido = False
+    if "processamento_tabela" not in st.session_state:
+        st.session_state.processamento_tabela = False
+
+    if st.button("📊 Processar e Gerar Relatório Consolidado", use_container_width=True, type="primary"):
+        with st.spinner("Processando dados e compilando relatórios da equipe..."):
             
-            df_editado = st.data_editor(
-                df_visualizacao,
+            if cargo_usuario == "Supervisor":
+                target_celula = str(celula_usuario).strip().lower()
+                usuarios_alvo = [u for u in todos_usuarios_banco if str(u.get("celula", "")).strip().lower() == target_celula]
+                prefixo_nome = f"Relatorio_Consolidado_Celula_{celula_usuario.replace(' ', '_')}"
+            else:  
+                if opcao_consolidada == "Todos os Colaboradores":
+                    usuarios_alvo = todos_usuarios_banco
+                    target_celula = "todos"
+                    prefixo_nome = "Relatorio_Consolidado_Todos_Colaboradores"
+                else:
+                    target_celula = str(opcao_consolidada).strip().lower()
+                    usuarios_alvo = [u for u in todos_usuarios_banco if str(u.get("celula", "")).strip().lower() == target_celula]
+                    prefixo_nome = f"Relatorio_Consolidado_Celula_{opcao_consolidada.replace(' ', '_')}"
+
+            dfs_equipe = []
+            dados_para_tabela = []  # Para a nova visualização em tabela
+            
+            for u in usuarios_alvo:
+                u_email = str(u["email"]).strip().lower()
+                u_nome = str(u.get("nome", "Sem Nome")).strip()
+                
+                dados_pessoais_user = []
+                try:
+                    resposta_direta = supabase.table("registro_ponto").select("*").eq("email", u_email).execute()
+                    
+                    if resposta_direta.data:
+                        str_inicio = data_inicio.strftime("%Y-%m-%d") if hasattr(data_inicio, "strftime") else str(data_inicio)
+                        str_fim = data_fim.strftime("%Y-%m-%d") if hasattr(data_fim, "strftime") else str(data_fim)
+                        
+                        for r in resposta_direta.data:
+                            data_crua = str(r.get("data") or r.get("data_registro") or "")
+                            data_linha = data_crua[:10] 
+                            
+                            if str_inicio <= data_linha <= str_fim:
+                                dados_pessoais_user.append(r)
+                                
+                except Exception as db_err:
+                    st.error(f"Erro ao buscar dados no banco para {u_nome} ({u_email}): {db_err}")
+                    continue
+
+                df_user_limpo = processar_dados_ponto(dados_pessoais_user, data_inicio, data_fim, incluir_usuario_info=False, formatar_data_br=True)
+                
+                if df_user_limpo is not None and not df_user_limpo.empty:
+                    # Adiciona informações do funcionário
+                    df_user_limpo["Funcionário"] = u_nome
+                    df_user_limpo["E-mail"] = u_email
+                    dfs_equipe.append(df_user_limpo)
+                    
+                    # Coleta dados para a tabela resumida
+                    for _, row in df_user_limpo.iterrows():
+                        dados_para_tabela.append({
+                            "Funcionário": u_nome,
+                            "E-mail": u_email,
+                            "Data": row.get("Data", ""),
+                            "Dia da Semana": row.get("Dia da Semana", ""),
+                            "Entrada": row.get("Entrada", ""),
+                            "Saída Almoço": row.get("Saída Almoço", ""),
+                            "Retorno Almoço": row.get("Retorno Almoço", ""),
+                            "Saída": row.get("Saída", ""),
+                            "Hora Extra": row.get("Hora Extra", ""),
+                            "OBSERVAÇÃO": row.get("OBSERVAÇÃO", "")
+                        })
+            
+            if not dfs_equipe:
+                st.warning("Nenhum dado de ponto localizado para os critérios e período selecionados.")
+                st.session_state.processamento_concluido = False
+                st.session_state.processamento_tabela = False
+            else:
+                df_filtrado = pd.concat(dfs_equipe, ignore_index=True)
+                df_filtrado = df_filtrado.sort_values(by="Funcionário", key=lambda col: col.str.lower(), kind="mergesort")
+                
+                # Armazena dados para os diferentes formatos
+                st.session_state.dados_excel_consolidado = converter_para_excel_multiaba(df_filtrado)
+                st.session_state.dados_pdf_consolidado = converter_para_pdf_consolidado(df_filtrado, mapeamento_celulas_db, data_inicio, data_fim)
+                st.session_state.dados_tabela_consolidado = dados_para_tabela  # Dados para a tabela resumida
+                st.session_state.nome_arquivo_base = prefixo_nome
+                st.session_state.processamento_concluido = True
+                st.session_state.processamento_tabela = True
+
+    # Exibe a nova visualização em tabela se os dados estiverem disponíveis
+    if st.session_state.processamento_tabela and st.session_state.dados_tabela_consolidado:
+        st.success("✅ Relatórios consolidados gerados com sucesso!")
+        
+        # Exibe a tabela resumida se a opção for selecionada
+        if opcao_visualizacao == "Tabela de Colaboradores (Resumo)":
+            st.markdown("### 📋 Resumo de Colaboradores por Período")
+            
+            df_tabela = pd.DataFrame(st.session_state.dados_tabela_consolidado)
+            
+            # Filtra as colunas conforme solicitado
+            colunas_tabela = ["Funcionário", "Data", "Dia da Semana", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída"]
+            df_tabela = df_tabela[[c for c in colunas_tabela if c in df_tabela.columns]]
+            
+            # Ordena por Funcionário e Data
+            df_tabela = df_tabela.sort_values(["Funcionário", "Data"])
+            
+            # Exibe a tabela com formatação
+            st.dataframe(
+                df_tabela,
                 use_container_width=True,
                 hide_index=True,
-                disabled=["Dia da Semana", "Data", "Hora Extra"],
-                column_order=ordem_colunas_tela,
                 column_config={
-                    "Dia da Semana": st.column_config.TextColumn("Dia da Semana"),
-                    "Data": st.column_config.TextColumn("Data"),
-                    "Entrada": st.column_config.TextColumn("Entrada"),
-                    "Saída Almoço": st.column_config.TextColumn("Saída Almoço"),
-                    "Retorno Almoço": st.column_config.TextColumn("Retorno Almoço"),
-                    "Saída": st.column_config.TextColumn("Saída"),
-                    "OBSERVAÇÃO": st.column_config.TextColumn("OBSERVAÇÃO")
-                },
-                key="editor_ponto_gestao"
+                    "Funcionário": st.column_config.TextColumn("Funcionário", width="medium"),
+                    "Data": st.column_config.TextColumn("Data", width="small"),
+                    "Dia da Semana": st.column_config.TextColumn("Dia da Semana", width="medium"),
+                    "Entrada": st.column_config.TextColumn("Entrada", width="small"),
+                    "Saída Almoço": st.column_config.TextColumn("Saída Almoço", width="small"),
+                    "Retorno Almoço": st.column_config.TextColumn("Retorno Almoço", width="small"),
+                    "Saída": st.column_config.TextColumn("Saída", width="small")
+                }
             )
             
-            col_btn, col_csv_integ = st.columns(2)
-            with col_btn:
-                caixa_confirmacao = st.popover("💾 Salvar Alterações no Banco", use_container_width=True)
-                caixa_confirmacao.warning(f"⚠️ Atenção: Isso alterará permanentemente os dados de {nome_busca}.")
-                confirmou_salvar = caixa_confirmacao.button("Sim, confirmar e salvar", type="primary", use_container_width=True)
-
-            with col_csv_integ:
-                gerar_csv_integracao = st.button("🗳️ Gerar CSV Integração", use_container_width=True)
-
-            if gerar_csv_integracao:
-                with st.spinner("Gerando CSV(s) de integração..."):
-                    df_csv_ind = processar_dados_ponto(dados_pessoais, data_inicio, data_fim, incluir_usuario_info=False, formatar_data_br=True)
-                    st.session_state.csv_integ_individual = converter_para_csv_integracao(df_csv_ind)
-                    st.session_state.csv_integ_individual_nome = f"CSV_Integracao_{nome_busca.replace(' ', '_')}_{data_inicio}_a_{data_fim}.csv"
-
-                    todos_usuarios_csv = []
-                    inicio_pag, passo_pag = 0, 1000
-                    while True:
-                        try:
-                            pagina = supabase.table("usuarios_ponto").select("email, nome, celula").range(inicio_pag, inicio_pag + passo_pag - 1).execute()
-                            if not pagina.data:
-                                break
-                            todos_usuarios_csv.extend(pagina.data)
-                            if len(pagina.data) < passo_pag:
-                                break
-                            inicio_pag += passo_pag
-                        except Exception as e:
-                            st.error(f"Erro ao buscar colaboradores para o CSV consolidado: {e}")
-                            break
-
-                    if cargo_usuario == "Supervisor":
-                        target_celula_csv = str(celula_usuario).strip().lower()
-                        usuarios_alvo_csv = [u for u in todos_usuarios_csv if str(u.get("celula", "")).strip().lower() == target_celula_csv]
-                        nome_arquivo_consolidado = f"CSV_Integracao_Consolidado_Celula_{celula_usuario.replace(' ', '_')}_{data_inicio}_a_{data_fim}.csv"
-                    else:
-                        usuarios_alvo_csv = todos_usuarios_csv
-                        nome_arquivo_consolidado = f"CSV_Integracao_Consolidado_Todos_Colaboradores_{data_inicio}_a_{data_fim}.csv"
-
-                    str_inicio_csv = data_inicio.strftime("%Y-%m-%d") if hasattr(data_inicio, "strftime") else str(data_inicio)
-                    str_fim_csv = data_fim.strftime("%Y-%m-%d") if hasattr(data_fim, "strftime") else str(data_fim)
-
-                    dfs_equipe_csv = []
-                    for u in usuarios_alvo_csv:
-                        u_email_csv = str(u["email"]).strip().lower()
-                        u_nome_csv = str(u.get("nome", "Sem Nome")).strip()
-
-                        dados_user_csv = []
-                        try:
-                            resposta_csv = supabase.table("registro_ponto").select("*").eq("email", u_email_csv).execute()
-                            if resposta_csv.data:
-                                for r in resposta_csv.data:
-                                    data_crua_csv = str(r.get("data") or r.get("data_registro") or "")
-                                    data_linha_csv = data_crua_csv[:10]
-                                    if str_inicio_csv <= data_linha_csv <= str_fim_csv:
-                                        dados_user_csv.append(r)
-                        except Exception as db_err:
-                            st.error(f"Erro ao buscar dados no banco para {u_nome_csv} ({u_email_csv}): {db_err}")
-                            continue
-
-                        df_user_csv = processar_dados_ponto(dados_user_csv, data_inicio, data_fim, incluir_usuario_info=False, formatar_data_br=True)
-                        if df_user_csv is not None and not df_user_csv.empty:
-                            df_user_csv.insert(0, "E-mail", u_email_csv)
-                            df_user_csv.insert(0, "Funcionário", u_nome_csv)
-                            dfs_equipe_csv.append(df_user_csv)
-
-                    if dfs_equipe_csv:
-                        df_consolidado_csv = pd.concat(dfs_equipe_csv, ignore_index=True)
-                        df_consolidado_csv = df_consolidado_csv.sort_values(by="Funcionário", key=lambda col: col.str.lower(), kind="mergesort")
-                        st.session_state.csv_integ_consolidado = converter_para_csv_integracao(df_consolidado_csv)
-                    else:
-                        st.session_state.csv_integ_consolidado = None
-
-                    st.session_state.csv_integ_consolidado_nome = nome_arquivo_consolidado
-                    st.session_state.csv_integracao_pronto = True
-
-            if st.session_state.get("csv_integracao_pronto"):
-                st.success("✅ CSV(s) de integração gerados com sucesso!")
-                col_csv_d1, col_csv_d2 = st.columns(2)
-                with col_csv_d1:
-                    st.download_button(
-                        label="📥 Baixar CSV Individual",
-                        data=st.session_state.csv_integ_individual,
-                        file_name=st.session_state.csv_integ_individual_nome,
-                        mime="text/csv",
-                        use_container_width=True
-                    )
-                with col_csv_d2:
-                    if st.session_state.csv_integ_consolidado is not None:
-                        st.download_button(
-                            label="📥 Baixar CSV Consolidado",
-                            data=st.session_state.csv_integ_consolidado,
-                            file_name=st.session_state.csv_integ_consolidado_nome,
-                            mime="text/csv",
-                            use_container_width=True
-                        )
-                    else:
-                        st.info("Nenhum dado consolidado encontrado para o período selecionado.")
-            
-            if confirmou_salvar:
-                alteracoes = st.session_state.get("editor_ponto_gestao", {}).get("edited_rows", {})
-                
-                if not alteracoes:
-                    st.info("Nenhuma alteração foi detectada para ser salva.")
-                else:
-                    sucessos = 0
-                    erros = 0
-                    
-                    mapeamento_colunas_db = {
-                        "Entrada": "horario_entrada",
-                        "Justificativa Entrada": "justificativa_entrada",
-                        "Saída Almoço": "saida_almoco",
-                        "Justificativa Saída Almoço": "justificativa_saida_almoco",
-                        "Retorno Almoço": "retorno_almoco",
-                        "Justificativa Retorno Almoço": "justificativa_retorno_almoco",
-                        "Saída": "horario_saida",
-                        "Justificativa Saída": "justificativa_saida",
-                        "OBSERVAÇÃO": "observacao"
-                    }
-                    
-                    datas_com_registro = {item.get("data") for item in dados_pessoais if item.get("data")}
-                    
-                    for idx_linha_str, colunas_alteradas in alteracoes.items():
-                        idx_linha = int(idx_linha_str)
-                        
-                        try:
-                            data_br = df_visualizacao.iloc[idx_linha]["Data"]
-                            data_str = datetime.strptime(data_br, "%d/%m/%Y").strftime("%Y-%m-%d")
-                        except Exception:
-                            st.error(f"Erro ao sincronizar índice da linha {idx_linha + 1} com o banco de dados.")
-                            erros += 1
-                            continue
-                            
-                        update_dict = {}
-                        logs_internos_para_salvar = []
-                        
-                        for col_df, novo_valor in colunas_alteradas.items():
-                            col_banco = mapeamento_colunas_db.get(col_df)
-                            if not col_banco:
-                                continue
-                            
-                            valor_antigo = df_visualizacao.iloc[idx_linha].get(col_df, "")
-                            if pd.isna(valor_antigo) or valor_antigo is None:
-                                valor_antigo = "--:--:--" if col_banco in ["horario_entrada", "saida_almoco", "retorno_almoco", "horario_saida"] else ""
-                            
-                            if col_banco in ["horario_entrada", "saida_almoco", "retorno_almoco", "horario_saida"]:
-                                if novo_valor is None:
-                                    update_dict[col_banco] = None
-                                    descricao_log = f'Limpou o campo "{col_df}" do dia {data_br} (Valor antigo era {valor_antigo})'
-                                    logs_internos_para_salvar.append(descricao_log)
-                                    continue
-                                    
-                                hora_nova = str(novo_valor).strip()
-                                
-                                if hora_nova == "" or hora_nova.lower() == "none":
-                                    update_dict[col_banco] = None
-                                    descricao_log = f'Limpou o campo "{col_df}" do dia {data_br} (Valor antigo era {valor_antigo})'
-                                    logs_internos_para_salvar.append(descricao_log)
-                                    continue
-                                
-                                padrao_hhmmss = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d$")
-                                
-                                if not padrao_hhmmss.match(hora_nova):
-                                    st.error(f"❌ Erro na linha {idx_linha + 1}, coluna '{col_df}': O valor '{hora_nova}' é inválido. Use estritamente o formato HH:MM:SS (Ex: 12:30:00).")
-                                    erros += 1
-                                    continue
-                                
-                                try:
-                                    partes_hora = hora_nova.split(":")
-                                    h, m, s = int(partes_hora[0]), int(partes_hora[1]), int(partes_hora[2])
-                                    
-                                    partes_data = data_str.split("-")
-                                    ano, mes, dia = int(partes_data[0]), int(partes_data[1]), int(partes_data[2][:2])
-                                    
-                                    dt_combinado = datetime(ano, mes, dia, h, m, s)
-                                    dt_fuso = dt_combinado.replace(tzinfo=fuso_br)
-                                    update_dict[col_banco] = dt_fuso.isoformat()
-                                    
-                                    descricao_log = f'Alterou a informação "{col_df}" do dia {data_br} de: {valor_antigo} para {hora_nova}.'
-                                    logs_internos_para_salvar.append(descricao_log)
-                                    
-                                except Exception as e:
-                                    st.error(f"❌ Erro na linha {idx_linha + 1}, coluna '{col_df}': {str(e)}")
-                                    erros += 1
-                            else:
-                                update_dict[col_banco] = novo_valor
-                                descricao_log = f'Alterou a "{col_df}" do dia {data_br} de: "{valor_antigo}" para "{novo_valor}".'
-                                logs_internos_para_salvar.append(descricao_log)
-                        
-                        if update_dict and erros == 0:
-                            try:
-                                if data_str in datas_com_registro:
-                                    supabase.table("registro_ponto").update(update_dict).eq("email", email_busca).eq("data", data_str).execute()
-                                else:
-                                    insert_dict = {
-                                        "email": email_busca,
-                                        "data": data_str,
-                                        "nome_completo": nome_busca
-                                    }
-                                    insert_dict.update(update_dict)
-                                    supabase.table("registro_ponto").insert(insert_dict).execute()
-                                
-                                for desc_ativ in logs_internos_para_salvar:
-                                    dados_log_auditoria = {
-                                        "quem_alterou": user_name,
-                                        "usuario_afetado": nome_busca,
-                                        "email_afetado": email_busca,
-                                        "descricao": desc_ativ
-                                    }
-                                    executar_query_supabase("salvar_log_interno", data_dict=dados_log_auditoria)
-                                    
-                                sucessos += 1
-                            except Exception as e:
-                                st.error(f"Erro ao salvar alteração de {nome_busca} (Linha {idx_linha + 1}): {e}")
-                                erros += 1
-                    
-                    if sucessos > 0 and erros == 0:
-                        st.success(f"✅ Sucesso! Foram atualizadas as alterações de {sucessos} linha(s) para {nome_busca}.")
-                        st.rerun()
-        else:
-            st.dataframe(df_visualizacao, use_container_width=True, hide_index=True, column_order=ordem_colunas_tela)
-        
-        df_exportar_ind = processar_dados_ponto(dados_pessoais, data_inicio, data_fim, incluir_usuario_info=False, formatar_data_br=True)
-        dados_excel_ind = converter_para_excel_individual(df_exportar_ind)
-        dados_pdf_ind = converter_para_pdf_individual(df_exportar_ind, nome_busca, email_busca, mapeamento_celulas)
-        
-        col_down_ind1, col_down_ind2 = st.columns(2)
-        
-        with col_down_ind1:
+            # Botão para baixar a tabela em Excel
             st.download_button(
-                label="📥 Baixar Espelho de Ponto (Excel)",
-                data=dados_excel_ind,
-                file_name=f"Espelho_Ponto_{nome_busca.replace(' ', '_')}_{data_inicio}_a_{data_fim}.xlsx",
+                label="📥 Baixar Tabela Resumida (Excel)",
+                data=converter_para_excel_tabela_resumida(df_tabela),
+                file_name=f"Tabela_Resumida_{st.session_state.nome_arquivo_base}_{data_inicio}_a_{data_fim}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
+        
+        # Mantém os botões de download para o relatório completo
+        if opcao_visualizacao == "Relatório Consolidado Completo":
+            st.markdown("### 📄 Relatório Consolidado Completo")
             
-        with col_down_ind2:
-            st.download_button(
-                label="📄 Baixar Espelho de Ponto (PDF)",
-                data=dados_pdf_ind,
-                file_name=f"Espelho_Ponto_{nome_busca.replace(' ', '_')}_{data_inicio}_a_{data_fim}.pdf",
-                mime="application/pdf",
-                use_container_width=True
-            )
+            col_down1, col_down2 = st.columns(2)
+            with col_down1:
+                st.download_button(
+                    label="📥 Baixar em Excel (.xlsx)",
+                    data=st.session_state.dados_excel_consolidado,
+                    file_name=f"{st.session_state.nome_arquivo_base}_{data_inicio}_a_{data_fim}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
+            with col_down2:
+                st.download_button(
+                    label="📄 Baixar em PDF (.pdf)",
+                    data=st.session_state.dados_pdf_consolidado,
+                    file_name=f"{st.session_state.nome_arquivo_base}_{data_inicio}_a_{data_fim}.pdf",
+                    mime="application/pdf",
+                    use_container_width=True
+                )
 
-        if cargo_usuario in ["Supervisor", "Master"]:
-            st.write("---")
-            st.markdown("### 🗂️ Exportação Geral da Equipe (Consolidada)")
-            
-            opcao_consolidada = "Minha Célula"
-            celulas_disponiveis = []
-            
-            todos_usuarios_banco = []
-            inicio_user = 0
-            passo_user = 1000
-            
-            while True:
-                try:
-                    busca_page = supabase.table("usuarios_ponto").select("email, nome, celula").range(inicio_user, inicio_user + passo_user - 1).execute()
-                    if not busca_page.data:
-                        break
-                    todos_usuarios_banco.extend(busca_page.data)
-                    if len(busca_page.data) < passo_user:
-                        break
-                    inicio_user += passo_user
-                except Exception as e:
-                    st.error(f"Erro ao validar lista de colaboradores no banco de dados: {e}")
-                    break
-                
-            mapeamento_celulas_db = {
-                str(u["email"]).strip().lower(): str(u.get("celula", "")).strip()
-                for u in todos_usuarios_banco if u.get("email")
-            }
-                
-            if cargo_usuario == "Master":
-                st.caption("Escolha qual célula extrair ou se deseja consolidar todas as células.")
-                if todos_usuarios_banco:
-                    celulas_disponiveis = sorted(list(set([str(u["celula"]).strip() for u in todos_usuarios_banco if u.get("celula")])))
-                
-                opcoes_master = ["Todos os Colaboradores"] + celulas_disponiveis
-                opcao_consolidada = st.selectbox("Selecione abaixo a célula desejada:", options=opcoes_master)
-            else:
-                st.caption(f"Gera o arquivo contendo os espelhos de ponto consolidados de sua célula ativa: **{celula_usuario}**")
+# Adicione esta função para converter a tabela resumida para Excel
+def converter_para_excel_tabela_resumida(df_tabela):
+    """
+    Converte a tabela resumida para Excel
+    """
+    from io import BytesIO
+    import pandas as pd
+    
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        # Escreve os dados
+        df_tabela.to_excel(writer, sheet_name='Resumo', index=False)
         
-            if "dados_excel_consolidado" not in st.session_state:
-                st.session_state.dados_excel_consolidado = None
-            if "dados_pdf_consolidado" not in st.session_state:
-                st.session_state.dados_pdf_consolidado = None
-            if "nome_arquivo_base" not in st.session_state:
-                st.session_state.nome_arquivo_base = ""
-            if "processamento_concluido" not in st.session_state:
-                st.session_state.processamento_concluido = False
+        # Ajusta a largura das colunas
+        workbook = writer.book
+        worksheet = writer.sheets['Resumo']
         
-            if st.button("📊 Processar e Gerar Relatório Consolidado", use_container_width=True, type="primary"):
-                with st.spinner("Processando dados e compilando relatórios da equipe..."):
-                    
-                    if cargo_usuario == "Supervisor":
-                        target_celula = str(celula_usuario).strip().lower()
-                        usuarios_alvo = [u for u in todos_usuarios_banco if str(u.get("celula", "")).strip().lower() == target_celula]
-                        prefixo_nome = f"Relatorio_Consolidado_Celula_{celula_usuario.replace(' ', '_')}"
-                    else:  
-                        if opcao_consolidada == "Todos os Colaboradores":
-                            usuarios_alvo = todos_usuarios_banco
-                            target_celula = "todos"
-                            prefixo_nome = "Relatorio_Consolidado_Todos_Colaboradores"
-                        else:
-                            target_celula = str(opcao_consolidada).strip().lower()
-                            usuarios_alvo = [u for u in todos_usuarios_banco if str(u.get("celula", "")).strip().lower() == target_celula]
-                            prefixo_nome = f"Relatorio_Consolidado_Celula_{opcao_consolidada.replace(' ', '_')}"
-        
-                    dfs_equipe = []
-                    
-                    for u in usuarios_alvo:
-                        u_email = str(u["email"]).strip().lower()
-                        u_nome = str(u.get("nome", "Sem Nome")).strip()
-                        
-                        dados_pessoais_user = []
-                        try:
-                            resposta_direta = supabase.table("registro_ponto").select("*").eq("email", u_email).execute()
-                            
-                            if resposta_direta.data:
-                                str_inicio = data_inicio.strftime("%Y-%m-%d") if hasattr(data_inicio, "strftime") else str(data_inicio)
-                                str_fim = data_fim.strftime("%Y-%m-%d") if hasattr(data_fim, "strftime") else str(data_fim)
-                                
-                                for r in resposta_direta.data:
-                                    data_crua = str(r.get("data") or r.get("data_registro") or "")
-                                    data_linha = data_crua[:10] 
-                                    
-                                    if str_inicio <= data_linha <= str_fim:
-                                        dados_pessoais_user.append(r)
-                                        
-                        except Exception as db_err:
-                            st.error(f"Erro ao buscar dados no banco para {u_nome} ({u_email}): {db_err}")
-                            continue
-        
-                        df_user_limpo = processar_dados_ponto(dados_pessoais_user, data_inicio, data_fim, incluir_usuario_info=False, formatar_data_br=True)
-                        
-                        if df_user_limpo is not None and not df_user_limpo.empty:
-                            df_user_limpo["Funcionário"] = u_nome
-                            df_user_limpo["E-mail"] = u_email
-                            dfs_equipe.append(df_user_limpo)
-                    
-                    if not dfs_equipe:
-                        st.warning("Nenhum dado de ponto localizado para os critérios e período selecionados.")
-                        st.session_state.processamento_concluido = False
-                    else:
-                        df_filtrado = pd.concat(dfs_equipe, ignore_index=True)
-                        df_filtrado = df_filtrado.sort_values(by="Funcionário", key=lambda col: col.str.lower(), kind="mergesort")
-                        
-                        st.session_state.dados_excel_consolidado = converter_para_excel_multiaba(df_filtrado)
-                        st.session_state.dados_pdf_consolidado = converter_para_pdf_consolidado(df_filtrado, mapeamento_celulas_db, data_inicio, data_fim)
-                        st.session_state.nome_arquivo_base = prefixo_nome
-                        st.session_state.processamento_concluido = True
-        
-            if st.session_state.processamento_concluido:
-                st.success("✅ Relatórios consolidados gerados com sucesso! Escolha o formato para baixar:")
-                
-                col_down1, col_down2 = st.columns(2)
-                with col_down1:
-                    st.download_button(
-                        label="📥 Baixar em Excel (.xlsx)",
-                        data=st.session_state.dados_excel_consolidado,
-                        file_name=f"{st.session_state.nome_arquivo_base}_{data_inicio}_a_{data_fim}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        use_container_width=True
-                    )
-                with col_down2:
-                    st.download_button(
-                        label="📄 Baixar em PDF (.pdf)",
-                        data=st.session_state.dados_pdf_consolidado,
-                        file_name=f"{st.session_state.nome_arquivo_base}_{data_inicio}_a_{data_fim}.pdf",
-                        mime="application/pdf",
-                        use_container_width=True
-                    )
+        # Formatação básica
+        for i, col in enumerate(df_tabela.columns):
+            max_len = max(df_tabela[col].astype(str).map(len).max(), len(col)) + 2
+            worksheet.set_column(i, i, min(max_len, 30))
+    
+    return output.getvalue()
