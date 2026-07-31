@@ -1174,6 +1174,16 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
             texto_botao = f"🔄 Alterar Horário de {opcao.title()}"
         else:
             st.info(f"ℹ️ Você ainda não marcou sua **{opcao.title()}** para o dia de hoje.")
+            
+            # --- NOVO TRECHO ADICIONADO ---
+            if opcao == "RETORNO ALMOÇO":
+                horario_saida_almoco = pontos.get("SAÍDA ALMOÇO")
+                if horario_saida_almoco:
+                    st.caption(f"💡 **Horário da sua Saída Almoço:** {horario_saida_almoco.strftime('%H:%M:%S')}")
+                else:
+                    st.caption("⚠️ Você ainda não registrou a **Saída Almoço** de hoje.")
+            # ------------------------------
+            
             texto_botao = f"🔴 Registrar {opcao.title()}"
             
         st.markdown('</div>', unsafe_allow_html=True)
