@@ -1056,26 +1056,38 @@ def gerenciar_acesso():
         
         with aba_login:
             st.subheader("Login")
-            email_login = st.text_input("E-mail corporativo", key="login_email").strip().lower()
-            senha_login = st.text_input("Senha", type="password", key="login_senha")
-            
-            if st.button("Entrar", type="primary", use_container_width=True):
-                if email_login and senha_login:
-                    senha_hash = criptografar_senha(senha_login)
-                    res = supabase.table("usuarios_ponto").select("*").eq("email", email_login).eq("senha", senha_hash).execute()
-                    
-                    if res.data:
-                        st.session_state["user_info"] = {
-                            "email": res.data[0]["email"],
-                            "name": res.data[0]["nome"]
-                        }
-                        st.session_state["connected"] = True
-                        st.success("Login realizado com sucesso!")
-                        st.rerun()
+            with st.form("form_login", clear_on_submit=False):
+                email_login = st.text_input(
+                    "E-mail corporativo",
+                    key="login_email",
+                    autocomplete="email"
+                ).strip().lower()
+                senha_login = st.text_input(
+                    "Senha",
+                    type="password",
+                    key="login_senha",
+                    autocomplete="current-password"
+                )
+
+                enviar_login = st.form_submit_button("Entrar", type="primary", use_container_width=True)
+
+                if enviar_login:
+                    if email_login and senha_login:
+                        senha_hash = criptografar_senha(senha_login)
+                        res = supabase.table("usuarios_ponto").select("*").eq("email", email_login).eq("senha", senha_hash).execute()
+
+                        if res.data:
+                            st.session_state["user_info"] = {
+                                "email": res.data[0]["email"],
+                                "name": res.data[0]["nome"]
+                            }
+                            st.session_state["connected"] = True
+                            st.success("Login realizado com sucesso!")
+                            st.rerun()
+                        else:
+                            st.error("E-mail ou senha incorretos.")
                     else:
-                        st.error("E-mail ou senha incorretos.")
-                else:
-                    st.warning("Por favor, preencha todos os campos.")
+                        st.warning("Por favor, preencha todos os campos.")
                     
         with aba_cadastro:
             st.subheader("Novo Colaborador")
