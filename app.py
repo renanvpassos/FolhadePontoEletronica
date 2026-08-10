@@ -850,15 +850,17 @@ def converter_para_pdf_consolidado_tabela(df, data_inicio, data_fim):
         fontName="Helvetica",
         alignment=1
     )
-    nome_style = ParagraphStyle(
-        'NomeColaboradorPDF',
-        parent=styles['Normal'],
-        fontSize=9.5,
-        leading=10,
-        fontName="Helvetica-Bold",
-        textColor=colors.HexColor("#1F2937"),
-        spaceBefore=6,
-        spaceAfter=4
+    # Estilo padrão para o nome do colaborador nas células
+    cell_nome_style = ParagraphStyle(
+        'CellNomeColaboradorPDF',
+        parent=cell_style,
+        textColor=colors.HexColor("#1F2937")
+    )
+    # Estilo em vermelho para quando não houver marcações preenchidas
+    cell_nome_sem_info_style = ParagraphStyle(
+        'CellNomeSemInfoPDF',
+        parent=cell_style,
+        textColor=colors.HexColor("#DC2626")  # Cor vermelha
     )
 
     df_copy = df.copy()
@@ -867,7 +869,8 @@ def converter_para_pdf_consolidado_tabela(df, data_inicio, data_fim):
         "Entrada": "Horário da Entrada",
         "Saída Almoço": "Horário Saída Almoço",
         "Retorno Almoço": "Retorno Almoço",
-        "Saída": "Saída"
+        "Saída": "Saída",
+        "celula": "Célula"
     })
 
     colunas_necessarias = [
@@ -877,15 +880,25 @@ def converter_para_pdf_consolidado_tabela(df, data_inicio, data_fim):
         "Horário da Entrada",
         "Horário Saída Almoço",
         "Retorno Almoço",
-        "Saída"
+        "Saída",
+        "Célula"
     ]
 
-    df_copy = df_copy[[c for c in colunas_necessarias if c in df_copy.columns]].copy()
+    # Garante a criação de colunas ausentes para evitar erros
+    for col in colunas_necessarias:
+        if col not in df_copy.columns:
+            df_copy[col] = ""
+
+    df_copy = df_copy[colunas_necessarias].copy()
     df_copy = df_copy.fillna("")
 
     if "Data" in df_copy.columns:
         df_copy["__data_ord"] = pd.to_datetime(df_copy["Data"], format="%d/%m/%Y", errors="coerce")
-        df_copy = df_copy.sort_values(by=["Nome colaborador", "__data_ord"], key=lambda col: col.str.lower() if col.name != "__data_ord" else col, kind="mergesort")
+        df_copy = df_copy.sort_values(
+            by=["Nome colaborador", "__data_ord"], 
+            key=lambda col: col.str.lower() if col.name != "__data_ord" else col, 
+            kind="mergesort"
+        )
         df_copy = df_copy.drop(columns=["__data_ord"])
 
     story.append(Paragraph("Relatório Consolidado em Tabela", title_style))
@@ -905,7 +918,7 @@ def converter_para_pdf_consolidado_tabela(df, data_inicio, data_fim):
         key=lambda valor: len(str(valor).strip()),
         default=""
     )
-    largura_nome = max(120, min(260, len(str(maior_nome_colaborador).strip()) * 7 + 20))
+    largura_nome = max(110, min(220, len(str(maior_nome_colaborador).strip()) * 7 + 20))
 
     for idx, nome_colab in enumerate(nomes_colaboradores):
         dados_colab = df_copy[df_copy["Nome colaborador"].astype(str).str.strip() == nome_colab].copy()
@@ -920,20 +933,35 @@ def converter_para_pdf_consolidado_tabela(df, data_inicio, data_fim):
             Paragraph("Horário Saída Almoço", header_style),
             Paragraph("Retorno Almoço", header_style),
             Paragraph("Saída", header_style),
+            Paragraph("Célula", header_style),
         ]]
 
         for _, row in dados_colab.iterrows():
+            # Extrai os valores das colunas de horários/marcações
+            h_entrada = str(row.get("Horário da Entrada", "")).strip()
+            h_saida_alm = str(row.get("Horário Saída Almoço", "")).strip()
+            h_ret_alm = str(row.get("Retorno Almoço", "")).strip()
+            h_saida = str(row.get("Saída", "")).strip()
+
+            # Verifica se NENHUMA coluna de horários possui informação
+            sem_informacoes = not any([h_entrada, h_saida_alm, h_ret_alm, h_saida])
+
+            # Define o estilo do nome (vermelho se estiver sem informações, padrão caso contrário)
+            estilo_nome_atual = cell_nome_sem_info_style if sem_informacoes else cell_nome_style
+
             dados_tabela.append([
                 Paragraph(str(row.get("Dia da Semana", "")), cell_style),
                 Paragraph(str(row.get("Data", "")), cell_style),
-                Paragraph(str(row.get("Nome colaborador", "")), cell_style),
-                Paragraph(str(row.get("Horário da Entrada", "")), cell_style),
-                Paragraph(str(row.get("Horário Saída Almoço", "")), cell_style),
-                Paragraph(str(row.get("Retorno Almoço", "")), cell_style),
-                Paragraph(str(row.get("Saída", "")), cell_style),
+                Paragraph(str(row.get("Nome colaborador", "")), estilo_nome_atual),
+                Paragraph(h_entrada, cell_style),
+                Paragraph(h_saida_alm, cell_style),
+                Paragraph(h_ret_alm, cell_style),
+                Paragraph(h_saida, cell_style),
+                Paragraph(str(row.get("Célula", "")), cell_style),
             ])
 
-        colunas_larguras = [70, 70, largura_nome, 90, 90, 80, 70]
+        # Ajuste de larguras para incluir a 8ª coluna (Célula) na página A4 Landscape
+        colunas_larguras = [65, 60, largura_nome, 80, 80, 75, 65, 80]
         tabela = Table(
             dados_tabela,
             colWidths=colunas_larguras,
