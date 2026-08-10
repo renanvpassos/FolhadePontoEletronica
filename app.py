@@ -850,13 +850,11 @@ def converter_para_pdf_consolidado_tabela(df, data_inicio, data_fim):
         fontName="Helvetica",
         alignment=1
     )
-    # Estilo padrão para o nome do colaborador nas células
     cell_nome_style = ParagraphStyle(
         'CellNomeColaboradorPDF',
         parent=cell_style,
         textColor=colors.HexColor("#1F2937")
     )
-    # Estilo em vermelho para quando não houver marcações preenchidas
     cell_nome_sem_info_style = ParagraphStyle(
         'CellNomeSemInfoPDF',
         parent=cell_style,
@@ -864,14 +862,18 @@ def converter_para_pdf_consolidado_tabela(df, data_inicio, data_fim):
     )
 
     df_copy = df.copy()
-    df_copy = df_copy.rename(columns={
+
+    # Mapeamento e tratamento de nomes de colunas do DataFrame/Supabase
+    renomear_colunas = {
         "Funcionário": "Nome colaborador",
         "Entrada": "Horário da Entrada",
         "Saída Almoço": "Horário Saída Almoço",
         "Retorno Almoço": "Retorno Almoço",
         "Saída": "Saída",
-        "celula": "Célula"
-    })
+        "celula": "Célula",
+        "Celula": "Célula"  # Trata caso venha com C maiúsculo
+    }
+    df_copy = df_copy.rename(columns=renomear_colunas)
 
     colunas_necessarias = [
         "Dia da Semana",
@@ -884,7 +886,7 @@ def converter_para_pdf_consolidado_tabela(df, data_inicio, data_fim):
         "Célula"
     ]
 
-    # Garante a criação de colunas ausentes para evitar erros
+    # Garante que todas as colunas necessárias existam no DataFrame
     for col in colunas_necessarias:
         if col not in df_copy.columns:
             df_copy[col] = ""
@@ -937,17 +939,16 @@ def converter_para_pdf_consolidado_tabela(df, data_inicio, data_fim):
         ]]
 
         for _, row in dados_colab.iterrows():
-            # Extrai os valores das colunas de horários/marcações
             h_entrada = str(row.get("Horário da Entrada", "")).strip()
             h_saida_alm = str(row.get("Horário Saída Almoço", "")).strip()
             h_ret_alm = str(row.get("Retorno Almoço", "")).strip()
             h_saida = str(row.get("Saída", "")).strip()
 
-            # Verifica se NENHUMA coluna de horários possui informação
             sem_informacoes = not any([h_entrada, h_saida_alm, h_ret_alm, h_saida])
-
-            # Define o estilo do nome (vermelho se estiver sem informações, padrão caso contrário)
             estilo_nome_atual = cell_nome_sem_info_style if sem_informacoes else cell_nome_style
+
+            # Obtém a célula do colaborador vinda do Supabase
+            valor_celula = str(row.get("Célula", "")).strip()
 
             dados_tabela.append([
                 Paragraph(str(row.get("Dia da Semana", "")), cell_style),
@@ -957,10 +958,9 @@ def converter_para_pdf_consolidado_tabela(df, data_inicio, data_fim):
                 Paragraph(h_saida_alm, cell_style),
                 Paragraph(h_ret_alm, cell_style),
                 Paragraph(h_saida, cell_style),
-                Paragraph(str(row.get("Célula", "")), cell_style),
+                Paragraph(valor_celula, cell_style),
             ])
 
-        # Ajuste de larguras para incluir a 8ª coluna (Célula) na página A4 Landscape
         colunas_larguras = [65, 60, largura_nome, 80, 80, 75, 65, 80]
         tabela = Table(
             dados_tabela,
