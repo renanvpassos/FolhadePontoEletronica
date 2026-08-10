@@ -807,7 +807,7 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
     return output.getvalue()
 
 
-def converter_para_pdf_consolidado_tabela(df, data_inicio, data_fim):
+def converter_para_pdf_consolidado_tabela(df, mapeamento_celulas, data_inicio, data_fim):
     output = BytesIO()
     doc = SimpleDocTemplate(
         output,
@@ -880,6 +880,28 @@ def converter_para_pdf_consolidado_tabela(df, data_inicio, data_fim):
         df_copy = df_copy.rename(columns={coluna_celula_origem: "Célula"})
     elif "Célula" not in df_copy.columns:
         df_copy["Célula"] = ""
+
+    # --- BUSCA A CÉLULA DIRETO DO BANCO DE DADOS (mapeamento_celulas), USANDO O E-MAIL ---
+    # Identifica a coluna de e-mail do colaborador, se existir
+    coluna_email_origem = None
+    for col in df_copy.columns:
+        if str(col).strip().lower() in ['e-mail', 'email']:
+            coluna_email_origem = col
+            break
+
+    if coluna_email_origem and mapeamento_celulas:
+        def _buscar_celula_por_email(email_val):
+            chave = str(email_val).strip().lower()
+            return mapeamento_celulas.get(chave, "")
+
+        celulas_do_banco = df_copy[coluna_email_origem].apply(_buscar_celula_por_email)
+
+        # Prioriza a célula vinda do banco de dados; mantém a já existente apenas
+        # como fallback, caso o e-mail não seja encontrado no mapeamento.
+        df_copy["Célula"] = celulas_do_banco.where(
+            celulas_do_banco.astype(str).str.strip() != "",
+            df_copy["Célula"]
+        )
 
     # Renomeia demais colunas
     renomear_colunas = {
@@ -2344,7 +2366,7 @@ elif opcao == "RELATÓRIO":
                         
                         st.session_state.dados_excel_consolidado = converter_para_excel_multiaba(df_filtrado)
                         st.session_state.dados_pdf_consolidado = converter_para_pdf_consolidado(df_filtrado, mapeamento_celulas_db, data_inicio, data_fim)
-                        st.session_state.dados_pdf_consolidado_tabela = converter_para_pdf_consolidado_tabela(df_filtrado, data_inicio, data_fim)
+                        st.session_state.dados_pdf_consolidado_tabela = converter_para_pdf_consolidado_tabela(df_filtrado, mapeamento_celulas_db, data_inicio, data_fim)
                         st.session_state.nome_arquivo_base = prefixo_nome
                         st.session_state.processamento_concluido = True
         
