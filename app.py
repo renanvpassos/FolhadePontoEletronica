@@ -858,20 +858,36 @@ def converter_para_pdf_consolidado_tabela(df, data_inicio, data_fim):
     cell_nome_sem_info_style = ParagraphStyle(
         'CellNomeSemInfoPDF',
         parent=cell_style,
-        textColor=colors.HexColor("#DC2626")  # Cor vermelha
+        textColor=colors.HexColor("#DC2626")  # Cor vermelha para ausência de registros
     )
 
     df_copy = df.copy()
 
-    # Mapeamento e tratamento de nomes de colunas do DataFrame/Supabase
+    # --- TRATAMENTO PARA CAMPOS VINDO DE JOIN DO SUPABASE (usuarios_ponto) ---
+    if "usuarios_ponto" in df_copy.columns and "celula" not in df_copy.columns:
+        df_copy["celula"] = df_copy["usuarios_ponto"].apply(
+            lambda x: x.get("celula", "") if isinstance(x, dict) else ""
+        )
+
+    # Identificação da coluna de célula no DataFrame
+    coluna_celula_origem = None
+    for col in df_copy.columns:
+        if str(col).strip().lower() in ['celula', 'célula', 'usuarios_ponto.celula']:
+            coluna_celula_origem = col
+            break
+
+    if coluna_celula_origem:
+        df_copy = df_copy.rename(columns={coluna_celula_origem: "Célula"})
+    elif "Célula" not in df_copy.columns:
+        df_copy["Célula"] = ""
+
+    # Renomeia demais colunas
     renomear_colunas = {
         "Funcionário": "Nome colaborador",
         "Entrada": "Horário da Entrada",
         "Saída Almoço": "Horário Saída Almoço",
         "Retorno Almoço": "Retorno Almoço",
-        "Saída": "Saída",
-        "celula": "Célula",
-        "Celula": "Célula"  # Trata caso venha com C maiúsculo
+        "Saída": "Saída"
     }
     df_copy = df_copy.rename(columns=renomear_colunas)
 
@@ -886,7 +902,6 @@ def converter_para_pdf_consolidado_tabela(df, data_inicio, data_fim):
         "Célula"
     ]
 
-    # Garante que todas as colunas necessárias existam no DataFrame
     for col in colunas_necessarias:
         if col not in df_copy.columns:
             df_copy[col] = ""
@@ -947,8 +962,12 @@ def converter_para_pdf_consolidado_tabela(df, data_inicio, data_fim):
             sem_informacoes = not any([h_entrada, h_saida_alm, h_ret_alm, h_saida])
             estilo_nome_atual = cell_nome_sem_info_style if sem_informacoes else cell_nome_style
 
-            # Obtém a célula do colaborador vinda do Supabase
-            valor_celula = str(row.get("Célula", "")).strip()
+            # Trata caso a célula venha como um dicionário do Supabase
+            val_cel = row.get("Célula", "")
+            if isinstance(val_cel, dict):
+                valor_celula = str(val_cel.get("celula", val_cel.get("nome", ""))).strip()
+            else:
+                valor_celula = str(val_cel).strip()
 
             dados_tabela.append([
                 Paragraph(str(row.get("Dia da Semana", "")), cell_style),
