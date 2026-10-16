@@ -14,7 +14,8 @@ from reportlab.lib import colors
 from collections import defaultdict
 import streamlit.components.v1 as components
 import base64
-import time  
+import time
+from xml.sax.saxutils import escape
 
 # --- BLOQUEIO DE DISPOSITIVOS MÓVEIS ---
 components.html("""
@@ -188,6 +189,47 @@ def get_logo_base64():
         return "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
 
 # ==========================================
+# FERIADOS E REGRAS AUTOMÁTICAS DE OBSERVAÇÃO
+# ==========================================
+FERIADOS_2026 = {
+    "04/06/2026", "09/07/2026", "07/09/2026", "12/10/2026",
+    "02/11/2026", "15/11/2026", "20/11/2026", "25/12/2026",
+}
+
+def aplicar_observacoes_automaticas(df):
+    """FERIADO: preenche em TODO dia de feriado, tendo ou não hora de entrada.
+    PLANTÃO: regra mantida (fim de semana, não feriado, com Entrada preenchida).
+    Textos digitados manualmente na OBSERVAÇÃO são sempre preservados."""
+    if df is None or df.empty or "Data" not in df.columns:
+        return df
+
+    df = df.copy()
+    if "OBSERVAÇÃO" not in df.columns:
+        df["OBSERVAÇÃO"] = ""
+    df["OBSERVAÇÃO"] = df["OBSERVAÇÃO"].fillna("").astype(str)
+
+    datas = pd.to_datetime(df["Data"], format="%d/%m/%Y", errors="coerce")
+    if "Entrada" in df.columns:
+        entrada_ok = df["Entrada"].fillna("").astype(str).str.strip() != ""
+    else:
+        entrada_ok = pd.Series(False, index=df.index)
+
+    sem_obs = df["OBSERVAÇÃO"].str.strip() == ""
+    eh_feriado = df["Data"].astype(str).str.strip().isin(FERIADOS_2026)
+    eh_fds = datas.dt.weekday.isin([5, 6])
+
+    df.loc[eh_feriado & sem_obs, "OBSERVAÇÃO"] = "FERIADO"
+    df.loc[entrada_ok & sem_obs & ~eh_feriado & eh_fds, "OBSERVAÇÃO"] = "PLANTÃO"
+    return df
+
+def calcular_larguras_colunas(colunas, largura_total=810, largura_obs=170):
+    """Dá mais espaço à coluna OBSERVAÇÃO para o texto não estourar a página."""
+    if "OBSERVAÇÃO" in colunas and len(colunas) > 1:
+        resto = (largura_total - largura_obs) / (len(colunas) - 1)
+        return [largura_obs if c == "OBSERVAÇÃO" else resto for c in colunas]
+    return None
+
+# ==========================================
 # INICIALIZAÇÃO - EXIBE INTRO ENQUANTO CARREGA
 # ==========================================
 if 'intro_exibida' not in st.session_state:
@@ -211,7 +253,7 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     story = []
     styles = getSampleStyleSheet()
 
-    feriados = ["04/06/2026", "09/07/2026", "07/09/2026", "12/10/2026", "02/11/2026", "15/11/2026", "20/11/2026", "25/12/2026"]
+    feriados = list(FERIADOS_2026)
 
     title_style = ParagraphStyle(
         'TituloPDF',
@@ -439,8 +481,10 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
         val_entrada = str(row.get(col_entrada_fil, "")).strip() if col_entrada_fil else ""
         val_saida = str(row.get(col_saida_fil, "")).strip() if col_saida_fil else ""
 
+        entrada_preenchida = val_entrada not in ["", "nan", "0", "0.0", "00:00"]
+
         horarios_preenchidos = (
-            val_entrada not in ["", "nan", "0", "0.0", "00:00"]
+            entrada_preenchida
             and val_saida not in ["", "nan", "0", "0.0", "00:00"]
         )
 
@@ -459,7 +503,8 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
             for col in colunas_obrigatorias
         )
 
-        deve_destacar = (eh_feriado and horarios_preenchidos) or (eh_fds and linha_completa)
+        # FERIADO: pinta a linha toda se houver hora de entrada preenchida
+        deve_destacar = (eh_feriado and entrada_preenchida) or (eh_fds and linha_completa)
 
         if deve_destacar:
             estilos_tabela.append(
@@ -479,6 +524,9 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
                 and val in ["00:00", "0", "0.0", ""]
             ) else str(val)
 
+            if str(col_nome).strip().upper() == "OBSERVAÇÃO":
+                valor_str = escape(valor_str.strip())
+
             if col_nome == col_saida_fil and marcar_saida_vermelha:
                 estilo_celula = cell_red_bold_style if deve_destacar else cell_red_style
             else:
@@ -488,7 +536,8 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
 
         dados_tabela.append(linha)
 
-    tabela = Table(dados_tabela, repeatRows=1)
+    tabela = Table(dados_tabela, repeatRows=1,
+                   colWidths=calcular_larguras_colunas(list(df_filtrado.columns)))
     tabela.setStyle(TableStyle(estilos_tabela))
     story.append(tabela)
 
@@ -506,7 +555,7 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
     story = []
     styles = getSampleStyleSheet()
 
-    feriados = ["04/06/2026", "09/07/2026", "07/09/2026", "12/10/2026", "02/11/2026", "15/11/2026", "20/11/2026", "25/12/2026"]
+    feriados = list(FERIADOS_2026)
 
     title_style = ParagraphStyle('TituloPDF', parent=styles['Heading1'], fontSize=13, textColor=colors.HexColor("#1E3A8A"), spaceAfter=4)
     header_style = ParagraphStyle('HeaderPDF', parent=styles['Normal'], fontSize=9.5, leading=12, textColor=colors.white, fontName="Helvetica-Bold", alignment=1)
@@ -731,8 +780,10 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
             val_entrada = str(row.get(col_entrada_fil, "")).strip() if col_entrada_fil else ""
             val_saida = str(row.get(col_saida_fil, "")).strip() if col_saida_fil else ""
 
+            entrada_preenchida = val_entrada not in ["", "nan", "0", "0.0", "00:00"]
+
             horarios_preenchidos = (
-                val_entrada not in ["", "nan", "0", "0.0", "00:00"]
+                entrada_preenchida
                 and val_saida not in ["", "nan", "0", "0.0", "00:00"]
             )
 
@@ -746,8 +797,9 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
                     jornada_mins = minutos_saida - minutos_entrada
                     marcar_saida_vermelha = jornada_mins < 9 * 60
 
+            # FERIADO: pinta a linha toda se houver hora de entrada preenchida
             deve_destacar_linha = (
-                (is_feriado and horarios_preenchidos)
+                (is_feriado and entrada_preenchida)
                 or (is_fim_de_semana and horarios_preenchidos)
             )
 
@@ -756,6 +808,9 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
                 val = row[col_name]
                 val_str = str(val) if val is not None and not pd.isna(val) else ""
                 val_str = val_str.strip()
+
+                if str(col_name).strip().upper() == "OBSERVAÇÃO":
+                    val_str = escape(val_str)
 
                 if col_name == "Hora Extra" and val_str == "00:00":
                     val_str = ""
@@ -782,7 +837,8 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
                         ('BACKGROUND', (idx_hora_extra, r_idx), (idx_hora_extra, r_idx), colors.HexColor("#FEF08A"))
                     )
 
-        tabela = Table(dados_tabela, repeatRows=1)
+        tabela = Table(dados_tabela, repeatRows=1,
+                       colWidths=calcular_larguras_colunas(list(df_tabela.columns)))
         tabela.hAlign = 'CENTER'
 
         estilos_base = [
@@ -882,7 +938,6 @@ def converter_para_pdf_consolidado_tabela(df, mapeamento_celulas, data_inicio, d
         df_copy["Célula"] = ""
 
     # --- BUSCA A CÉLULA DIRETO DO BANCO DE DADOS (mapeamento_celulas), USANDO O E-MAIL ---
-    # Identifica a coluna de e-mail do colaborador, se existir
     coluna_email_origem = None
     for col in df_copy.columns:
         if str(col).strip().lower() in ['e-mail', 'email']:
@@ -896,8 +951,6 @@ def converter_para_pdf_consolidado_tabela(df, mapeamento_celulas, data_inicio, d
 
         celulas_do_banco = df_copy[coluna_email_origem].apply(_buscar_celula_por_email)
 
-        # Prioriza a célula vinda do banco de dados; mantém a já existente apenas
-        # como fallback, caso o e-mail não seja encontrado no mapeamento.
         df_copy["Célula"] = celulas_do_banco.where(
             celulas_do_banco.astype(str).str.strip() != "",
             df_copy["Célula"]
@@ -921,7 +974,8 @@ def converter_para_pdf_consolidado_tabela(df, mapeamento_celulas, data_inicio, d
         "Horário Saída Almoço",
         "Retorno Almoço",
         "Saída",
-        "Célula"
+        "Célula",
+        "OBSERVAÇÃO"
     ]
 
     for col in colunas_necessarias:
@@ -973,6 +1027,7 @@ def converter_para_pdf_consolidado_tabela(df, mapeamento_celulas, data_inicio, d
             Paragraph("Retorno Almoço", header_style),
             Paragraph("Saída", header_style),
             Paragraph("Célula", header_style),
+            Paragraph("Observação", header_style),
         ]]
 
         for _, row in dados_colab.iterrows():
@@ -1000,9 +1055,10 @@ def converter_para_pdf_consolidado_tabela(df, mapeamento_celulas, data_inicio, d
                 Paragraph(h_ret_alm, cell_style),
                 Paragraph(h_saida, cell_style),
                 Paragraph(valor_celula, cell_style),
+                Paragraph(escape(str(row.get("OBSERVAÇÃO", "")).strip()), cell_style),
             ])
 
-        colunas_larguras = [65, 60, largura_nome, 80, 80, 75, 65, 80]
+        colunas_larguras = [60, 55, largura_nome, 75, 75, 70, 60, 75, 90]
         tabela = Table(
             dados_tabela,
             colWidths=colunas_larguras,
@@ -1082,7 +1138,7 @@ def executar_query_supabase(operacao, data_dict=None, email=None, data_filtro=No
         return res.data
         
     elif operacao == "buscar_relatorio":
-        res = supabase.table("registro_ponto").select("data, horario_entrada, saida_almoco, retorno_almoco, horario_saida, justificativa_entrada, justificativa_saida_almoco, justificativa_retorno_almoco, justificativa_saida", "observacao").eq("email", email).gte("data", str(data_filtro)).lte("data", str(data_fim)).order("data", desc=True).execute()
+        res = supabase.table("registro_ponto").select("data, horario_entrada, saida_almoco, retorno_almoco, horario_saida, justificativa_entrada, justificativa_saida_almoco, justificativa_retorno_almoco, justificativa_saida, observacao").eq("email", email).gte("data", str(data_filtro)).lte("data", str(data_fim)).order("data", desc=True).execute()
         return res.data
 
     elif operacao == "buscar_relatorio_geral":
@@ -1256,14 +1312,12 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
         else:
             st.info(f"ℹ️ Você ainda não marcou sua **{opcao.title()}** para o dia de hoje.")
             
-            # --- NOVO TRECHO ADICIONADO ---
             if opcao == "RETORNO ALMOÇO":
                 horario_saida_almoco = pontos.get("SAÍDA ALMOÇO")
                 if horario_saida_almoco:
                     st.caption(f"💡 **Horário da sua Saída Almoço:** {horario_saida_almoco.strftime('%H:%M:%S')}")
                 else:
                     st.caption("⚠️ Você ainda não registrou a **Saída Almoço** de hoje.")
-            # ------------------------------
             
             texto_botao = f"🔴 Registrar {opcao.title()}"
             
@@ -1969,28 +2023,8 @@ elif opcao == "RELATÓRIO":
         
         ordem_colunas_tela = ["Dia da Semana", "Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", "Hora Extra", "Justificativa Entrada", "Justificativa Saída Almoço", "Justificativa Retorno Almoço", "Justificativa Saída", "OBSERVAÇÃO"]
 
-        feriados_2026 = {
-            "04/06/2026", "09/07/2026", "07/09/2026", "12/10/2026",
-            "02/11/2026", "15/11/2026", "20/11/2026", "25/12/2026",
-        }
-        
-        datas = pd.to_datetime(df_visualizacao["Data"], format="%d/%m/%Y", errors="coerce")
-        
-        entrada_preenchida = df_visualizacao["Entrada"].notna() & (
-            df_visualizacao["Entrada"].astype(str).str.strip() != ""
-        )
-        
-        df_visualizacao.loc[
-            entrada_preenchida & df_visualizacao["Data"].isin(feriados_2026),
-            "OBSERVAÇÃO"
-        ] = "FERIADO"
-        
-        df_visualizacao.loc[
-            entrada_preenchida
-            & ~df_visualizacao["Data"].isin(feriados_2026)
-            & datas.dt.weekday.isin([5, 6]),
-            "OBSERVAÇÃO"
-        ] = "PLANTÃO"
+        # FERIADO em todo dia de feriado; PLANTÃO mantido como antes
+        df_visualizacao = aplicar_observacoes_automaticas(df_visualizacao)
         
         if cargo_usuario in ["Supervisor", "Master"]:
             st.warning("⚠️ **Atenção:** Confirme as alterações antes de salvar.")
@@ -2235,6 +2269,7 @@ elif opcao == "RELATÓRIO":
             st.dataframe(df_visualizacao, use_container_width=True, hide_index=True, column_order=ordem_colunas_tela)
         
         df_exportar_ind = processar_dados_ponto(dados_pessoais, data_inicio, data_fim, incluir_usuario_info=False, formatar_data_br=True)
+        df_exportar_ind = aplicar_observacoes_automaticas(df_exportar_ind)
         dados_excel_ind = converter_para_excel_individual(df_exportar_ind)
         dados_pdf_ind = converter_para_pdf_individual(df_exportar_ind, nome_busca, email_busca, mapeamento_celulas)
         
@@ -2351,6 +2386,7 @@ elif opcao == "RELATÓRIO":
                             continue
         
                         df_user_limpo = processar_dados_ponto(dados_pessoais_user, data_inicio, data_fim, incluir_usuario_info=False, formatar_data_br=True)
+                        df_user_limpo = aplicar_observacoes_automaticas(df_user_limpo)
                         
                         if df_user_limpo is not None and not df_user_limpo.empty:
                             df_user_limpo["Funcionário"] = u_nome
