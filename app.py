@@ -297,6 +297,14 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
         parent=cell_bold_style,
         textColor=colors.red
     )
+    
+    # Estilo para texto dentro de linha completamente vermelha (alerta de saída em falta)
+    cell_white_bold_style = ParagraphStyle(
+        'CelulaBrancaNegritoPDF',
+        parent=cell_bold_style,
+        textColor=colors.HexColor("#7f1d1d") # tom vermelho bem escuro para legibilidade no fundo vermelho claro
+    )
+
     total_style = ParagraphStyle(
         'TotalPDF',
         parent=styles['Normal'],
@@ -482,11 +490,12 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
         val_saida = str(row.get(col_saida_fil, "")).strip() if col_saida_fil else ""
 
         entrada_preenchida = val_entrada not in ["", "nan", "0", "0.0", "00:00"]
+        saida_preenchida = val_saida not in ["", "nan", "0", "0.0", "00:00"]
 
-        horarios_preenchidos = (
-            entrada_preenchida
-            and val_saida not in ["", "nan", "0", "0.0", "00:00"]
-        )
+        horarios_preenchidos = entrada_preenchida and saida_preenchida
+
+        # NOVA REGRA: Entrada preenchida, mas Saída SEM preenchimento
+        sem_saida = entrada_preenchida and not saida_preenchida
 
         marcar_saida_vermelha = False
 
@@ -495,24 +504,30 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
             minutos_saida = _extrair_minutos(val_saida)
 
             if minutos_saida > minutos_entrada:
-              jornada_mins = minutos_saida - minutos_entrada
-              marcar_saida_vermelha = jornada_mins < 9 * 60
+                jornada_mins = minutos_saida - minutos_entrada
+                marcar_saida_vermelha = jornada_mins < 9 * 60
 
         linha_completa = all(
             str(row.get(col, "")).strip() not in ["", "nan", "0", "0.0"]
             for col in colunas_obrigatorias
         )
 
-        # FERIADO: pinta a linha toda se houver hora de entrada preenchida
         deve_destacar = (eh_feriado and entrada_preenchida) or (eh_fds and linha_completa)
 
-        if deve_destacar:
+        # APLICAÇÃO DE CORES DE FUNDO NA LINHA
+        if sem_saida:
+            # Pinta a linha TODA de vermelho claro (#FEE2E2 / #FCA5A5)
+            estilos_tabela.append(
+                ('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor("#FEE2E2"))
+            )
+        elif deve_destacar:
+            # Fundo Amarelo para Feriados / Finais de semana
             estilos_tabela.append(
                 ('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor("#FEF08A"))
             )
 
         val_he = str(row.get("Hora Extra", "")).strip()
-        if idx_hora_extra != -1 and val_he not in ["", "0", "0.0", "00:00"]:
+        if not sem_saida and idx_hora_extra != -1 and val_he not in ["", "0", "0.0", "00:00"]:
             estilos_tabela.append(
                 ('BACKGROUND', (idx_hora_extra, r_idx), (idx_hora_extra, r_idx), colors.HexColor("#FEF08A"))
             )
@@ -527,7 +542,10 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
             if str(col_nome).strip().upper() == "OBSERVAÇÃO":
                 valor_str = escape(valor_str.strip())
 
-            if col_nome == col_saida_fil and marcar_saida_vermelha:
+            # ESTILIZAÇÃO DO TEXTO
+            if sem_saida:
+                estilo_celula = cell_white_bold_style
+            elif col_nome == col_saida_fil and marcar_saida_vermelha:
                 estilo_celula = cell_red_bold_style if deve_destacar else cell_red_style
             else:
                 estilo_celula = cell_bold_style if deve_destacar else cell_style
@@ -544,7 +562,8 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     doc.build(story)
     output.seek(0)
     return output.getvalue()
-    
+
+
 def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim):
     output = BytesIO()
     doc = SimpleDocTemplate(
@@ -564,6 +583,7 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
     cell_bold_style = ParagraphStyle('CelulaNegritoPDF', parent=styles['Normal'], fontSize=10.5, leading=10, fontName="Helvetica-Bold", alignment=1)
     cell_red_style = ParagraphStyle('CelulaVermelhaPDF', parent=cell_style, textColor=colors.red)
     cell_red_bold_style = ParagraphStyle('CelulaVermelhaNegritoPDF', parent=cell_bold_style, textColor=colors.red)
+    cell_white_bold_style = ParagraphStyle('CelulaBrancaNegritoPDF', parent=cell_bold_style, textColor=colors.HexColor("#7f1d1d"))
 
     total_style = ParagraphStyle('TotalPDF', parent=styles['Normal'], fontSize=9.5, fontName="Helvetica-Bold", textColor=colors.HexColor("#1E3A8A"), spaceBefore=2, spaceAfter=2)
     erro_style = ParagraphStyle('ErroStyle', parent=styles['Normal'], fontSize=8, textColor=colors.red, fontName="Helvetica-Bold")
@@ -781,11 +801,12 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
             val_saida = str(row.get(col_saida_fil, "")).strip() if col_saida_fil else ""
 
             entrada_preenchida = val_entrada not in ["", "nan", "0", "0.0", "00:00"]
+            saida_preenchida = val_saida not in ["", "nan", "0", "0.0", "00:00"]
 
-            horarios_preenchidos = (
-                entrada_preenchida
-                and val_saida not in ["", "nan", "0", "0.0", "00:00"]
-            )
+            horarios_preenchidos = entrada_preenchida and saida_preenchida
+
+            # NOVA REGRA: Entrada preenchida, mas Saída SEM preenchimento
+            sem_saida = entrada_preenchida and not saida_preenchida
 
             marcar_saida_vermelha = False
 
@@ -797,7 +818,6 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
                     jornada_mins = minutos_saida - minutos_entrada
                     marcar_saida_vermelha = jornada_mins < 9 * 60
 
-            # FERIADO: pinta a linha toda se houver hora de entrada preenchida
             deve_destacar_linha = (
                 (is_feriado and entrada_preenchida)
                 or (is_fim_de_semana and horarios_preenchidos)
@@ -815,7 +835,10 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
                 if col_name == "Hora Extra" and val_str == "00:00":
                     val_str = ""
 
-                if col_name == col_saida_fil and marcar_saida_vermelha:
+                # ESTILIZAÇÃO DO TEXTO NA CÉLULA
+                if sem_saida:
+                    estilo_celula = cell_white_bold_style
+                elif col_name == col_saida_fil and marcar_saida_vermelha:
                     estilo_celula = cell_red_bold_style if deve_destacar_linha else cell_red_style
                 elif deve_destacar_linha or col_name == "Hora Extra" or (is_fim_de_semana and col_name == "Dia / Data"):
                     estilo_celula = cell_bold_style
@@ -826,7 +849,12 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
 
             dados_tabela.append(linha)
 
-            if deve_destacar_linha:
+            # APLICAÇÃO DO FUNDO DA LINHA
+            if sem_saida:
+                estilos_celulas_dinamicos.append(
+                    ('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor("#FEE2E2"))
+                )
+            elif deve_destacar_linha:
                 estilos_celulas_dinamicos.append(
                     ('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor("#FEF08A"))
                 )
