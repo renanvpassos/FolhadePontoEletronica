@@ -467,6 +467,11 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
             "data", "dia da semana", "data / dia", "observação"
         ]
     ]
+    idx_coluna_dia = next(
+        (i for i, col in enumerate(df_filtrado.columns)
+         if col.lower().strip() in ["data / dia", "dia / data", "dia da semana"]),
+        None
+    )
 
     col_entrada_fil = next((c for c in df_filtrado.columns if c.lower() == 'entrada'), None)
     col_saida_fil = next((c for c in df_filtrado.columns if c.lower() in ['saida', 'saída']), None)
@@ -524,12 +529,17 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
         )
 
         deve_destacar = (eh_feriado and entrada_preenchida) or (eh_fds and linha_completa)
+        fim_de_semana_sem_informacao = linha_sem_informacao and eh_fds and not sem_saida
 
         # APLICAÇÃO DE CORES DE FUNDO NA LINHA
-        if sem_saida or linha_sem_informacao:
+        if sem_saida or (linha_sem_informacao and not fim_de_semana_sem_informacao):
             # Pinta a linha toda de vermelho claro.
             estilos_tabela.append(
                 ('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor("#FEE2E2"))
+            )
+        elif fim_de_semana_sem_informacao and idx_coluna_dia is not None:
+            estilos_tabela.append(
+                ('BACKGROUND', (idx_coluna_dia, r_idx), (idx_coluna_dia, r_idx), colors.HexColor("#FEE2E2"))
             )
         elif deve_destacar:
             # Fundo Amarelo para Feriados / Finais de semana
@@ -554,7 +564,9 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
                 valor_str = escape(valor_str.strip())
 
             # ESTILIZAÇÃO DO TEXTO
-            if sem_saida or linha_sem_informacao:
+            if sem_saida or (linha_sem_informacao and not fim_de_semana_sem_informacao):
+                estilo_celula = cell_white_bold_style
+            elif fim_de_semana_sem_informacao and col_nome in ["Data / Dia", "Dia / Data", "Dia da Semana"]:
                 estilo_celula = cell_white_bold_style
             elif col_nome == col_saida_fil and marcar_saida_vermelha:
                 estilo_celula = cell_red_bold_style if deve_destacar else cell_red_style
@@ -803,6 +815,11 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
                 "data", "dia da semana", "dia / data", "observação"
             ]
         ]
+        idx_coluna_dia = next(
+            (i for i, col in enumerate(df_tabela.columns)
+             if col.lower().strip() in ["data / dia", "dia / data", "dia da semana"]),
+            None
+        )
 
         estilos_celulas_dinamicos = []
 
@@ -844,6 +861,9 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
                 (is_feriado and entrada_preenchida)
                 or (is_fim_de_semana and horarios_preenchidos)
             )
+            fim_de_semana_sem_informacao = (
+                linha_sem_informacao and is_fim_de_semana and not sem_saida
+            )
 
             linha = []
             for col_name in df_tabela.columns:
@@ -858,7 +878,9 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
                     val_str = ""
 
                 # ESTILIZAÇÃO DO TEXTO NA CÉLULA
-                if sem_saida or linha_sem_informacao:
+                if sem_saida or (linha_sem_informacao and not fim_de_semana_sem_informacao):
+                    estilo_celula = cell_white_bold_style
+                elif fim_de_semana_sem_informacao and col_name in ["Data / Dia", "Dia / Data", "Dia da Semana"]:
                     estilo_celula = cell_white_bold_style
                 elif col_name == col_saida_fil and marcar_saida_vermelha:
                     estilo_celula = cell_red_bold_style if deve_destacar_linha else cell_red_style
@@ -872,9 +894,13 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
             dados_tabela.append(linha)
 
             # APLICAÇÃO DO FUNDO DA LINHA
-            if sem_saida or linha_sem_informacao:
+            if sem_saida or (linha_sem_informacao and not fim_de_semana_sem_informacao):
                 estilos_celulas_dinamicos.append(
                     ('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor("#FEE2E2"))
+                )
+            elif fim_de_semana_sem_informacao and idx_coluna_dia is not None:
+                estilos_celulas_dinamicos.append(
+                    ('BACKGROUND', (idx_coluna_dia, r_idx), (idx_coluna_dia, r_idx), colors.HexColor("#FEE2E2"))
                 )
             elif deve_destacar_linha:
                 estilos_celulas_dinamicos.append(
