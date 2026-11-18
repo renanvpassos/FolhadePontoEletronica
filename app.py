@@ -298,7 +298,7 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
         textColor=colors.red
     )
     
-    # Estilo para texto dentro de linha completamente vermelha (alerta de saída em falta)
+    # Estilo para texto dentro de linhas destacadas em vermelho.
     cell_white_bold_style = ParagraphStyle(
         'CelulaBrancaNegritoPDF',
         parent=cell_bold_style,
@@ -461,6 +461,10 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
 
     idx_hora_extra = list(df_filtrado.columns).index("Hora Extra") if "Hora Extra" in df_filtrado.columns else -1
     colunas_obrigatorias = [c for c in df_filtrado.columns if 'observação' not in c.lower()]
+    colunas_informativas = [
+        c for c in df_filtrado.columns
+        if c.lower().strip() not in ["data", "dia da semana", "data / dia"]
+    ]
 
     col_entrada_fil = next((c for c in df_filtrado.columns if c.lower() == 'entrada'), None)
     col_saida_fil = next((c for c in df_filtrado.columns if c.lower() in ['saida', 'saída']), None)
@@ -511,12 +515,17 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
             str(row.get(col, "")).strip() not in ["", "nan", "0", "0.0"]
             for col in colunas_obrigatorias
         )
+        linha_sem_informacao = not any(
+            str(row.get(col, "")).strip().lower()
+            not in ["", "nan", "nat", "none", "0", "0.0", "00:00", "00:00:00"]
+            for col in colunas_informativas
+        )
 
         deve_destacar = (eh_feriado and entrada_preenchida) or (eh_fds and linha_completa)
 
         # APLICAÇÃO DE CORES DE FUNDO NA LINHA
-        if sem_saida:
-            # Pinta a linha TODA de vermelho claro (#FEE2E2 / #FCA5A5)
+        if sem_saida or linha_sem_informacao:
+            # Pinta a linha toda de vermelho claro.
             estilos_tabela.append(
                 ('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor("#FEE2E2"))
             )
@@ -543,7 +552,7 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
                 valor_str = escape(valor_str.strip())
 
             # ESTILIZAÇÃO DO TEXTO
-            if sem_saida:
+            if sem_saida or linha_sem_informacao:
                 estilo_celula = cell_white_bold_style
             elif col_nome == col_saida_fil and marcar_saida_vermelha:
                 estilo_celula = cell_red_bold_style if deve_destacar else cell_red_style
@@ -786,6 +795,10 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         idx_hora_extra = list(df_tabela.columns).index("Hora Extra") if "Hora Extra" in df_tabela.columns else -1
         col_entrada_fil = next((c for c in df_tabela.columns if c.lower().strip() == 'entrada'), None)
         col_saida_fil = next((c for c in df_tabela.columns if c.lower().strip() in ['saida', 'saída']), None)
+        colunas_informativas = [
+            c for c in df_tabela.columns
+            if c.lower().strip() not in ["data", "dia da semana", "dia / data"]
+        ]
 
         estilos_celulas_dinamicos = []
 
@@ -807,6 +820,11 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
 
             # NOVA REGRA: Entrada preenchida, mas Saída SEM preenchimento
             sem_saida = entrada_preenchida and not saida_preenchida
+            linha_sem_informacao = not any(
+                str(row.get(col, "")).strip().lower()
+                not in ["", "nan", "nat", "none", "0", "0.0", "00:00", "00:00:00"]
+                for col in colunas_informativas
+            )
 
             marcar_saida_vermelha = False
 
@@ -836,7 +854,7 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
                     val_str = ""
 
                 # ESTILIZAÇÃO DO TEXTO NA CÉLULA
-                if sem_saida:
+                if sem_saida or linha_sem_informacao:
                     estilo_celula = cell_white_bold_style
                 elif col_name == col_saida_fil and marcar_saida_vermelha:
                     estilo_celula = cell_red_bold_style if deve_destacar_linha else cell_red_style
@@ -850,7 +868,7 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
             dados_tabela.append(linha)
 
             # APLICAÇÃO DO FUNDO DA LINHA
-            if sem_saida:
+            if sem_saida or linha_sem_informacao:
                 estilos_celulas_dinamicos.append(
                     ('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor("#FEE2E2"))
                 )
