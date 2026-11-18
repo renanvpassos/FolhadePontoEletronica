@@ -463,7 +463,9 @@ def converter_para_pdf_individual(df, nome_funcionario, email, mapeamento_celula
     colunas_obrigatorias = [c for c in df_filtrado.columns if 'observação' not in c.lower()]
     colunas_informativas = [
         c for c in df_filtrado.columns
-        if c.lower().strip() not in ["data", "dia da semana", "data / dia"]
+        if c.lower().strip() not in [
+            "data", "dia da semana", "data / dia", "observação"
+        ]
     ]
 
     col_entrada_fil = next((c for c in df_filtrado.columns if c.lower() == 'entrada'), None)
@@ -797,7 +799,9 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
         col_saida_fil = next((c for c in df_tabela.columns if c.lower().strip() in ['saida', 'saída']), None)
         colunas_informativas = [
             c for c in df_tabela.columns
-            if c.lower().strip() not in ["data", "dia da semana", "dia / data"]
+            if c.lower().strip() not in [
+                "data", "dia da semana", "dia / data", "observação"
+            ]
         ]
 
         estilos_celulas_dinamicos = []
