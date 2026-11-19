@@ -1268,7 +1268,7 @@ TIPOS_AFASTAMENTO = {
         "msg_ok": "Licença maternidade salva com sucesso!",
         "msg_encerrado": "Licença salva. O período já terminou, então o botão foi desligado.",
         "relatorio_titulo": "Relatório de Licença Maternidade",
-        "sem_registro": "SEM LICENÇA MATERNIDADE REGISTRADA",
+        "sem_registro": "SEM LICENÇA REGISTRADA",
         "arquivo": "Relatorio_Licenca_Maternidade",
         "log_add": "Registrou licença maternidade",
         "log_del": "Removeu licença maternidade",
