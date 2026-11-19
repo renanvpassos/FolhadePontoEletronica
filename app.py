@@ -1268,6 +1268,14 @@ def buscar_ferias_todos():
         pass
     return resultado
 
+def colaborador_em_ferias_hoje(email):
+    """True se existe um período de férias cobrindo a data de hoje."""
+    hoje_iso = str(obter_hoje_br())
+    for f in buscar_ferias(email):
+        if str(f["data_inicio"])[:10] <= hoje_iso <= str(f["data_fim"])[:10]:
+            return True
+    return False
+
 def painel_ferias(email, nome):
     """Formulário de período de férias (visível apenas para Supervisor/Master)."""
     with st.container(border=True):
@@ -1887,7 +1895,11 @@ elif opcao == "RELATÓRIO":
                     )
                 with col_ferias:
                     st.markdown("<div style='height:30px'></div>", unsafe_allow_html=True)
-                    ferias_ativo = st.toggle("🏖️ De férias", key=f"ferias_toggle_{email_busca}")
+                    ferias_ativo = st.toggle(
+                        "🏖️ De férias",
+                        value=colaborador_em_ferias_hoje(email_busca),
+                        key=f"ferias_toggle_{email_busca}"
+                    )
     
                 houve_alteracao = nova_celula != celula_atual
     
@@ -1924,7 +1936,11 @@ elif opcao == "RELATÓRIO":
                     email_busca = colaborador_escolhido["email"]
                     nome_busca = colaborador_escolhido["nome"]
 
-                    if st.toggle("🏖️ De férias", key=f"ferias_toggle_{email_busca}"):
+                    if st.toggle(
+                        "🏖️ De férias",
+                        value=colaborador_em_ferias_hoje(email_busca),
+                        key=f"ferias_toggle_{email_busca}"
+                    ):
                         painel_ferias(email_busca, nome_busca)
             except Exception:
                 st.error("Erro ao carregar a lista de funcionários da sua célula.")
