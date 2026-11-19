@@ -196,8 +196,8 @@ FERIADOS_2026 = {
     "02/11/2026", "15/11/2026", "20/11/2026", "25/12/2026",
 }
 
-def aplicar_observacoes_automaticas(df, ferias=None):
-    """FÉRIAS: preenche todos os dias dentro dos períodos de férias informados.
+def aplicar_observacoes_automaticas(df, ferias=None, maternidade=None):
+    """FÉRIAS / LICENÇA MATERNIDADE: preenchem todos os dias dentro dos períodos informados.
     FERIADO: preenche em TODO dia de feriado, tendo ou não hora de entrada.
     PLANTÃO: fim de semana, não feriado, com Entrada preenchida.
     Textos digitados manualmente na OBSERVAÇÃO são sempre preservados."""
@@ -215,13 +215,15 @@ def aplicar_observacoes_automaticas(df, ferias=None):
     else:
         entrada_ok = pd.Series(False, index=df.index)
 
-    # --- FÉRIAS (prioridade sobre as regras automáticas) ---
-    sem_obs = df["OBSERVAÇÃO"].str.strip() == ""
-    if ferias:
-        em_ferias = pd.Series(False, index=df.index)
-        for ini, fim in ferias:
-            em_ferias |= (datas >= pd.Timestamp(ini)) & (datas <= pd.Timestamp(fim))
-        df.loc[em_ferias & sem_obs, "OBSERVAÇÃO"] = "FÉRIAS"
+    # --- AFASTAMENTOS (prioridade sobre as regras automáticas) ---
+    for periodos, texto in ((ferias, "FÉRIAS"), (maternidade, "LICENÇA MATERNIDADE")):
+        if not periodos:
+            continue
+        sem_obs = df["OBSERVAÇÃO"].str.strip() == ""
+        no_periodo = pd.Series(False, index=df.index)
+        for ini, fim in periodos:
+            no_periodo |= (datas >= pd.Timestamp(ini)) & (datas <= pd.Timestamp(fim))
+        df.loc[no_periodo & sem_obs, "OBSERVAÇÃO"] = texto
 
     sem_obs = df["OBSERVAÇÃO"].str.strip() == ""
     eh_feriado = df["Data"].astype(str).str.strip().isin(FERIADOS_2026)
@@ -1238,24 +1240,55 @@ def executar_query_supabase(operacao, data_dict=None, email=None, data_filtro=No
         return res.data
 
 # ==========================================
-# FÉRIAS
+# AFASTAMENTOS (FÉRIAS / LICENÇA MATERNIDADE)
 # ==========================================
-def buscar_ferias(email):
+TIPOS_AFASTAMENTO = {
+    "ferias": {
+        "tabela": "ferias_ponto",
+        "toggle": "🏖️ De férias",
+        "titulo": "🏖️ Férias de",
+        "pergunta": "Qual o período de férias?",
+        "botao_salvar": "💾 Salvar férias",
+        "lista": "Períodos de férias cadastrados:",
+        "msg_ok": "Férias salvas com sucesso!",
+        "msg_encerrado": "Férias salvas. O período já terminou, então o botão foi desligado.",
+        "log_add": "Registrou férias",
+        "log_del": "Removeu férias",
+    },
+    "maternidade": {
+        "tabela": "maternidade_ponto",
+        "toggle": "🤱 Licença Maternidade",
+        "titulo": "🤱 Licença Maternidade de",
+        "pergunta": "Qual o período da licença maternidade?",
+        "botao_salvar": "💾 Salvar licença",
+        "lista": "Períodos de licença maternidade cadastrados:",
+        "msg_ok": "Licença maternidade salva com sucesso!",
+        "msg_encerrado": "Licença salva. O período já terminou, então o botão foi desligado.",
+        "log_add": "Registrou licença maternidade",
+        "log_del": "Removeu licença maternidade",
+    },
+}
+
+def buscar_afastamentos(tipo, email):
     """Retorna lista de dicts (id, data_inicio, data_fim) de um colaborador."""
     try:
-        res = supabase.table("ferias_ponto").select("id, data_inicio, data_fim") \
+        res = supabase.table(TIPOS_AFASTAMENTO[tipo]["tabela"]).select("id, data_inicio, data_fim") \
             .eq("email", email).order("data_inicio").execute()
         return res.data or []
     except Exception:
         return []
 
-def buscar_ferias_todos():
+def periodos_afastamento(tipo, email):
+    """Lista de (data_inicio, data_fim) para usar em aplicar_observacoes_automaticas."""
+    return [(f["data_inicio"], f["data_fim"]) for f in buscar_afastamentos(tipo, email)]
+
+def buscar_afastamentos_todos(tipo):
     """Retorna dict email -> lista de (data_inicio, data_fim)."""
     resultado = defaultdict(list)
     try:
         inicio, passo = 0, 1000
         while True:
-            pag = supabase.table("ferias_ponto").select("email, data_inicio, data_fim") \
+            pag = supabase.table(TIPOS_AFASTAMENTO[tipo]["tabela"]).select("email, data_inicio, data_fim") \
                 .range(inicio, inicio + passo - 1).execute()
             if not pag.data:
                 break
@@ -1268,43 +1301,45 @@ def buscar_ferias_todos():
         pass
     return resultado
 
-def colaborador_em_ferias_hoje(email):
-    """True se existe um período de férias cobrindo a data de hoje."""
+def colaborador_em_afastamento_hoje(tipo, email):
+    """True se existe um período do tipo informado cobrindo a data de hoje."""
     hoje_iso = str(obter_hoje_br())
-    for f in buscar_ferias(email):
+    for f in buscar_afastamentos(tipo, email):
         if str(f["data_inicio"])[:10] <= hoje_iso <= str(f["data_fim"])[:10]:
             return True
     return False
 
-def toggle_ferias(email):
-    """Toggle 'De férias': nasce ligado se há férias cobrindo hoje; é desligado
+def toggle_afastamento(tipo, email):
+    """Toggle do afastamento: nasce ligado se há período cobrindo hoje; é desligado
     automaticamente quando se salva um período cuja data final já passou."""
-    chave = f"ferias_toggle_{email}"
-    if st.session_state.pop(f"ferias_reset_{email}", False):
+    cfg = TIPOS_AFASTAMENTO[tipo]
+    chave = f"{tipo}_toggle_{email}"
+    if st.session_state.pop(f"{tipo}_reset_{email}", False):
         st.session_state[chave] = False
-        return st.toggle("🏖️ De férias", key=chave)
+        return st.toggle(cfg["toggle"], key=chave)
     return st.toggle(
-        "🏖️ De férias",
-        value=colaborador_em_ferias_hoje(email),
+        cfg["toggle"],
+        value=colaborador_em_afastamento_hoje(tipo, email),
         key=chave
     )
 
-def painel_ferias(email, nome):
-    """Formulário de período de férias (visível apenas para Supervisor/Master)."""
+def painel_afastamento(tipo, email, nome):
+    """Formulário de período (visível apenas para Supervisor/Master)."""
+    cfg = TIPOS_AFASTAMENTO[tipo]
     with st.container(border=True):
-        st.markdown(f"##### 🏖️ Férias de {nome}")
+        st.markdown(f"##### {cfg['titulo']} {nome}")
         periodo = st.date_input(
-            "Qual o período de férias?",
+            cfg["pergunta"],
             value=(obter_hoje_br(), obter_hoje_br()),
             format="DD/MM/YYYY",
-            key=f"ferias_periodo_{email}"
+            key=f"{tipo}_periodo_{email}"
         )
 
-        if st.button("💾 Salvar férias", type="primary", key=f"ferias_salvar_{email}"):
+        if st.button(cfg["botao_salvar"], type="primary", key=f"{tipo}_salvar_{email}"):
             if isinstance(periodo, (tuple, list)) and len(periodo) == 2:
                 ini, fim = periodo
                 try:
-                    supabase.table("ferias_ponto").insert({
+                    supabase.table(cfg["tabela"]).insert({
                         "email": email,
                         "data_inicio": str(ini),
                         "data_fim": str(fim)
@@ -1313,35 +1348,35 @@ def painel_ferias(email, nome):
                         "quem_alterou": user_name,
                         "usuario_afetado": nome,
                         "email_afetado": email,
-                        "descricao": f'Registrou férias de {ini.strftime("%d/%m/%Y")} a {fim.strftime("%d/%m/%Y")}.'
+                        "descricao": f'{cfg["log_add"]} de {ini.strftime("%d/%m/%Y")} a {fim.strftime("%d/%m/%Y")}.'
                     })
                     if fim < obter_hoje_br():
-                        # período já encerrado: desliga o botão "De férias"
-                        st.session_state[f"ferias_reset_{email}"] = True
-                        st.toast("Férias salvas. O período já terminou, então o botão foi desligado.")
+                        # período já encerrado: desliga o botão
+                        st.session_state[f"{tipo}_reset_{email}"] = True
+                        st.toast(cfg["msg_encerrado"])
                     else:
-                        st.toast("Férias salvas com sucesso!")
+                        st.toast(cfg["msg_ok"])
                     st.rerun()
                 except Exception as e:
-                    st.error(f"Erro ao salvar férias: {e}")
+                    st.error(f"Erro ao salvar: {e}")
             else:
                 st.warning("Selecione a data inicial e a data final do período.")
 
-        existentes = buscar_ferias(email)
+        existentes = buscar_afastamentos(tipo, email)
         if existentes:
-            st.caption("Períodos de férias cadastrados:")
+            st.caption(cfg["lista"])
             for f in existentes:
                 c_txt, c_del = st.columns([4, 1])
                 ini_br = datetime.strptime(f["data_inicio"], "%Y-%m-%d").strftime("%d/%m/%Y")
                 fim_br = datetime.strptime(f["data_fim"], "%Y-%m-%d").strftime("%d/%m/%Y")
                 c_txt.write(f"📅 {ini_br} a {fim_br}")
-                if c_del.button("🗑️", key=f"ferias_del_{f['id']}"):
-                    supabase.table("ferias_ponto").delete().eq("id", f["id"]).execute()
+                if c_del.button("🗑️", key=f"{tipo}_del_{f['id']}"):
+                    supabase.table(cfg["tabela"]).delete().eq("id", f["id"]).execute()
                     executar_query_supabase("salvar_log_interno", data_dict={
                         "quem_alterou": user_name,
                         "usuario_afetado": nome,
                         "email_afetado": email,
-                        "descricao": f"Removeu férias de {ini_br} a {fim_br}."
+                        "descricao": f"{cfg['log_del']} de {ini_br} a {fim_br}."
                     })
                     st.rerun()
 
@@ -1904,16 +1939,17 @@ elif opcao == "RELATÓRIO":
                 celula_busca = colaborador_escolhido.get("celula")
     
                 celula_atual = celula_busca or ""
-                col_cel, col_ferias = st.columns([3, 1])
+                col_cel, col_afast = st.columns([5, 2])
                 with col_cel:
                     nova_celula = st.text_input(
                         "📍 Célula do Colaborador (Banco de Dados):",
                         value=celula_atual,
                         key=f"celula_input_{email_busca}"
                     )
-                with col_ferias:
+                with col_afast:
                     st.markdown("<div style='height:30px'></div>", unsafe_allow_html=True)
-                    ferias_ativo = toggle_ferias(email_busca)
+                    ferias_ativo = toggle_afastamento("ferias", email_busca)
+                    maternidade_ativo = toggle_afastamento("maternidade", email_busca)
     
                 houve_alteracao = nova_celula != celula_atual
     
@@ -1928,7 +1964,9 @@ elif opcao == "RELATÓRIO":
                     st.info("Alteração pendente — clique em **Confirmar alteração** para salvar.")
 
                 if ferias_ativo:
-                    painel_ferias(email_busca, nome_busca)
+                    painel_afastamento("ferias", email_busca, nome_busca)
+                if maternidade_ativo:
+                    painel_afastamento("maternidade", email_busca, nome_busca)
         except Exception:
             st.error("Erro ao carregar a lista completa de funcionários.")
     
@@ -1950,8 +1988,12 @@ elif opcao == "RELATÓRIO":
                     email_busca = colaborador_escolhido["email"]
                     nome_busca = colaborador_escolhido["nome"]
 
-                    if toggle_ferias(email_busca):
-                        painel_ferias(email_busca, nome_busca)
+                    ferias_ativo_sup = toggle_afastamento("ferias", email_busca)
+                    maternidade_ativo_sup = toggle_afastamento("maternidade", email_busca)
+                    if ferias_ativo_sup:
+                        painel_afastamento("ferias", email_busca, nome_busca)
+                    if maternidade_ativo_sup:
+                        painel_afastamento("maternidade", email_busca, nome_busca)
             except Exception:
                 st.error("Erro ao carregar a lista de funcionários da sua célula.")
                 
@@ -2227,11 +2269,12 @@ elif opcao == "RELATÓRIO":
         
         ordem_colunas_tela = ["Dia da Semana", "Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", "Hora Extra", "Justificativa Entrada", "Justificativa Saída Almoço", "Justificativa Retorno Almoço", "Justificativa Saída", "OBSERVAÇÃO"]
 
-        # FÉRIAS do colaborador selecionado (lidas do banco)
-        ferias_busca = [(f["data_inicio"], f["data_fim"]) for f in buscar_ferias(email_busca)]
+        # FÉRIAS e LICENÇA MATERNIDADE do colaborador selecionado (lidas do banco)
+        ferias_busca = periodos_afastamento("ferias", email_busca)
+        maternidade_busca = periodos_afastamento("maternidade", email_busca)
 
         # FÉRIAS têm prioridade; depois FERIADO em todo feriado; PLANTÃO mantido como antes
-        df_visualizacao = aplicar_observacoes_automaticas(df_visualizacao, ferias_busca)
+        df_visualizacao = aplicar_observacoes_automaticas(df_visualizacao, ferias_busca, maternidade_busca)
         
         if cargo_usuario in ["Supervisor", "Master"]:
             st.warning("⚠️ **Atenção:** Confirme as alterações antes de salvar.")
@@ -2476,7 +2519,7 @@ elif opcao == "RELATÓRIO":
             st.dataframe(df_visualizacao, use_container_width=True, hide_index=True, column_order=ordem_colunas_tela)
         
         df_exportar_ind = processar_dados_ponto(dados_pessoais, data_inicio, data_fim, incluir_usuario_info=False, formatar_data_br=True)
-        df_exportar_ind = aplicar_observacoes_automaticas(df_exportar_ind, ferias_busca)
+        df_exportar_ind = aplicar_observacoes_automaticas(df_exportar_ind, ferias_busca, maternidade_busca)
         dados_excel_ind = converter_para_excel_individual(df_exportar_ind)
         dados_pdf_ind = converter_para_pdf_individual(df_exportar_ind, nome_busca, email_busca, mapeamento_celulas)
         
@@ -2568,7 +2611,8 @@ elif opcao == "RELATÓRIO":
                             prefixo_nome = f"Relatorio_Consolidado_Celula_{opcao_consolidada.replace(' ', '_')}"
         
                     dfs_equipe = []
-                    ferias_por_email = buscar_ferias_todos()
+                    ferias_por_email = buscar_afastamentos_todos("ferias")
+                    maternidade_por_email = buscar_afastamentos_todos("maternidade")
                     
                     for u in usuarios_alvo:
                         u_email = str(u["email"]).strip().lower()
@@ -2594,7 +2638,7 @@ elif opcao == "RELATÓRIO":
                             continue
         
                         df_user_limpo = processar_dados_ponto(dados_pessoais_user, data_inicio, data_fim, incluir_usuario_info=False, formatar_data_br=True)
-                        df_user_limpo = aplicar_observacoes_automaticas(df_user_limpo, ferias_por_email.get(u_email))
+                        df_user_limpo = aplicar_observacoes_automaticas(df_user_limpo, ferias_por_email.get(u_email), maternidade_por_email.get(u_email))
                         
                         if df_user_limpo is not None and not df_user_limpo.empty:
                             df_user_limpo["Funcionário"] = u_nome
