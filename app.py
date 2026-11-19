@@ -1252,6 +1252,9 @@ TIPOS_AFASTAMENTO = {
         "lista": "Períodos de férias cadastrados:",
         "msg_ok": "Férias salvas com sucesso!",
         "msg_encerrado": "Férias salvas. O período já terminou, então o botão foi desligado.",
+        "relatorio_titulo": "Relatório de Férias",
+        "sem_registro": "SEM FÉRIAS REGISTRADA",
+        "arquivo": "Relatorio_Ferias",
         "log_add": "Registrou férias",
         "log_del": "Removeu férias",
     },
@@ -1264,6 +1267,9 @@ TIPOS_AFASTAMENTO = {
         "lista": "Períodos de licença maternidade cadastrados:",
         "msg_ok": "Licença maternidade salva com sucesso!",
         "msg_encerrado": "Licença salva. O período já terminou, então o botão foi desligado.",
+        "relatorio_titulo": "Relatório de Licença Maternidade",
+        "sem_registro": "SEM LICENÇA MATERNIDADE REGISTRADA",
+        "arquivo": "Relatorio_Licenca_Maternidade",
         "log_add": "Registrou licença maternidade",
         "log_del": "Removeu licença maternidade",
     },
@@ -1379,6 +1385,112 @@ def painel_afastamento(tipo, email, nome):
                         "descricao": f"{cfg['log_del']} de {ini_br} a {fim_br}."
                     })
                     st.rerun()
+
+def converter_para_pdf_afastamentos(titulo, texto_sem_registro, usuarios, periodos_por_email, data_inicio, data_fim, escopo):
+    """PDF com os períodos de afastamento (férias / licença maternidade) que cruzam o intervalo
+    selecionado. Colaboradores sem nenhum registro no intervalo são destacados em vermelho."""
+    output = BytesIO()
+    doc = SimpleDocTemplate(
+        output,
+        pagesize=landscape(A4),
+        rightMargin=15, leftMargin=15, topMargin=15, bottomMargin=15
+    )
+    story = []
+    styles = getSampleStyleSheet()
+
+    title_style = ParagraphStyle('TituloAfast', parent=styles['Heading1'], fontSize=14,
+                                 textColor=colors.HexColor("#1E3A8A"), spaceAfter=4)
+    info_style = ParagraphStyle('InfoAfast', parent=styles['Normal'], fontSize=9.5, leading=12)
+    header_style = ParagraphStyle('HeaderAfast', parent=styles['Normal'], fontSize=9, leading=11,
+                                  textColor=colors.white, fontName="Helvetica-Bold", alignment=1)
+    cell_style = ParagraphStyle('CellAfast', parent=styles['Normal'], fontSize=9, leading=11,
+                                fontName="Helvetica", alignment=1)
+    cell_red_style = ParagraphStyle('CellAfastRed', parent=cell_style, fontName="Helvetica-Bold",
+                                    textColor=colors.HexColor("#B91C1C"))
+
+    if os.path.exists("logoMult.png"):
+        logo = Image("logoMult.png", width=75, height=25)
+        logo.hAlign = 'RIGHT'
+        story.append(logo)
+        story.append(Spacer(1, 6))
+
+    linhas = []  # (nome, celula, ini, fim, dias) ou (nome, celula, None, None, None)
+    total_com, total_sem = 0, 0
+
+    for u in sorted(usuarios, key=lambda x: (str(x.get("celula") or "").strip().lower(),
+                                              str(x.get("nome") or "").strip().lower())):
+        email_u = str(u["email"]).strip().lower()
+        nome_u = str(u.get("nome") or "Sem Nome").strip()
+        celula_u = str(u.get("celula") or "").strip() or "Sem célula"
+
+        encontrados = []
+        for ini, fim in sorted(periodos_por_email.get(email_u, [])):
+            try:
+                d_ini = datetime.strptime(str(ini)[:10], "%Y-%m-%d").date()
+                d_fim = datetime.strptime(str(fim)[:10], "%Y-%m-%d").date()
+            except Exception:
+                continue
+            if d_ini <= data_fim and d_fim >= data_inicio:
+                dias = (min(d_fim, data_fim) - max(d_ini, data_inicio)).days + 1
+                encontrados.append((d_ini, d_fim, dias))
+
+        if encontrados:
+            total_com += 1
+            for d_ini, d_fim, dias in encontrados:
+                linhas.append((nome_u, celula_u, d_ini, d_fim, dias))
+        else:
+            total_sem += 1
+            linhas.append((nome_u, celula_u, None, None, None))
+
+    story.append(Paragraph(titulo, title_style))
+    story.append(Paragraph(
+        f"<b>Período consultado:</b> {data_inicio.strftime('%d/%m/%Y')} a {data_fim.strftime('%d/%m/%Y')}"
+        f" &nbsp;|&nbsp; <b>Célula:</b> {escape(str(escopo))}", info_style))
+    story.append(Paragraph(
+        f"<b>Colaboradores com registro:</b> {total_com} &nbsp;|&nbsp; "
+        f"<font color='#B91C1C'><b>Sem registro:</b> {total_sem}</font>", info_style))
+    story.append(Spacer(1, 8))
+
+    dados = [[Paragraph(h, header_style) for h in
+              ["Colaborador", "Célula", "Início", "Fim", "Dias dentro do período"]]]
+    estilos = [
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#1E3A8A")),
+        ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor("#D1D5DB")),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor("#F9FAFB")]),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+    ]
+
+    for r_idx, (nome_u, celula_u, d_ini, d_fim, dias) in enumerate(linhas, start=1):
+        if d_ini is None:
+            dados.append([
+                Paragraph(escape(nome_u), cell_red_style),
+                Paragraph(escape(celula_u), cell_red_style),
+                Paragraph(texto_sem_registro, cell_red_style), "", "", ""
+            ])
+            estilos.append(('SPAN', (2, r_idx), (4, r_idx)))
+            estilos.append(('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor("#FEE2E2")))
+        else:
+            dados.append([
+                Paragraph(escape(nome_u), cell_style),
+                Paragraph(escape(celula_u), cell_style),
+                Paragraph(d_ini.strftime("%d/%m/%Y"), cell_style),
+                Paragraph(d_fim.strftime("%d/%m/%Y"), cell_style),
+                Paragraph(str(dias), cell_style),
+            ])
+
+    # remove colunas vazias criadas pelo SPAN (a linha precisa ter 5 células)
+    dados = [linha[:5] for linha in dados]
+
+    tabela = Table(dados, repeatRows=1, colWidths=[250, 170, 110, 110, 130])
+    tabela.setStyle(TableStyle(estilos))
+    story.append(tabela)
+
+    doc.build(story)
+    output.seek(0)
+    return output.getvalue()
 
 def converter_para_excel_individual(df_dados):
     output = BytesIO()
@@ -2686,3 +2798,85 @@ elif opcao == "RELATÓRIO":
                         mime="application/pdf",
                         use_container_width=True
                     )
+
+
+            # =================================================================
+            # RELATÓRIOS DE AFASTAMENTOS (FÉRIAS / LICENÇA MATERNIDADE)
+            # =================================================================
+            st.write("---")
+            st.markdown("### 🗓️ Relatórios de Afastamentos")
+            if cargo_usuario == "Master":
+                st.caption("Escolha o tipo de relatório, o período e a célula (ou todos os colaboradores).")
+            else:
+                st.caption(f"Gera o relatório dos colaboradores da sua célula: **{celula_usuario}**")
+
+            col_rel_f, col_rel_m = st.columns(2)
+            with col_rel_f:
+                if st.button("🏖️ Baixar Relatório de Férias", use_container_width=True, key="btn_rel_ferias"):
+                    st.session_state["rel_afast_aberto"] = None if st.session_state.get("rel_afast_aberto") == "ferias" else "ferias"
+            with col_rel_m:
+                if st.button("🤱 Baixar Relatório de Licença Maternidade", use_container_width=True, key="btn_rel_maternidade"):
+                    st.session_state["rel_afast_aberto"] = None if st.session_state.get("rel_afast_aberto") == "maternidade" else "maternidade"
+
+            tipo_rel = st.session_state.get("rel_afast_aberto")
+            if tipo_rel:
+                cfg_rel = TIPOS_AFASTAMENTO[tipo_rel]
+                with st.container(border=True):
+                    st.markdown(f"##### {cfg_rel['relatorio_titulo']}")
+
+                    periodo_rel = st.date_input(
+                        "🗓️ Selecione o período que deseja extrair:",
+                        value=(hoje.replace(day=1), hoje),
+                        format="DD/MM/YYYY",
+                        key=f"rel_{tipo_rel}_periodo"
+                    )
+
+                    if cargo_usuario == "Master":
+                        escopo_rel = st.selectbox(
+                            "📍 Célula:",
+                            options=["Todos os Colaboradores"] + celulas_disponiveis,
+                            key=f"rel_{tipo_rel}_celula"
+                        )
+                    else:
+                        escopo_rel = celula_usuario
+
+                    if st.button("📄 Gerar PDF", type="primary", use_container_width=True, key=f"rel_{tipo_rel}_gerar"):
+                        if not (isinstance(periodo_rel, (tuple, list)) and len(periodo_rel) == 2):
+                            st.warning("Selecione a data inicial e a data final do período.")
+                        else:
+                            rel_ini, rel_fim = periodo_rel
+                            if cargo_usuario == "Master" and escopo_rel == "Todos os Colaboradores":
+                                usuarios_rel = todos_usuarios_banco
+                                sufixo_escopo = "Todos"
+                            else:
+                                alvo_rel = str(escopo_rel).strip().lower()
+                                usuarios_rel = [u for u in todos_usuarios_banco
+                                                if str(u.get("celula", "")).strip().lower() == alvo_rel]
+                                sufixo_escopo = str(escopo_rel).replace(" ", "_")
+
+                            if not usuarios_rel:
+                                st.warning("Nenhum colaborador encontrado para o filtro selecionado.")
+                            else:
+                                with st.spinner("Gerando relatório em PDF..."):
+                                    periodos_rel = buscar_afastamentos_todos(tipo_rel)
+                                    pdf_bytes = converter_para_pdf_afastamentos(
+                                        cfg_rel["relatorio_titulo"], cfg_rel["sem_registro"],
+                                        usuarios_rel, periodos_rel, rel_ini, rel_fim,
+                                        "Todos os Colaboradores" if sufixo_escopo == "Todos" else escopo_rel
+                                    )
+                                st.session_state[f"rel_{tipo_rel}_pdf"] = (
+                                    pdf_bytes,
+                                    f"{cfg_rel['arquivo']}_{sufixo_escopo}_{rel_ini}_a_{rel_fim}.pdf"
+                                )
+
+                    pdf_pronto = st.session_state.get(f"rel_{tipo_rel}_pdf")
+                    if pdf_pronto:
+                        st.success("✅ Relatório gerado! Clique abaixo para baixar:")
+                        st.download_button(
+                            label="📥 Baixar PDF",
+                            data=pdf_pronto[0],
+                            file_name=pdf_pronto[1],
+                            mime="application/pdf",
+                            use_container_width=True,
+                            key=f"rel_{tipo_rel}_download"
+                        )
