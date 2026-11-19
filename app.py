@@ -1276,6 +1276,19 @@ def colaborador_em_ferias_hoje(email):
             return True
     return False
 
+def toggle_ferias(email):
+    """Toggle 'De férias': nasce ligado se há férias cobrindo hoje; é desligado
+    automaticamente quando se salva um período cuja data final já passou."""
+    chave = f"ferias_toggle_{email}"
+    if st.session_state.pop(f"ferias_reset_{email}", False):
+        st.session_state[chave] = False
+        return st.toggle("🏖️ De férias", key=chave)
+    return st.toggle(
+        "🏖️ De férias",
+        value=colaborador_em_ferias_hoje(email),
+        key=chave
+    )
+
 def painel_ferias(email, nome):
     """Formulário de período de férias (visível apenas para Supervisor/Master)."""
     with st.container(border=True):
@@ -1302,7 +1315,12 @@ def painel_ferias(email, nome):
                         "email_afetado": email,
                         "descricao": f'Registrou férias de {ini.strftime("%d/%m/%Y")} a {fim.strftime("%d/%m/%Y")}.'
                     })
-                    st.success("Férias salvas com sucesso!")
+                    if fim < obter_hoje_br():
+                        # período já encerrado: desliga o botão "De férias"
+                        st.session_state[f"ferias_reset_{email}"] = True
+                        st.toast("Férias salvas. O período já terminou, então o botão foi desligado.")
+                    else:
+                        st.toast("Férias salvas com sucesso!")
                     st.rerun()
                 except Exception as e:
                     st.error(f"Erro ao salvar férias: {e}")
@@ -1895,11 +1913,7 @@ elif opcao == "RELATÓRIO":
                     )
                 with col_ferias:
                     st.markdown("<div style='height:30px'></div>", unsafe_allow_html=True)
-                    ferias_ativo = st.toggle(
-                        "🏖️ De férias",
-                        value=colaborador_em_ferias_hoje(email_busca),
-                        key=f"ferias_toggle_{email_busca}"
-                    )
+                    ferias_ativo = toggle_ferias(email_busca)
     
                 houve_alteracao = nova_celula != celula_atual
     
@@ -1936,11 +1950,7 @@ elif opcao == "RELATÓRIO":
                     email_busca = colaborador_escolhido["email"]
                     nome_busca = colaborador_escolhido["nome"]
 
-                    if st.toggle(
-                        "🏖️ De férias",
-                        value=colaborador_em_ferias_hoje(email_busca),
-                        key=f"ferias_toggle_{email_busca}"
-                    ):
+                    if toggle_ferias(email_busca):
                         painel_ferias(email_busca, nome_busca)
             except Exception:
                 st.error("Erro ao carregar a lista de funcionários da sua célula.")
