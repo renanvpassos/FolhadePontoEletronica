@@ -723,7 +723,7 @@ def converter_para_pdf_consolidado(df, mapeamento_celulas, data_inicio, data_fim
             except Exception as img_err:
                 story.append(Paragraph(f"[ERRO DE RENDERIZAÇÃO: {img_err}]", erro_style))
         else:
-            story.append(Paragraph("[AVISO: Adicione o arquivo logoMult.png no seu GitHub]", erro_style))
+            story.append(Paragraph("[AVISO: Logo não encontrado]", erro_style))
             story.append(Spacer(1, 2))
 
         story.append(Paragraph(f"Relatório de Ponto: <font color='red'>{nome_funcionario}</font>", title_style))
