@@ -196,9 +196,10 @@ FERIADOS_2026 = {
     "02/11/2026", "15/11/2026", "20/11/2026", "25/12/2026",
 }
 
-def aplicar_observacoes_automaticas(df):
-    """FERIADO: preenche em TODO dia de feriado, tendo ou não hora de entrada.
-    PLANTÃO: regra mantida (fim de semana, não feriado, com Entrada preenchida).
+def aplicar_observacoes_automaticas(df, ferias=None):
+    """FÉRIAS: preenche todos os dias dentro dos períodos de férias informados.
+    FERIADO: preenche em TODO dia de feriado, tendo ou não hora de entrada.
+    PLANTÃO: fim de semana, não feriado, com Entrada preenchida.
     Textos digitados manualmente na OBSERVAÇÃO são sempre preservados."""
     if df is None or df.empty or "Data" not in df.columns:
         return df
@@ -213,6 +214,14 @@ def aplicar_observacoes_automaticas(df):
         entrada_ok = df["Entrada"].fillna("").astype(str).str.strip() != ""
     else:
         entrada_ok = pd.Series(False, index=df.index)
+
+    # --- FÉRIAS (prioridade sobre as regras automáticas) ---
+    sem_obs = df["OBSERVAÇÃO"].str.strip() == ""
+    if ferias:
+        em_ferias = pd.Series(False, index=df.index)
+        for ini, fim in ferias:
+            em_ferias |= (datas >= pd.Timestamp(ini)) & (datas <= pd.Timestamp(fim))
+        df.loc[em_ferias & sem_obs, "OBSERVAÇÃO"] = "FÉRIAS"
 
     sem_obs = df["OBSERVAÇÃO"].str.strip() == ""
     eh_feriado = df["Data"].astype(str).str.strip().isin(FERIADOS_2026)
@@ -1228,6 +1237,88 @@ def executar_query_supabase(operacao, data_dict=None, email=None, data_filtro=No
         res = supabase.table("log_interno").select("*").order("data_alteracao", desc=True).execute()
         return res.data
 
+# ==========================================
+# FÉRIAS
+# ==========================================
+def buscar_ferias(email):
+    """Retorna lista de dicts (id, data_inicio, data_fim) de um colaborador."""
+    try:
+        res = supabase.table("ferias_ponto").select("id, data_inicio, data_fim") \
+            .eq("email", email).order("data_inicio").execute()
+        return res.data or []
+    except Exception:
+        return []
+
+def buscar_ferias_todos():
+    """Retorna dict email -> lista de (data_inicio, data_fim)."""
+    resultado = defaultdict(list)
+    try:
+        inicio, passo = 0, 1000
+        while True:
+            pag = supabase.table("ferias_ponto").select("email, data_inicio, data_fim") \
+                .range(inicio, inicio + passo - 1).execute()
+            if not pag.data:
+                break
+            for r in pag.data:
+                resultado[str(r["email"]).strip().lower()].append((r["data_inicio"], r["data_fim"]))
+            if len(pag.data) < passo:
+                break
+            inicio += passo
+    except Exception:
+        pass
+    return resultado
+
+def painel_ferias(email, nome):
+    """Formulário de período de férias (visível apenas para Supervisor/Master)."""
+    with st.container(border=True):
+        st.markdown(f"##### 🏖️ Férias de {nome}")
+        periodo = st.date_input(
+            "Qual o período de férias?",
+            value=(obter_hoje_br(), obter_hoje_br()),
+            format="DD/MM/YYYY",
+            key=f"ferias_periodo_{email}"
+        )
+
+        if st.button("💾 Salvar férias", type="primary", key=f"ferias_salvar_{email}"):
+            if isinstance(periodo, (tuple, list)) and len(periodo) == 2:
+                ini, fim = periodo
+                try:
+                    supabase.table("ferias_ponto").insert({
+                        "email": email,
+                        "data_inicio": str(ini),
+                        "data_fim": str(fim)
+                    }).execute()
+                    executar_query_supabase("salvar_log_interno", data_dict={
+                        "quem_alterou": user_name,
+                        "usuario_afetado": nome,
+                        "email_afetado": email,
+                        "descricao": f'Registrou férias de {ini.strftime("%d/%m/%Y")} a {fim.strftime("%d/%m/%Y")}.'
+                    })
+                    st.success("Férias salvas com sucesso!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Erro ao salvar férias: {e}")
+            else:
+                st.warning("Selecione a data inicial e a data final do período.")
+
+        existentes = buscar_ferias(email)
+        if existentes:
+            st.caption("Períodos de férias cadastrados:")
+            for f in existentes:
+                c_txt, c_del = st.columns([4, 1])
+                ini_br = datetime.strptime(f["data_inicio"], "%Y-%m-%d").strftime("%d/%m/%Y")
+                fim_br = datetime.strptime(f["data_fim"], "%Y-%m-%d").strftime("%d/%m/%Y")
+                c_txt.write(f"📅 {ini_br} a {fim_br}")
+                if c_del.button("🗑️", key=f"ferias_del_{f['id']}"):
+                    supabase.table("ferias_ponto").delete().eq("id", f["id"]).execute()
+                    executar_query_supabase("salvar_log_interno", data_dict={
+                        "quem_alterou": user_name,
+                        "usuario_afetado": nome,
+                        "email_afetado": email,
+                        "descricao": f"Removeu férias de {ini_br} a {fim_br}."
+                    })
+                    st.rerun()
+
 def converter_para_excel_individual(df_dados):
     output = BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
@@ -1787,11 +1878,16 @@ elif opcao == "RELATÓRIO":
                 celula_busca = colaborador_escolhido.get("celula")
     
                 celula_atual = celula_busca or ""
-                nova_celula = st.text_input(
-                    "📍 Célula do Colaborador (Banco de Dados):",
-                    value=celula_atual,
-                    key=f"celula_input_{email_busca}"
-                )
+                col_cel, col_ferias = st.columns([3, 1])
+                with col_cel:
+                    nova_celula = st.text_input(
+                        "📍 Célula do Colaborador (Banco de Dados):",
+                        value=celula_atual,
+                        key=f"celula_input_{email_busca}"
+                    )
+                with col_ferias:
+                    st.markdown("<div style='height:30px'></div>", unsafe_allow_html=True)
+                    ferias_ativo = st.toggle("🏖️ De férias", key=f"ferias_toggle_{email_busca}")
     
                 houve_alteracao = nova_celula != celula_atual
     
@@ -1804,6 +1900,9 @@ elif opcao == "RELATÓRIO":
                         st.error(f"Erro ao atualizar célula: {e}")
                 elif houve_alteracao:
                     st.info("Alteração pendente — clique em **Confirmar alteração** para salvar.")
+
+                if ferias_ativo:
+                    painel_ferias(email_busca, nome_busca)
         except Exception:
             st.error("Erro ao carregar a lista completa de funcionários.")
     
@@ -1824,6 +1923,9 @@ elif opcao == "RELATÓRIO":
                     colaborador_escolhido = opcoes_usuarios[usuario_selecionado_str]
                     email_busca = colaborador_escolhido["email"]
                     nome_busca = colaborador_escolhido["nome"]
+
+                    if st.toggle("🏖️ De férias", key=f"ferias_toggle_{email_busca}"):
+                        painel_ferias(email_busca, nome_busca)
             except Exception:
                 st.error("Erro ao carregar a lista de funcionários da sua célula.")
                 
@@ -2099,8 +2201,11 @@ elif opcao == "RELATÓRIO":
         
         ordem_colunas_tela = ["Dia da Semana", "Data", "Entrada", "Saída Almoço", "Retorno Almoço", "Saída", "Hora Extra", "Justificativa Entrada", "Justificativa Saída Almoço", "Justificativa Retorno Almoço", "Justificativa Saída", "OBSERVAÇÃO"]
 
-        # FERIADO em todo dia de feriado; PLANTÃO mantido como antes
-        df_visualizacao = aplicar_observacoes_automaticas(df_visualizacao)
+        # FÉRIAS do colaborador selecionado (lidas do banco)
+        ferias_busca = [(f["data_inicio"], f["data_fim"]) for f in buscar_ferias(email_busca)]
+
+        # FÉRIAS têm prioridade; depois FERIADO em todo feriado; PLANTÃO mantido como antes
+        df_visualizacao = aplicar_observacoes_automaticas(df_visualizacao, ferias_busca)
         
         if cargo_usuario in ["Supervisor", "Master"]:
             st.warning("⚠️ **Atenção:** Confirme as alterações antes de salvar.")
@@ -2345,7 +2450,7 @@ elif opcao == "RELATÓRIO":
             st.dataframe(df_visualizacao, use_container_width=True, hide_index=True, column_order=ordem_colunas_tela)
         
         df_exportar_ind = processar_dados_ponto(dados_pessoais, data_inicio, data_fim, incluir_usuario_info=False, formatar_data_br=True)
-        df_exportar_ind = aplicar_observacoes_automaticas(df_exportar_ind)
+        df_exportar_ind = aplicar_observacoes_automaticas(df_exportar_ind, ferias_busca)
         dados_excel_ind = converter_para_excel_individual(df_exportar_ind)
         dados_pdf_ind = converter_para_pdf_individual(df_exportar_ind, nome_busca, email_busca, mapeamento_celulas)
         
@@ -2437,6 +2542,7 @@ elif opcao == "RELATÓRIO":
                             prefixo_nome = f"Relatorio_Consolidado_Celula_{opcao_consolidada.replace(' ', '_')}"
         
                     dfs_equipe = []
+                    ferias_por_email = buscar_ferias_todos()
                     
                     for u in usuarios_alvo:
                         u_email = str(u["email"]).strip().lower()
@@ -2462,7 +2568,7 @@ elif opcao == "RELATÓRIO":
                             continue
         
                         df_user_limpo = processar_dados_ponto(dados_pessoais_user, data_inicio, data_fim, incluir_usuario_info=False, formatar_data_br=True)
-                        df_user_limpo = aplicar_observacoes_automaticas(df_user_limpo)
+                        df_user_limpo = aplicar_observacoes_automaticas(df_user_limpo, ferias_por_email.get(u_email))
                         
                         if df_user_limpo is not None and not df_user_limpo.empty:
                             df_user_limpo["Funcionário"] = u_nome
