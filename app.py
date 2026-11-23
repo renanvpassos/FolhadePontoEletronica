@@ -1387,8 +1387,7 @@ def painel_afastamento(tipo, email, nome):
                     st.rerun()
 
 def converter_para_pdf_afastamentos(titulo, texto_sem_registro, usuarios, periodos_por_email, data_inicio, data_fim, escopo):
-    """PDF com os períodos de afastamento (férias / licença maternidade) que cruzam o intervalo
-    selecionado. Colaboradores sem nenhum registro no intervalo são destacados em vermelho."""
+    """Gera PDF apenas com colaboradores sem afastamento cadastrado no período."""
     output = BytesIO()
     doc = SimpleDocTemplate(
         output,
@@ -1403,9 +1402,8 @@ def converter_para_pdf_afastamentos(titulo, texto_sem_registro, usuarios, period
     info_style = ParagraphStyle('InfoAfast', parent=styles['Normal'], fontSize=9.5, leading=12)
     header_style = ParagraphStyle('HeaderAfast', parent=styles['Normal'], fontSize=9, leading=11,
                                   textColor=colors.white, fontName="Helvetica-Bold", alignment=1)
-    cell_style = ParagraphStyle('CellAfast', parent=styles['Normal'], fontSize=9, leading=11,
-                                fontName="Helvetica", alignment=1)
-    cell_red_style = ParagraphStyle('CellAfastRed', parent=cell_style, fontName="Helvetica-Bold",
+    cell_red_style = ParagraphStyle('CellAfastRed', parent=styles['Normal'], fontSize=9, leading=11,
+                                    fontName="Helvetica-Bold", alignment=1,
                                     textColor=colors.HexColor("#B91C1C"))
 
     if os.path.exists("logoMult.png"):
@@ -1414,11 +1412,9 @@ def converter_para_pdf_afastamentos(titulo, texto_sem_registro, usuarios, period
         story.append(logo)
         story.append(Spacer(1, 6))
 
-    linhas = []  # (nome, celula, ini, fim, dias) ou (nome, celula, None, None, None)
-    total_com, total_sem = 0, 0
+    linhas = []
 
-    for u in sorted(usuarios, key=lambda x: (str(x.get("celula") or "").strip().lower(),
-                                              str(x.get("nome") or "").strip().lower())):
+    for u in usuarios:
         email_u = str(u["email"]).strip().lower()
         nome_u = str(u.get("nome") or "Sem Nome").strip()
         celula_u = str(u.get("celula") or "").strip() or "Sem célula"
@@ -1434,57 +1430,44 @@ def converter_para_pdf_afastamentos(titulo, texto_sem_registro, usuarios, period
                 dias = (min(d_fim, data_fim) - max(d_ini, data_inicio)).days + 1
                 encontrados.append((d_ini, d_fim, dias))
 
-        if encontrados:
-            total_com += 1
-            for d_ini, d_fim, dias in encontrados:
-                linhas.append((nome_u, celula_u, d_ini, d_fim, dias))
-        else:
-            total_sem += 1
-            linhas.append((nome_u, celula_u, None, None, None))
+        if not encontrados:
+            linhas.append((nome_u, celula_u))
 
+    linhas.sort(key=lambda linha: linha[0].casefold())
     story.append(Paragraph(titulo, title_style))
     story.append(Paragraph(
         f"<b>Período consultado:</b> {data_inicio.strftime('%d/%m/%Y')} a {data_fim.strftime('%d/%m/%Y')}"
         f" &nbsp;|&nbsp; <b>Célula:</b> {escape(str(escopo))}", info_style))
     story.append(Paragraph(
-        f"<b>Colaboradores com registro:</b> {total_com} &nbsp;|&nbsp; "
-        f"<font color='#B91C1C'><b>Sem registro:</b> {total_sem}</font>", info_style))
+        f"<font color='#B91C1C'><b>Colaboradores sem cadastro:</b> {len(linhas)}</font>", info_style))
     story.append(Spacer(1, 8))
 
-    dados = [[Paragraph(h, header_style) for h in
-              ["Colaborador", "Célula", "Início", "Fim", "Dias dentro do período"]]]
+    dados = [[Paragraph(h, header_style) for h in ["Colaborador", "Célula", "Status"]]]
     estilos = [
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#1E3A8A")),
         ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor("#D1D5DB")),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor("#F9FAFB")]),
         ('TOPPADDING', (0, 0), (-1, -1), 4),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
     ]
 
-    for r_idx, (nome_u, celula_u, d_ini, d_fim, dias) in enumerate(linhas, start=1):
-        if d_ini is None:
+    if linhas:
+        for r_idx, (nome_u, celula_u) in enumerate(linhas, start=1):
             dados.append([
                 Paragraph(escape(nome_u), cell_red_style),
                 Paragraph(escape(celula_u), cell_red_style),
-                Paragraph(texto_sem_registro, cell_red_style), "", "", ""
+                Paragraph(escape(texto_sem_registro), cell_red_style),
             ])
-            estilos.append(('SPAN', (2, r_idx), (4, r_idx)))
             estilos.append(('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor("#FEE2E2")))
-        else:
-            dados.append([
-                Paragraph(escape(nome_u), cell_style),
-                Paragraph(escape(celula_u), cell_style),
-                Paragraph(d_ini.strftime("%d/%m/%Y"), cell_style),
-                Paragraph(d_fim.strftime("%d/%m/%Y"), cell_style),
-                Paragraph(str(dias), cell_style),
-            ])
+    else:
+        dados.append([Paragraph("Nenhum colaborador sem cadastro no período consultado.", cell_red_style), "", ""])
+        estilos.extend([
+            ('SPAN', (0, 1), (-1, 1)),
+            ('BACKGROUND', (0, 1), (-1, 1), colors.white),
+        ])
 
-    # remove colunas vazias criadas pelo SPAN (a linha precisa ter 5 células)
-    dados = [linha[:5] for linha in dados]
-
-    tabela = Table(dados, repeatRows=1, colWidths=[250, 170, 110, 110, 130])
+    tabela = Table(dados, repeatRows=1, colWidths=[300, 200, 200])
     tabela.setStyle(TableStyle(estilos))
     story.append(tabela)
     doc.build(story)
@@ -1668,7 +1651,8 @@ def converter_para_pdf_afastamentos_em_vigor(usuarios, ferias_por_email, materni
                 Paragraph(str(dias_restantes), cell_style),
                 Paragraph(escape(tipo), cell_style),
             ])
-            estilos.append(('BACKGROUND', (0, indice), (-1, indice), colors.HexColor("#DCFCE7")))
+            cor_linha = "#FEF9C3" if tipo == "LICENÇA MATERNIDADE" else "#DCFCE7"
+            estilos.append(('BACKGROUND', (0, indice), (-1, indice), colors.HexColor(cor_linha)))
     else:
         dados.append([Paragraph("Nenhum afastamento em vigor na data consultada.", cell_style), "", "", "", "", "", ""])
         estilos.extend([
@@ -3105,15 +3089,15 @@ elif opcao == "RELATÓRIO":
 
                     col_gerar_rel, col_gerar_cadastrados = st.columns(2)
                     with col_gerar_rel:
-                        gerar_relatorio_completo = st.button(
-                            "📄 Gerar PDF", type="primary", use_container_width=True, key=f"rel_{tipo_rel}_gerar"
+                        gerar_relatorio_sem_cadastro = st.button(
+                            "📄 Sem cadastro", type="primary", use_container_width=True, key=f"rel_{tipo_rel}_gerar"
                         )
                     with col_gerar_cadastrados:
                         gerar_relatorio_cadastrados = st.button(
                             "📄 Somente cadastrados", use_container_width=True, key=f"rel_{tipo_rel}_gerar_cadastrados"
                         )
 
-                    if gerar_relatorio_completo or gerar_relatorio_cadastrados:
+                    if gerar_relatorio_sem_cadastro or gerar_relatorio_cadastrados:
                         if not (isinstance(periodo_rel, (tuple, list)) and len(periodo_rel) == 2):
                             st.warning("Selecione a data inicial e a data final do período.")
                         else:
@@ -3144,13 +3128,13 @@ elif opcao == "RELATÓRIO":
                                         )
                                     else:
                                         pdf_bytes = converter_para_pdf_afastamentos(
-                                            cfg_rel["relatorio_titulo"], cfg_rel["sem_registro"],
+                                            f"Sem cadastro - {cfg_rel['relatorio_titulo']}", cfg_rel["sem_registro"],
                                             usuarios_rel, periodos_rel, rel_ini, rel_fim,
                                             "Todos os Colaboradores" if sufixo_escopo == "Todos" else escopo_rel
                                         )
                                         st.session_state[f"rel_{tipo_rel}_pdf"] = (
                                             pdf_bytes,
-                                            f"{cfg_rel['arquivo']}_{sufixo_escopo}_{rel_ini}_a_{rel_fim}.pdf"
+                                            f"Sem_Cadastro_{cfg_rel['arquivo']}_{sufixo_escopo}_{rel_ini}_a_{rel_fim}.pdf"
                                         )
 
                     pdf_pronto = st.session_state.get(f"rel_{tipo_rel}_pdf")
