@@ -3087,12 +3087,18 @@ elif opcao == "RELATÓRIO":
                     else:
                         escopo_rel = celula_usuario
 
-                    col_gerar_rel, col_gerar_cadastrados = st.columns(2)
-                    with col_gerar_rel:
-                        gerar_relatorio_sem_cadastro = st.button(
-                            "📄 Sem cadastro", type="primary", use_container_width=True, key=f"rel_{tipo_rel}_gerar"
-                        )
-                    with col_gerar_cadastrados:
+                    gerar_relatorio_sem_cadastro = False
+                    if tipo_rel == "ferias":
+                        col_gerar_rel, col_gerar_cadastrados = st.columns(2)
+                        with col_gerar_rel:
+                            gerar_relatorio_sem_cadastro = st.button(
+                                "📄 Sem cadastro", type="primary", use_container_width=True, key=f"rel_{tipo_rel}_gerar"
+                            )
+                        with col_gerar_cadastrados:
+                            gerar_relatorio_cadastrados = st.button(
+                                "📄 Somente cadastrados", use_container_width=True, key=f"rel_{tipo_rel}_gerar_cadastrados"
+                            )
+                    else:
                         gerar_relatorio_cadastrados = st.button(
                             "📄 Somente cadastrados", use_container_width=True, key=f"rel_{tipo_rel}_gerar_cadastrados"
                         )
