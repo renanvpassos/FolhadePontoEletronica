@@ -1589,6 +1589,100 @@ def converter_para_pdf_afastamentos_cadastrados(titulo, usuarios, periodos_por_e
     output.seek(0)
     return output.getvalue()
 
+def converter_para_pdf_afastamentos_em_vigor(usuarios, ferias_por_email, maternidade_por_email, escopo):
+    """Gera PDF com os afastamentos que incluem a data de hoje."""
+    output = BytesIO()
+    doc = SimpleDocTemplate(
+        output,
+        pagesize=landscape(A4),
+        rightMargin=15, leftMargin=15, topMargin=15, bottomMargin=15
+    )
+    story = []
+    styles = getSampleStyleSheet()
+
+    title_style = ParagraphStyle('TituloAfastVigor', parent=styles['Heading1'], fontSize=14,
+                                 textColor=colors.HexColor("#1E3A8A"), spaceAfter=4)
+    info_style = ParagraphStyle('InfoAfastVigor', parent=styles['Normal'], fontSize=9.5, leading=12)
+    header_style = ParagraphStyle('HeaderAfastVigor', parent=styles['Normal'], fontSize=9, leading=11,
+                                  textColor=colors.white, fontName="Helvetica-Bold", alignment=1)
+    cell_style = ParagraphStyle('CellAfastVigor', parent=styles['Normal'], fontSize=9, leading=11,
+                                fontName="Helvetica", alignment=1)
+
+    if os.path.exists("logoMult.png"):
+        logo = Image("logoMult.png", width=75, height=25)
+        logo.hAlign = 'RIGHT'
+        story.append(logo)
+        story.append(Spacer(1, 6))
+
+    hoje = obter_hoje_br()
+    linhas = []
+    tipos_por_email = (
+        ("FÉRIAS", ferias_por_email),
+        ("LICENÇA MATERNIDADE", maternidade_por_email),
+    )
+    for usuario in usuarios:
+        email = str(usuario.get("email") or "").strip().lower()
+        nome = str(usuario.get("nome") or "Sem Nome").strip()
+        celula = str(usuario.get("celula") or "").strip() or "Sem célula"
+        for tipo, periodos in tipos_por_email:
+            for inicio, fim in periodos.get(email, []):
+                try:
+                    data_ini = datetime.strptime(str(inicio)[:10], "%Y-%m-%d").date()
+                    data_fim = datetime.strptime(str(fim)[:10], "%Y-%m-%d").date()
+                except (TypeError, ValueError):
+                    continue
+                if data_ini <= hoje <= data_fim:
+                    total_dias = (data_fim - data_ini).days + 1
+                    dias_restantes = (data_fim - hoje).days + 1
+                    linhas.append((celula, nome, data_ini, data_fim, total_dias, dias_restantes, tipo))
+
+    linhas.sort(key=lambda linha: (linha[1].casefold(), linha[2], linha[6]))
+    story.append(Paragraph("Afastamentos em Vigor", title_style))
+    story.append(Paragraph(
+        f"<b>Data consultada:</b> {hoje.strftime('%d/%m/%Y')}"
+        f" &nbsp;|&nbsp; <b>Célula:</b> {escape(str(escopo))}", info_style))
+    story.append(Spacer(1, 8))
+
+    cabecalho = [
+        "Colaborador", "Célula", "Início", "Fim", "Total dias agendados",
+        "Dias restantes", "Tipo do afastamento"
+    ]
+    dados = [[Paragraph(escape(coluna), header_style) for coluna in cabecalho]]
+    estilos = [
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#1E3A8A")),
+        ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor("#D1D5DB")),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+    ]
+
+    if linhas:
+        for indice, (celula, nome, data_ini, data_fim, total_dias, dias_restantes, tipo) in enumerate(linhas, start=1):
+            dados.append([
+                Paragraph(escape(nome), cell_style),
+                Paragraph(escape(celula), cell_style),
+                Paragraph(data_ini.strftime("%d/%m/%Y"), cell_style),
+                Paragraph(data_fim.strftime("%d/%m/%Y"), cell_style),
+                Paragraph(str(total_dias), cell_style),
+                Paragraph(str(dias_restantes), cell_style),
+                Paragraph(escape(tipo), cell_style),
+            ])
+            estilos.append(('BACKGROUND', (0, indice), (-1, indice), colors.HexColor("#DCFCE7")))
+    else:
+        dados.append([Paragraph("Nenhum afastamento em vigor na data consultada.", cell_style), "", "", "", "", "", ""])
+        estilos.extend([
+            ('SPAN', (0, 1), (-1, 1)),
+            ('BACKGROUND', (0, 1), (-1, 1), colors.white),
+        ])
+
+    tabela = Table(dados, repeatRows=1, colWidths=[155, 95, 78, 78, 135, 105, 145])
+    tabela.setStyle(TableStyle(estilos))
+    story.append(tabela)
+    doc.build(story)
+    output.seek(0)
+    return output.getvalue()
+
 def converter_para_excel_individual(df_dados):
     output = BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
@@ -2926,9 +3020,69 @@ elif opcao == "RELATÓRIO":
             with col_rel_m:
                 if st.button("🤱 Baixar Relatório de Licença Maternidade", use_container_width=True, key="btn_rel_maternidade"):
                     st.session_state["rel_afast_aberto"] = None if st.session_state.get("rel_afast_aberto") == "maternidade" else "maternidade"
+            if st.button("📥 Baixar Afastamentos em Vigor", use_container_width=True, key="btn_rel_afast_em_vigor"):
+                st.session_state["rel_afast_aberto"] = None if st.session_state.get("rel_afast_aberto") == "em_vigor" else "em_vigor"
 
             tipo_rel = st.session_state.get("rel_afast_aberto")
-            if tipo_rel:
+            if tipo_rel == "em_vigor":
+                with st.container(border=True):
+                    st.markdown("##### Afastamentos em Vigor")
+                    if cargo_usuario == "Master":
+                        escopo_vigor = st.selectbox(
+                            "📍 Célula:",
+                            options=["Todos os Colaboradores"] + celulas_disponiveis,
+                            key="rel_em_vigor_celula"
+                        )
+                    else:
+                        escopo_vigor = celula_usuario
+
+                    gerar_afastamentos_vigor = st.button(
+                        "📄 Gerar PDF de Afastamentos em Vigor",
+                        type="primary",
+                        use_container_width=True,
+                        key="rel_em_vigor_gerar"
+                    )
+                    if gerar_afastamentos_vigor:
+                        st.session_state["rel_em_vigor_pdf"] = None
+                        if cargo_usuario == "Master" and escopo_vigor == "Todos os Colaboradores":
+                            usuarios_vigor = todos_usuarios_banco
+                            sufixo_vigor = "Todos"
+                        else:
+                            alvo_vigor = str(escopo_vigor).strip().lower()
+                            usuarios_vigor = [
+                                u for u in todos_usuarios_banco
+                                if str(u.get("celula", "")).strip().lower() == alvo_vigor
+                            ]
+                            sufixo_vigor = str(escopo_vigor).replace(" ", "_")
+
+                        if not usuarios_vigor:
+                            st.warning("Nenhum colaborador encontrado para o filtro selecionado.")
+                        else:
+                            with st.spinner("Gerando relatório de afastamentos em vigor..."):
+                                pdf_vigor = converter_para_pdf_afastamentos_em_vigor(
+                                    usuarios_vigor,
+                                    buscar_afastamentos_todos("ferias"),
+                                    buscar_afastamentos_todos("maternidade"),
+                                    "Todos os Colaboradores" if sufixo_vigor == "Todos" else escopo_vigor
+                                )
+                                st.session_state["rel_em_vigor_pdf"] = (
+                                    pdf_vigor,
+                                    f"Afastamentos_Em_Vigor_{sufixo_vigor}_{obter_hoje_br()}.pdf",
+                                    escopo_vigor,
+                                    obter_hoje_br()
+                                )
+
+                    pdf_vigor_pronto = st.session_state.get("rel_em_vigor_pdf")
+                    if pdf_vigor_pronto and pdf_vigor_pronto[2] == escopo_vigor and pdf_vigor_pronto[3] == obter_hoje_br():
+                        st.download_button(
+                            label="📥 Baixar Afastamentos em Vigor",
+                            data=pdf_vigor_pronto[0],
+                            file_name=pdf_vigor_pronto[1],
+                            mime="application/pdf",
+                            use_container_width=True,
+                            key="rel_em_vigor_download"
+                        )
+            elif tipo_rel:
                 cfg_rel = TIPOS_AFASTAMENTO[tipo_rel]
                 with st.container(border=True):
                     st.markdown(f"##### {cfg_rel['relatorio_titulo']}")
