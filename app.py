@@ -1487,7 +1487,102 @@ def converter_para_pdf_afastamentos(titulo, texto_sem_registro, usuarios, period
     tabela = Table(dados, repeatRows=1, colWidths=[250, 170, 110, 110, 130])
     tabela.setStyle(TableStyle(estilos))
     story.append(tabela)
+    doc.build(story)
+    return output.getvalue()
 
+def converter_para_pdf_afastamentos_cadastrados(titulo, usuarios, periodos_por_email, data_inicio, data_fim, escopo):
+    """Gera PDF apenas com afastamentos cadastrados que cruzam o período selecionado."""
+    output = BytesIO()
+    doc = SimpleDocTemplate(
+        output,
+        pagesize=landscape(A4),
+        rightMargin=15, leftMargin=15, topMargin=15, bottomMargin=15
+    )
+    story = []
+    styles = getSampleStyleSheet()
+
+    title_style = ParagraphStyle('TituloAfastCadastrado', parent=styles['Heading1'], fontSize=14,
+                                 textColor=colors.HexColor("#1E3A8A"), spaceAfter=4)
+    info_style = ParagraphStyle('InfoAfastCadastrado', parent=styles['Normal'], fontSize=9.5, leading=12)
+    header_style = ParagraphStyle('HeaderAfastCadastrado', parent=styles['Normal'], fontSize=9, leading=11,
+                                  textColor=colors.white, fontName="Helvetica-Bold", alignment=1)
+    cell_style = ParagraphStyle('CellAfastCadastrado', parent=styles['Normal'], fontSize=9, leading=11,
+                                fontName="Helvetica", alignment=1)
+
+    if os.path.exists("logoMult.png"):
+        logo = Image("logoMult.png", width=75, height=25)
+        logo.hAlign = 'RIGHT'
+        story.append(logo)
+        story.append(Spacer(1, 6))
+
+    hoje = obter_hoje_br()
+    linhas = []
+    for usuario in usuarios:
+        email = str(usuario.get("email") or "").strip().lower()
+        nome = str(usuario.get("nome") or "Sem Nome").strip()
+        celula = str(usuario.get("celula") or "").strip() or "Sem célula"
+        for inicio, fim in periodos_por_email.get(email, []):
+            try:
+                data_ini = datetime.strptime(str(inicio)[:10], "%Y-%m-%d").date()
+                data_fim_afastamento = datetime.strptime(str(fim)[:10], "%Y-%m-%d").date()
+            except (TypeError, ValueError):
+                continue
+            if data_ini > data_fim_afastamento or data_ini > data_fim or data_fim_afastamento < data_inicio:
+                continue
+
+            total_dias = (data_fim_afastamento - data_ini).days + 1
+            dias_restantes = max((data_fim_afastamento - max(data_ini, hoje)).days + 1, 0)
+            if data_ini <= hoje <= data_fim_afastamento:
+                cor_linha = colors.HexColor("#DCFCE7")
+            elif data_ini > hoje:
+                cor_linha = colors.HexColor("#FEF9C3")
+            else:
+                cor_linha = colors.white
+            linhas.append((celula, nome, data_ini, data_fim_afastamento, total_dias, dias_restantes, cor_linha))
+
+    linhas.sort(key=lambda linha: (linha[0].lower(), linha[1].lower(), linha[2]))
+    story.append(Paragraph(titulo, title_style))
+    story.append(Paragraph(
+        f"<b>Período consultado:</b> {data_inicio.strftime('%d/%m/%Y')} a {data_fim.strftime('%d/%m/%Y')}"
+        f" &nbsp;|&nbsp; <b>Célula:</b> {escape(str(escopo))}", info_style))
+    story.append(Paragraph(
+        "<font backColor='#DCFCE7'>Em andamento</font> &nbsp; "
+        "<font backColor='#FEF9C3'>Futuro</font> &nbsp; "
+        "<font backColor='#FFFFFF'>Finalizado</font>", info_style))
+    story.append(Spacer(1, 8))
+
+    cabecalho = ["Colaborador", "Célula", "Início", "Fim", "Total dias agendados", "Dias restantes"]
+    dados = [[Paragraph(escape(coluna), header_style) for coluna in cabecalho]]
+    estilos = [
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#1E3A8A")),
+        ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor("#D1D5DB")),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+    ]
+
+    if linhas:
+        for indice, (celula, nome, data_ini, data_fim_afastamento, total_dias, dias_restantes, cor_linha) in enumerate(linhas, start=1):
+            dados.append([
+                Paragraph(escape(nome), cell_style),
+                Paragraph(escape(celula), cell_style),
+                Paragraph(data_ini.strftime("%d/%m/%Y"), cell_style),
+                Paragraph(data_fim_afastamento.strftime("%d/%m/%Y"), cell_style),
+                Paragraph(str(total_dias), cell_style),
+                Paragraph(str(dias_restantes), cell_style),
+            ])
+            estilos.append(('BACKGROUND', (0, indice), (-1, indice), cor_linha))
+    else:
+        dados.append([Paragraph("Nenhum afastamento cadastrado no período selecionado.", cell_style), "", "", "", "", ""])
+        estilos.extend([
+            ('SPAN', (0, 1), (-1, 1)),
+            ('BACKGROUND', (0, 1), (-1, 1), colors.white),
+        ])
+
+    tabela = Table(dados, repeatRows=1, colWidths=[190, 120, 90, 90, 155, 155])
+    tabela.setStyle(TableStyle(estilos))
+    story.append(tabela)
     doc.build(story)
     output.seek(0)
     return output.getvalue()
@@ -2840,7 +2935,17 @@ elif opcao == "RELATÓRIO":
                     else:
                         escopo_rel = celula_usuario
 
-                    if st.button("📄 Gerar PDF", type="primary", use_container_width=True, key=f"rel_{tipo_rel}_gerar"):
+                    col_gerar_rel, col_gerar_cadastrados = st.columns(2)
+                    with col_gerar_rel:
+                        gerar_relatorio_completo = st.button(
+                            "📄 Gerar PDF", type="primary", use_container_width=True, key=f"rel_{tipo_rel}_gerar"
+                        )
+                    with col_gerar_cadastrados:
+                        gerar_relatorio_cadastrados = st.button(
+                            "📄 Somente cadastrados", use_container_width=True, key=f"rel_{tipo_rel}_gerar_cadastrados"
+                        )
+
+                    if gerar_relatorio_completo or gerar_relatorio_cadastrados:
                         if not (isinstance(periodo_rel, (tuple, list)) and len(periodo_rel) == 2):
                             st.warning("Selecione a data inicial e a data final do período.")
                         else:
@@ -2859,15 +2964,26 @@ elif opcao == "RELATÓRIO":
                             else:
                                 with st.spinner("Gerando relatório em PDF..."):
                                     periodos_rel = buscar_afastamentos_todos(tipo_rel)
-                                    pdf_bytes = converter_para_pdf_afastamentos(
-                                        cfg_rel["relatorio_titulo"], cfg_rel["sem_registro"],
-                                        usuarios_rel, periodos_rel, rel_ini, rel_fim,
-                                        "Todos os Colaboradores" if sufixo_escopo == "Todos" else escopo_rel
-                                    )
-                                st.session_state[f"rel_{tipo_rel}_pdf"] = (
-                                    pdf_bytes,
-                                    f"{cfg_rel['arquivo']}_{sufixo_escopo}_{rel_ini}_a_{rel_fim}.pdf"
-                                )
+                                    if gerar_relatorio_cadastrados:
+                                        pdf_bytes = converter_para_pdf_afastamentos_cadastrados(
+                                            f"Afastamentos cadastrados - {cfg_rel['relatorio_titulo']}",
+                                            usuarios_rel, periodos_rel, rel_ini, rel_fim,
+                                            "Todos os Colaboradores" if sufixo_escopo == "Todos" else escopo_rel
+                                        )
+                                        st.session_state[f"rel_{tipo_rel}_pdf_cadastrados"] = (
+                                            pdf_bytes,
+                                            f"Afastamentos_Cadastrados_{sufixo_escopo}_{rel_ini}_a_{rel_fim}.pdf"
+                                        )
+                                    else:
+                                        pdf_bytes = converter_para_pdf_afastamentos(
+                                            cfg_rel["relatorio_titulo"], cfg_rel["sem_registro"],
+                                            usuarios_rel, periodos_rel, rel_ini, rel_fim,
+                                            "Todos os Colaboradores" if sufixo_escopo == "Todos" else escopo_rel
+                                        )
+                                        st.session_state[f"rel_{tipo_rel}_pdf"] = (
+                                            pdf_bytes,
+                                            f"{cfg_rel['arquivo']}_{sufixo_escopo}_{rel_ini}_a_{rel_fim}.pdf"
+                                        )
 
                     pdf_pronto = st.session_state.get(f"rel_{tipo_rel}_pdf")
                     if pdf_pronto:
@@ -2879,4 +2995,16 @@ elif opcao == "RELATÓRIO":
                             mime="application/pdf",
                             use_container_width=True,
                             key=f"rel_{tipo_rel}_download"
+                        )
+
+                    pdf_cadastrados_pronto = st.session_state.get(f"rel_{tipo_rel}_pdf_cadastrados")
+                    if pdf_cadastrados_pronto:
+                        st.success("✅ Relatório de afastamentos cadastrados gerado!")
+                        st.download_button(
+                            label="📥 Baixar PDF de afastamentos cadastrados",
+                            data=pdf_cadastrados_pronto[0],
+                            file_name=pdf_cadastrados_pronto[1],
+                            mime="application/pdf",
+                            use_container_width=True,
+                            key=f"rel_{tipo_rel}_download_cadastrados"
                         )
