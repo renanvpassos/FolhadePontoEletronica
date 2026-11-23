@@ -1253,7 +1253,7 @@ TIPOS_AFASTAMENTO = {
         "msg_ok": "Férias salvas com sucesso!",
         "msg_encerrado": "Férias salvas. O período já terminou, então o botão foi desligado.",
         "relatorio_titulo": "Relatório de Férias",
-        "sem_registro": "SEM FÉRIAS REGISTRADA",
+        "sem_registro": "NÃO INFORMADO",
         "arquivo": "Relatorio_Ferias",
         "log_add": "Registrou férias",
         "log_del": "Removeu férias",
@@ -1268,7 +1268,7 @@ TIPOS_AFASTAMENTO = {
         "msg_ok": "Licença maternidade salva com sucesso!",
         "msg_encerrado": "Licença salva. O período já terminou, então o botão foi desligado.",
         "relatorio_titulo": "Relatório de Licença Maternidade",
-        "sem_registro": "SEM LICENÇA REGISTRADA",
+        "sem_registro": "NÃO INFORMADO",
         "arquivo": "Relatorio_Licenca_Maternidade",
         "log_add": "Registrou licença maternidade",
         "log_del": "Removeu licença maternidade",
@@ -3141,7 +3141,7 @@ elif opcao == "RELATÓRIO":
                     if pdf_pronto:
                         st.success("✅ Relatório gerado! Clique abaixo para baixar:")
                         st.download_button(
-                            label="📥 Baixar PDF",
+                            label="📥 Baixar afastamentos não informados no período selecionado",
                             data=pdf_pronto[0],
                             file_name=pdf_pronto[1],
                             mime="application/pdf",
@@ -3153,7 +3153,7 @@ elif opcao == "RELATÓRIO":
                     if pdf_cadastrados_pronto:
                         st.success("✅ Relatório de afastamentos cadastrados gerado!")
                         st.download_button(
-                            label="📥 Baixar PDF de afastamentos cadastrados",
+                            label="📥 Baixar afastamentos informados no período selecionado",
                             data=pdf_cadastrados_pronto[0],
                             file_name=pdf_cadastrados_pronto[1],
                             mime="application/pdf",
