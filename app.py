@@ -1701,7 +1701,19 @@ opcoes_menu = ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA", "LOG", 
 if cargo_usuario == "Master":
     opcoes_menu.insert(opcoes_menu.index("LOG") + 1, "LOG INTERNO")
 
-opcao = st.sidebar.radio("Selecione a ação:", opcoes_menu, label_visibility="collapsed")
+def limpar_estado_ao_trocar_pagina():
+    estado_persistente = {"connected", "user_info", "intro_exibida", "pagina_menu"}
+    for chave in list(st.session_state.keys()):
+        if chave not in estado_persistente:
+            del st.session_state[chave]
+
+opcao = st.sidebar.radio(
+    "Selecione a ação:",
+    opcoes_menu,
+    label_visibility="collapsed",
+    key="pagina_menu",
+    on_change=limpar_estado_ao_trocar_pagina
+)
 
 st.sidebar.markdown("---")
 if st.sidebar.button("🚪 Sair / Desconectar", use_container_width=True, type="secondary"):
