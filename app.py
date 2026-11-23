@@ -1531,16 +1531,18 @@ def converter_para_pdf_afastamentos_cadastrados(titulo, usuarios, periodos_por_e
                 continue
 
             total_dias = (data_fim_afastamento - data_ini).days + 1
-            dias_restantes = max((data_fim_afastamento - max(data_ini, hoje)).days + 1, 0)
             if data_ini <= hoje <= data_fim_afastamento:
                 cor_linha = colors.HexColor("#DCFCE7")
+                dias_restantes = (data_fim_afastamento - hoje).days + 1
             elif data_ini > hoje:
                 cor_linha = colors.HexColor("#FEF9C3")
+                dias_restantes = ""
             else:
                 cor_linha = colors.white
+                dias_restantes = 0
             linhas.append((celula, nome, data_ini, data_fim_afastamento, total_dias, dias_restantes, cor_linha))
 
-    linhas.sort(key=lambda linha: (linha[0].lower(), linha[1].lower(), linha[2]))
+    linhas.sort(key=lambda linha: (linha[1].casefold(), linha[2]))
     story.append(Paragraph(titulo, title_style))
     story.append(Paragraph(
         f"<b>Período consultado:</b> {data_inicio.strftime('%d/%m/%Y')} a {data_fim.strftime('%d/%m/%Y')}"
