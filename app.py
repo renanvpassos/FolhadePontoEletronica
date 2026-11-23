@@ -1775,7 +1775,7 @@ st.sidebar.markdown("---")
 
 st.sidebar.markdown("### 📋 Navegação")
 
-opcoes_menu = ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA", "LOG", "RELATÓRIO"]
+opcoes_menu = ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA", "LOG", "ESPELHO DE PONTO"]
 if cargo_usuario == "Master":
     opcoes_menu.insert(opcoes_menu.index("LOG") + 1, "LOG INTERNO")
 
@@ -2208,8 +2208,8 @@ elif opcao == "LOG INTERNO":
                 st.markdown(html_log_interno, unsafe_allow_html=True)
 
 # --- MENU: RELATÓRIO ---
-elif opcao == "RELATÓRIO":
-    st.title("📊 Espelho de Ponto Pessoal")
+elif opcao == "ESPELHO DE PONTO":
+    st.title("📊 Espelho de Ponto")
     email_busca = user_email
     nome_busca = user_name
     
