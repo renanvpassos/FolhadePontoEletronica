@@ -2829,7 +2829,7 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
 # --- MENU: LOG ---
 # =====================================================================
 elif opcao == "LOG":
-    st.title("📢 Mural de Atividades")
+    st.title("Mural de Atividades")
     st.caption("Linha do tempo das batidas eletrônicas registradas pela equipe hoje (Ordem Cronológica).")
     st.write("---")
     
