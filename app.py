@@ -16,6 +16,32 @@ import streamlit.components.v1 as components
 import base64
 import time
 from xml.sax.saxutils import escape
+import smtplib, ssl, secrets, hmac
+from email.message import EmailMessage
+from streamlit_option_menu import option_menu
+
+components.html("""
+<script>
+(function () {
+    const doc = window.parent.document;
+
+    function bloquearResize() {
+        const sb = doc.querySelector('section[data-testid="stSidebar"]');
+        if (!sb) return;
+        sb.querySelectorAll('*').forEach(function (el) {
+            const cursor = window.parent.getComputedStyle(el).cursor;
+            if (cursor === 'col-resize' || cursor === 'ew-resize') {
+                el.style.setProperty('display', 'none', 'important');
+                el.style.setProperty('pointer-events', 'none', 'important');
+            }
+        });
+    }
+
+    bloquearResize();
+    setInterval(bloquearResize, 500);
+})();
+</script>
+""", height=0)
 
 # --- BLOQUEIO DE DISPOSITIVOS MÓVEIS ---
 components.html("""
@@ -1175,6 +1201,39 @@ def converter_para_pdf_consolidado_tabela(df, mapeamento_celulas, data_inicio, d
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Sistema de Ponto Eletrônico", page_icon="⏱️", layout="centered")
 
+st.markdown("""
+    <style>
+        #MainMenu,
+        [data-testid="stMainMenu"],
+        [data-testid="stToolbarActions"],
+        [data-testid="stDecoration"],
+        [data-testid="stStatusWidget"],
+        .stDeployButton,
+        [data-testid="stAppDeployButton"],
+        a[href*="github.com"],
+        footer,
+        ._profileContainer_gzau3_53,
+        ._container_gzau3_1,
+        .viewerBadge_container__r5tak {
+            visibility: hidden !important;
+            display: none !important;
+        }
+
+        /* Garante que o botão de expandir a sidebar fique sempre visível */
+        [data-testid="stToolbar"],
+        [data-testid="stExpandSidebarButton"],
+        [data-testid="stSidebarCollapsedControl"],
+        [data-testid="collapsedControl"] {
+            visibility: visible !important;
+            display: flex !important;
+        }
+
+        html, body, .stApp {
+            color-scheme: light !important;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
 # --- ESTILIZAÇÃO CSS CUSTOMIZADA ---
 st.markdown("""
     <style>
@@ -1188,6 +1247,78 @@ st.markdown("""
         }
         .stButton>button {
             border-radius: 8px;
+        }
+        .st-key-ponto_card_entrada,
+        .st-key-ponto_card_saida_almoco,
+        .st-key-ponto_card_retorno_almoco,
+        .st-key-ponto_card_saida {
+            background: #f1f3f5;
+            border: 1px solid #d1d5db;
+            border-radius: 20px;
+            padding: 12px;
+            transition: box-shadow 160ms ease;
+        }
+        .st-key-ponto_card_entrada button,
+        .st-key-ponto_card_saida_almoco button,
+        .st-key-ponto_card_retorno_almoco button,
+        .st-key-ponto_card_saida button {
+            min-height: 260px;
+            padding: 24px 12px;
+            white-space: pre-wrap;
+            line-height: 1.4;
+            font-size: 2rem;
+            font-weight: 900 !important;
+            border: 0;
+            background: transparent;
+            transition: transform 160ms ease, box-shadow 160ms ease;
+        }
+        .st-key-ponto_card_entrada button p,
+        .st-key-ponto_card_saida_almoco button p,
+        .st-key-ponto_card_retorno_almoco button p,
+        .st-key-ponto_card_saida button p {
+            font-size: inherit;
+            font-weight: 900 !important;
+            line-height: inherit;
+            margin: 0;
+        }
+        .st-key-ponto_card_entrada button:hover,
+        .st-key-ponto_card_saida_almoco button:hover,
+        .st-key-ponto_card_retorno_almoco button:hover,
+        .st-key-ponto_card_saida button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(15, 23, 42, 0.12);
+        }
+        .st-key-ponto_card_entrada button,
+        .st-key-ponto_card_saida_almoco button,
+        .st-key-ponto_card_retorno_almoco button,
+        .st-key-ponto_card_saida button {
+            color: #4b5563;
+        }
+        [class*="st-key-ponto_detalhes_"] {
+            font-size: 0.84rem;
+        }
+        [class*="st-key-ponto_detalhes_"] [data-testid="stMarkdownContainer"] {
+            font-size: 0.84rem;
+        }
+        [class*="st-key-ponto_detalhes_"] h1,
+        [class*="st-key-ponto_detalhes_"] h2,
+        [class*="st-key-ponto_detalhes_"] h3,
+        [class*="st-key-ponto_detalhes_"] h4,
+        [class*="st-key-ponto_detalhes_"] h5,
+        [class*="st-key-ponto_detalhes_"] h6 {
+            font-size: 0.95rem !important;
+        }
+        [class*="st-key-ponto_detalhes_"] [data-testid="stWidgetLabel"],
+        [class*="st-key-ponto_detalhes_"] input,
+        [class*="st-key-ponto_detalhes_"] textarea,
+        [class*="st-key-ponto_detalhes_"] button {
+            font-size: 0.84rem;
+        }
+        [class*="st-key-ponto_detalhes_"] button {
+            height: 2.1rem !important;
+            min-height: 2.1rem !important;
+            padding-top: 0;
+            padding-bottom: 0;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -1683,33 +1814,495 @@ def converter_para_excel_multiaba(df_geral):
             dados_aba.to_excel(writer, index=False, sheet_name=nome_aba)
     return output.getvalue()
 
+# =====================================================================
+# LOGIN MODERNO
+# =====================================================================
+
+def aplicar_estilo_login():
+    """CSS aplicado SOMENTE na tela de login (não afeta o resto do sistema,
+    porque esta função só é chamada enquanto o usuário não está conectado)."""
+    st.markdown("""
+    <style>
+        /* ---------- Fundo da página ---------- */
+        .stApp {
+            background:
+                radial-gradient(900px 500px at 12% -10%, rgba(37, 99, 235, 0.18), transparent 60%),
+                radial-gradient(800px 480px at 100% 110%, rgba(30, 58, 138, 0.20), transparent 60%),
+                linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        }
+
+        /* Esconde elementos padrão do Streamlit na tela de login */
+        header[data-testid="stHeader"] { background: transparent; }
+        #MainMenu, footer { visibility: hidden; }
+
+        /* ---------- Cartão central ---------- */
+        div.block-container {
+            max-width: 460px;
+            margin: 5vh auto 0 auto;
+            padding: 2.2rem 2.2rem 2rem 2.2rem;
+            background: #ffffff;
+            border-radius: 20px;
+            border: 1px solid rgba(30, 58, 138, 0.08);
+            box-shadow: 0 20px 50px rgba(30, 58, 138, 0.15);
+        }
+
+        /* ---------- Logo + títulos ---------- */
+        .login-header {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            margin-bottom: 1.2rem;
+        }
+        .login-header img {
+            width: 200px;
+            max-width: 70%;
+            height: auto;
+            margin-bottom: 14px;
+        }
+        .login-header h1 {
+            color: #1E3A8A;
+            font-size: 1.05rem;
+            font-weight: 700;
+            margin: 0 0 3px 0;
+            padding: 0;
+            letter-spacing: -0.01em;
+        }
+        .login-header p {
+            color: #6B7280;
+            font-size: 0.78rem;
+            margin: 0;
+        }
+
+        /* ---------- Abas ---------- */
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 6px;
+            background: #F1F5F9;
+            padding: 5px;
+            border-radius: 12px;
+            border-bottom: none;
+        }
+        .stTabs [data-baseweb="tab"] {
+            flex: 1;
+            height: 40px;
+            justify-content: center;
+            border-radius: 9px;
+            background: transparent;
+            color: #1F2937;
+            font-weight: 600;
+        }
+        .stTabs [data-baseweb="tab"] p {
+            color: #1F2937;
+            font-weight: 600;
+        }
+        .stTabs [aria-selected="true"] {
+            background: #ffffff;
+            color: #1E3A8A;
+            box-shadow: 0 2px 8px rgba(15, 23, 42, 0.10);
+        }
+        .stTabs [aria-selected="true"] p {
+            color: #1E3A8A;
+        }
+        .stTabs [data-baseweb="tab-highlight"],
+        .stTabs [data-baseweb="tab-border"] { display: none; }
+
+        /* ---------- Formulário sem borda dupla ---------- */
+        [data-testid="stForm"] {
+            border: none;
+            padding: 0;
+        }
+
+        /* ---------- Campos ---------- */
+        .stTextInput label p {
+            color: #374151;
+            font-weight: 600;
+            font-size: 0.88rem;
+        }
+        .stTextInput div[data-baseweb="input"] {
+            background: #F8FAFC;
+            border: 1.5px solid #E2E8F0;
+            border-radius: 12px;
+            transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
+        }
+        .stTextInput div[data-baseweb="input"]:focus-within {
+            background: #ffffff;
+            border-color: #2563EB;
+            box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.15);
+        }
+        .stTextInput input {
+            color: #0F172A !important;
+            -webkit-text-fill-color: #0F172A;
+            caret-color: #1E3A8A;
+            padding: 0.7rem 0.9rem;
+        }
+
+        /* ---------- Tema claro FIXO (ignora o tema escuro do usuário) ---------- */
+        .stApp, div.block-container { color-scheme: light; }
+
+        .stTextInput div[data-baseweb="input"],
+        .stTextInput div[data-baseweb="base-input"],
+        .stTextInput input {
+            background-color: #F8FAFC !important;
+        }
+        .stTextInput div[data-baseweb="input"]:focus-within,
+        .stTextInput div[data-baseweb="input"]:focus-within div[data-baseweb="base-input"],
+        .stTextInput div[data-baseweb="input"]:focus-within input {
+            background-color: #FFFFFF !important;
+        }
+        .stTextInput input::placeholder {
+            color: #94A3B8 !important;
+            -webkit-text-fill-color: #94A3B8;
+            opacity: 1;
+        }
+        /* Preenchimento automático do navegador */
+        .stTextInput input:-webkit-autofill,
+        .stTextInput input:-webkit-autofill:focus {
+            -webkit-box-shadow: 0 0 0 1000px #F8FAFC inset !important;
+            -webkit-text-fill-color: #0F172A !important;
+        }
+        /* Ícone do "olhinho" da senha */
+        .stTextInput button {
+            background: transparent !important;
+            color: #64748B !important;
+        }
+        .stTextInput button svg { fill: currentColor; }
+
+        /* Textos auxiliares, alertas e botão secundário legíveis no cartão branco */
+        [data-testid="stCaptionContainer"],
+        [data-testid="stCaptionContainer"] p { color: #4B5563 !important; }
+        [data-testid="stAlert"] p,
+        [data-testid="stAlertContainer"] p { color: #1F2937 !important; }
+        .stButton > button[kind="secondary"] {
+            background: #FFFFFF;
+            color: #1F2937;
+        }
+
+        /* ---------- Botões ---------- */
+        .stButton > button,
+        [data-testid="stFormSubmitButton"] > button {
+            height: 48px;
+            border-radius: 12px;
+            font-weight: 700;
+            border: 1.5px solid #CBD5E1;
+            transition: transform .12s ease, box-shadow .12s ease;
+        }
+        .stButton > button[kind="primary"],
+        [data-testid="stFormSubmitButton"] > button[kind="primary"],
+        [data-testid="stFormSubmitButton"] > button[kind="primaryFormSubmit"] {
+            background: linear-gradient(135deg, #2563EB 0%, #1E3A8A 100%);
+            color: #ffffff;
+            border: none;
+            box-shadow: 0 8px 20px rgba(37, 99, 235, 0.30);
+        }
+        .stButton > button:hover,
+        [data-testid="stFormSubmitButton"] > button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 10px 24px rgba(37, 99, 235, 0.32);
+        }
+        /* Botão "Entrar": largura reduzida e centralizado */
+        div[data-testid="stElementContainer"]:has([data-testid="stFormSubmitButton"]),
+        div.element-container:has(> [data-testid="stFormSubmitButton"]),
+        [data-testid="stForm"] .stButton {
+            display: flex;
+            justify-content: center;
+            width: 100%;
+        }
+        [data-testid="stFormSubmitButton"] {
+            display: flex;
+            justify-content: center;
+            width: auto;
+            margin: 0 auto;
+        }
+        [data-testid="stFormSubmitButton"] > button {
+            width: auto;
+            min-width: 200px;
+            padding: 0 2rem;
+            margin: 0 auto;
+        }
+
+        /* Link "Esqueci minha senha" (botão terciário) */
+        div.st-key-btn_esqueci_senha {
+            display: flex;
+            justify-content: center;
+            width: 100% !important;
+            margin-top: -0.4rem;
+        }
+        div.st-key-btn_esqueci_senha .stButton,
+        div.st-key-btn_esqueci_senha [data-testid="stButton"] {
+            display: flex;
+            justify-content: center;
+            width: 100%;
+        }
+        div.st-key-btn_esqueci_senha .stButton > button {
+            height: auto;
+            min-height: 0;
+            padding: 0.25rem 0.5rem;
+            border: none;
+            background: transparent;
+            box-shadow: none;
+            color: #1E3A8A;
+            font-weight: 600;
+            font-size: 0.85rem;
+            text-decoration: underline;
+        }
+        div.st-key-btn_esqueci_senha .stButton > button:hover {
+            transform: none;
+            box-shadow: none;
+            color: #2563EB;
+            background: transparent;
+        }
+
+        .stButton > button:focus-visible,
+        [data-testid="stFormSubmitButton"] > button:focus-visible {
+            outline: 3px solid rgba(37, 99, 235, 0.45);
+            outline-offset: 2px;
+        }
+
+        /* ---------- Títulos das abas (subheader) ---------- */
+        .stTabs h3 {
+            color: #1E3A8A;
+            font-size: 1.1rem;
+            padding-top: 0.6rem;
+        }
+
+        /* ---------- Responsivo ---------- */
+        @media (max-width: 520px) {
+            div.block-container {
+                margin-top: 2vh;
+                padding: 1.6rem 1.2rem;
+                border-radius: 16px;
+            }
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
+
+# =====================================================================
+# REDEFINIÇÃO DE SENHA (código de 6 dígitos enviado por e-mail)
+# =====================================================================
+RESET_VALIDADE_MIN = 15      # validade do código
+RESET_MAX_TENTATIVAS = 5     # erros permitidos por código
+RESET_INTERVALO_SEG = 60     # intervalo mínimo entre pedidos de código
+
+
+def _hash_codigo_reset(email, codigo):
+    return hashlib.sha256(f"{email}:{codigo}".encode()).hexdigest()
+
+
+def _enviar_email_codigo(destino, nome, codigo):
+    """Envia o código via SMTP usando as credenciais de st.secrets["email"]."""
+    cfg = st.secrets["email"]
+    msg = EmailMessage()
+    msg["Subject"] = "Código para redefinir sua senha - Sistema de Ponto"
+    msg["From"] = cfg["remetente"]
+    msg["To"] = destino
+    msg.set_content(
+        f"Olá, {nome}!\n\n"
+        f"Seu código para redefinir a senha é: {codigo}\n\n"
+        f"Ele vale por {RESET_VALIDADE_MIN} minutos. "
+        f"Se você não pediu a redefinição, ignore este e-mail.\n"
+    )
+    msg.add_alternative(
+        f"""
+        <div style="font-family:Segoe UI,Arial,sans-serif;max-width:420px;margin:auto;
+                    padding:24px;border:1px solid #E2E8F0;border-radius:12px">
+            <p style="color:#374151">Olá, <b>{escape(str(nome))}</b>!</p>
+            <p style="color:#374151">Use o código abaixo para redefinir sua senha:</p>
+            <p style="font-size:32px;letter-spacing:8px;font-weight:700;color:#1E3A8A;
+                      text-align:center;margin:20px 0">{codigo}</p>
+            <p style="color:#6B7280;font-size:13px">Ele vale por {RESET_VALIDADE_MIN} minutos.
+            Se você não pediu a redefinição, ignore este e-mail.</p>
+        </div>
+        """,
+        subtype="html"
+    )
+    with smtplib.SMTP(cfg["host"], int(cfg["port"]), timeout=20) as servidor:
+        servidor.starttls(context=ssl.create_default_context())
+        servidor.login(cfg["usuario"], cfg["senha"])
+        servidor.send_message(msg)
+
+
+def solicitar_codigo_reset(email):
+    """Gera e envia o código. Retorna 'ok' ou 'erro'.
+    Devolve 'ok' mesmo se o e-mail não existir (não revela quem tem cadastro)."""
+    agora = datetime.now(ZoneInfo("UTC"))
+    try:
+        usuario = supabase.table("usuarios_ponto").select("email, nome").eq("email", email).execute()
+        if not usuario.data:
+            return "ok"
+
+        ultimo = supabase.table("reset_senha_ponto").select("criado_em") \
+            .eq("email", email).order("criado_em", desc=True).limit(1).execute()
+        if ultimo.data:
+            criado = datetime.fromisoformat(ultimo.data[0]["criado_em"])
+            if (agora - criado).total_seconds() < RESET_INTERVALO_SEG:
+                return "ok"   # pedido repetido em menos de 1 min: ignora
+
+        codigo = f"{secrets.randbelow(10**6):06d}"
+
+        # invalida códigos anteriores e grava o novo
+        supabase.table("reset_senha_ponto").update({"usado": True}) \
+            .eq("email", email).eq("usado", False).execute()
+        supabase.table("reset_senha_ponto").insert({
+            "email": email,
+            "codigo_hash": _hash_codigo_reset(email, codigo),
+            "expira_em": (agora + timedelta(minutes=RESET_VALIDADE_MIN)).isoformat()
+        }).execute()
+
+        _enviar_email_codigo(email, usuario.data[0]["nome"], codigo)
+        return "ok"
+    except Exception as e:
+        print(f"[RESET SENHA] erro ao solicitar código: {type(e).__name__}: {e}")
+        st.session_state["reset_erro_detalhe"] = f"{type(e).__name__}: {e}"
+        return "erro"
+
+
+def redefinir_senha_com_codigo(email, codigo, nova_senha):
+    """Valida o código e troca a senha. Retorna (sucesso, mensagem)."""
+    agora = datetime.now(ZoneInfo("UTC"))
+    try:
+        res = supabase.table("reset_senha_ponto").select("*") \
+            .eq("email", email).eq("usado", False) \
+            .order("criado_em", desc=True).limit(1).execute()
+        if not res.data:
+            return False, "Código inválido ou expirado. Solicite um novo."
+
+        reg = res.data[0]
+        expirou = datetime.fromisoformat(reg["expira_em"]) < agora
+        if expirou or reg["tentativas"] >= RESET_MAX_TENTATIVAS:
+            supabase.table("reset_senha_ponto").update({"usado": True}).eq("id", reg["id"]).execute()
+            return False, "Código expirado ou com muitas tentativas. Solicite um novo."
+
+        if not hmac.compare_digest(reg["codigo_hash"], _hash_codigo_reset(email, codigo)):
+            supabase.table("reset_senha_ponto").update({"tentativas": reg["tentativas"] + 1}) \
+                .eq("id", reg["id"]).execute()
+            return False, "Código incorreto."
+
+        supabase.table("usuarios_ponto").update({"senha": criptografar_senha(nova_senha)}) \
+            .eq("email", email).execute()
+        supabase.table("reset_senha_ponto").update({"usado": True}).eq("email", email).execute()
+        return True, "Senha redefinida com sucesso!"
+    except Exception as e:
+        print(f"[RESET SENHA] erro ao redefinir: {e}")
+        return False, "Não foi possível redefinir a senha agora. Tente novamente."
+
+
+def _sair_do_reset():
+    for chave in ("reset_etapa", "reset_email"):
+        st.session_state.pop(chave, None)
+
+
+def fluxo_reset_senha():
+    """Tela de redefinição (2 etapas: e-mail -> código + nova senha)."""
+    etapa = st.session_state.get("reset_etapa")
+    st.markdown(
+        "<h3 style='color:#1E3A8A;font-size:1.1rem;margin:0 0 .6rem 0'>Redefinir senha</h3>",
+        unsafe_allow_html=True
+    )
+
+    if etapa == "email":
+        st.caption("Informe seu e-mail cadastrado. Enviaremos um código de 6 dígitos.")
+        with st.form("form_reset_email", border=False):
+            email_reset = st.text_input(
+                "E-mail corporativo", placeholder="nome@empresa.com.br", autocomplete="email"
+            ).strip().lower()
+            enviar = st.form_submit_button("Enviar código", type="primary")
+
+        if enviar:
+            if not email_reset:
+                st.warning("Informe o seu e-mail.")
+            else:
+                with st.spinner("Enviando código..."):
+                    status = solicitar_codigo_reset(email_reset)
+                if status == "erro":
+                    st.error("Não foi possível enviar o e-mail agora. Tente novamente em instantes.")
+                    # Diagnóstico: só aparece se você criar debug_reset = true no secrets
+                    if st.secrets.get("debug_reset", False):
+                        st.code(st.session_state.get("reset_erro_detalhe", "sem detalhe"))
+                else:
+                    st.session_state["reset_email"] = email_reset
+                    st.session_state["reset_etapa"] = "codigo"
+                    st.rerun()
+
+    elif etapa == "codigo":
+        email_reset = st.session_state.get("reset_email", "")
+        st.info(
+            f"Se **{email_reset}** estiver cadastrado, enviamos um código de 6 dígitos. "
+            f"Ele vale por {RESET_VALIDADE_MIN} minutos."
+        )
+        with st.form("form_reset_codigo", border=False):
+            codigo = st.text_input("Código de 6 dígitos", max_chars=6, placeholder="000000").strip()
+            nova = st.text_input("Nova senha", type="password", placeholder="Mínimo de 6 caracteres")
+            confirma = st.text_input("Confirme a nova senha", type="password")
+            concluir = st.form_submit_button("Redefinir senha", type="primary")
+
+        if concluir:
+            if not (codigo.isdigit() and len(codigo) == 6):
+                st.warning("Digite o código de 6 dígitos recebido por e-mail.")
+            elif len(nova) < 6:
+                st.warning("A nova senha precisa ter pelo menos 6 caracteres.")
+            elif nova != confirma:
+                st.warning("As senhas não conferem.")
+            else:
+                sucesso, mensagem = redefinir_senha_com_codigo(email_reset, codigo, nova)
+                if sucesso:
+                    _sair_do_reset()
+                    st.session_state["reset_ok"] = True
+                    st.rerun()
+                else:
+                    st.error(mensagem)
+
+    if st.button("← Voltar ao login", key="btn_voltar_login", use_container_width=True):
+        _sair_do_reset()
+        st.rerun()
+
+
 def gerenciar_acesso():
     if "connected" not in st.session_state:
         st.session_state["connected"] = False
 
     if not st.session_state["connected"]:
-        st.title("⏱️ Sistema de Ponto Eletrônico")
-        st.write("Por favor, faça o acesso ou crie uma conta para registrar suas jornadas.")
-        st.write("---")
-        
+        aplicar_estilo_login()
+
+        # Logo centralizada + título
+        st.markdown(
+            f"""
+            <div class="login-header">
+                <img src="data:image/png;base64,{get_logo_base64()}" alt="Logo">
+                <h1>Sistema de Ponto Eletrônico</h1>
+                <p>Acesse sua conta ou crie um cadastro para registrar suas jornadas.</p>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        # Tela de redefinição de senha (substitui as abas enquanto estiver ativa)
+        if st.session_state.get("reset_etapa"):
+            fluxo_reset_senha()
+            st.stop()
+
+        if st.session_state.pop("reset_ok", False):
+            st.success("Senha redefinida! Entre com a nova senha.")
+
         aba_login, aba_cadastro = st.tabs(["🔒 Acessar Sistema", "📝 Criar Cadastro"])
-        
+
         with aba_login:
-            st.subheader("Login")
-            with st.form("form_login", clear_on_submit=False):
+            with st.form("form_login", clear_on_submit=False, border=False):
                 email_login = st.text_input(
                     "E-mail corporativo",
                     key="login_email",
+                    placeholder="nome@empresa.com.br",
                     autocomplete="email"
                 ).strip().lower()
                 senha_login = st.text_input(
                     "Senha",
                     type="password",
                     key="login_senha",
+                    placeholder="Digite sua senha",
                     autocomplete="current-password"
                 )
 
-                enviar_login = st.form_submit_button("Entrar", type="primary", use_container_width=True)
+                enviar_login = st.form_submit_button("Entrar", type="primary")
 
                 if enviar_login:
                     if email_login and senha_login:
@@ -1728,14 +2321,17 @@ def gerenciar_acesso():
                             st.error("E-mail ou senha incorretos.")
                     else:
                         st.warning("Por favor, preencha todos os campos.")
-                    
+
+            if st.button("Esqueci minha senha", key="btn_esqueci_senha", type="tertiary"):
+                st.session_state["reset_etapa"] = "email"
+                st.rerun()
+
         with aba_cadastro:
-            st.subheader("Novo Colaborador")
-            nome_cad = st.text_input("Nome Completo", key="cad_nome")
-            email_cad = st.text_input("E-mail para cadastro", key="cad_email").strip().lower()
-            senha_cad = st.text_input("Crie uma Senha", type="password", key="cad_senha")
-            
-            if st.button("Cadastrar Novo Usuário", use_container_width=True):
+            nome_cad = st.text_input("Nome completo", key="cad_nome", placeholder="Seu nome completo")
+            email_cad = st.text_input("E-mail para cadastro", key="cad_email", placeholder="nome@empresa.com.br").strip().lower()
+            senha_cad = st.text_input("Crie uma senha", type="password", key="cad_senha", placeholder="Escolha uma senha segura")
+
+            if st.button("Cadastrar novo usuário", use_container_width=True, type="primary"):
                 if nome_cad and email_cad and senha_cad:
                     existe = supabase.table("usuarios_ponto").select("email").eq("email", email_cad).execute()
                     if existe.data:
@@ -1768,33 +2364,148 @@ try:
 except Exception:
     pass
 
-st.sidebar.markdown(f"### 👤 Usuário Ativo")
-st.sidebar.write(f"Olá, **{user_name}**")
-st.sidebar.caption(user_email)
+st.markdown("""
+<style>
+    /* ---------- Sidebar: largura FIXA (sem redimensionar) ---------- */
+    section[data-testid="stSidebar"][aria-expanded="true"] {
+        width: 250px !important;
+        min-width: 250px !important;
+        max-width: 250px !important;
+    }
+    /* Esconde a alça de redimensionamento */
+    [data-testid="stSidebarResizeHandle"],
+    section[data-testid="stSidebar"] [class*="ResizeHandle"],
+    section[data-testid="stSidebar"] [class*="resize"] {
+        display: none !important;
+    }
+    /* Remove espaços extras internos */
+    section[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
+        padding: 0 !important;
+    }
+    section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {
+        padding: 0.5rem 0.75rem 0.75rem 0.75rem !important;
+    }
+
+    /* ---------- Conteúdo da sidebar em coluna, ocupando a altura toda ---------- */
+    section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"],
+    section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] > div[data-testid="stVerticalBlock"] {
+        display: flex;
+        flex-direction: column;
+        min-height: calc(100vh - 4rem);
+    }
+
+    /* ---------- Logo ---------- */
+    .sidebar-logo {
+        display: flex;
+        justify-content: center;
+        padding: 0 0 4px 0;
+    }
+    .sidebar-logo img {
+        width: 110px;
+        max-width: 70%;
+        height: auto;
+    }
+
+    /* ---------- Logout: dentro da sidebar, canto inferior direito ---------- */
+    section[data-testid="stSidebar"] div.st-key-btn_logout {
+        margin-top: auto;
+        align-self: flex-end;
+        width: auto !important;
+    }
+    section[data-testid="stSidebar"] div.st-key-btn_logout button {
+        width: 44px !important;
+        min-width: 44px !important;
+        height: 44px;
+        min-height: 44px;
+        padding: 0;
+        border-radius: 12px;
+        border: none;
+        background: #DC2626;
+        color: #FFFFFF;
+        box-shadow: 0 6px 14px rgba(220, 38, 38, 0.35);
+        transition: transform .15s ease, box-shadow .15s ease, background .15s ease;
+    }
+    section[data-testid="stSidebar"] div.st-key-btn_logout button p {
+        font-size: 1.3rem;
+        margin: 0;
+        line-height: 1;
+    }
+    section[data-testid="stSidebar"] div.st-key-btn_logout button:hover {
+        background: #B91C1C;
+        transform: translateY(-2px);
+        box-shadow: 0 10px 22px rgba(220, 38, 38, 0.45);
+        color: #FFFFFF;
+    }
+    section[data-testid="stSidebar"] div.st-key-btn_logout button:active {
+        background: #991B1B;
+        transform: scale(0.92);
+        box-shadow: 0 2px 6px rgba(220, 38, 38, 0.40);
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# Logo em miniatura
+st.sidebar.markdown(
+    f'<div class="sidebar-logo"><img src="data:image/png;base64,{get_logo_base64()}" alt="Logo"></div>',
+    unsafe_allow_html=True
+)
 st.sidebar.markdown("---")
 
-st.sidebar.markdown("### 📋 Navegação")
-
-opcoes_menu = ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA", "LOG", "ESPELHO DE PONTO"]
+# Nomes das opções (mantidos iguais, pois a lógica do app depende deles) + ícones Bootstrap
+opcoes_menu = ["REGISTRO DE PONTO", "LOG", "ESPELHO DE PONTO"]
+icones_menu = ["geo-alt-fill", "megaphone-fill", "clipboard-data-fill"]
 if cargo_usuario == "Master":
-    opcoes_menu.insert(opcoes_menu.index("LOG") + 1, "LOG INTERNO")
+    pos = opcoes_menu.index("LOG") + 1
+    opcoes_menu.insert(pos, "LOG INTERNO")
+    icones_menu.insert(pos, "shield-lock-fill")
 
-def limpar_estado_ao_trocar_pagina():
+def limpar_estado_ao_trocar_pagina(*args):
     estado_persistente = {"connected", "user_info", "intro_exibida", "pagina_menu"}
     for chave in list(st.session_state.keys()):
         if chave not in estado_persistente:
             del st.session_state[chave]
 
-opcao = st.sidebar.radio(
-    "Selecione a ação:",
-    opcoes_menu,
-    label_visibility="collapsed",
-    key="pagina_menu",
-    on_change=limpar_estado_ao_trocar_pagina
-)
+with st.sidebar:
+    opcao = option_menu(
+        menu_title=None,
+        options=opcoes_menu,
+        icons=icones_menu,
+        default_index=0,
+        key="pagina_menu",
+        on_change=limpar_estado_ao_trocar_pagina,
+        styles={
+            "container": {
+                "padding": "0",
+                "background-color": "transparent",
+            },
+            "icon": {
+                "color": "#1E3A8A",
+                "font-size": "0.95rem",
+            },
+            "nav-link": {
+                "font-size": "0.82rem",
+                "font-weight": "800",
+                "color": "#1E3A8A",
+                "text-align": "left",
+                "width": "100%",
+                "margin": "0 0 6px 0",
+                "padding": "10px 12px",
+                "border-radius": "10px",
+                "background-color": "#F1F5F9",
+                "white-space": "nowrap",
+                "--hover-color": "#E0E7FF",
+            },
+            "nav-link-selected": {
+                "background": "linear-gradient(135deg, #2563EB 0%, #1E3A8A 100%)",
+                "color": "#FFFFFF",
+                "font-weight": "800",
+                "box-shadow": "0 6px 14px rgba(37, 99, 235, 0.30)",
+            },
+        },
+    )
 
 st.sidebar.markdown("---")
-if st.sidebar.button("🚪 Sair / Desconectar", use_container_width=True, type="secondary"):
+if st.sidebar.button("⏻", key="btn_logout", help="Sair / Desconectar"):
     st.session_state.clear()
     st.rerun()
 
@@ -1818,24 +2529,85 @@ for k, v in pontos.items():
     if v and isinstance(v, str):
         pontos[k] = datetime.fromisoformat(v).astimezone(fuso_br)
 
-if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
-    st.title(f"📍 Registro de {opcao.title()}")
-    
-    c_data, c_hora = st.columns(2)
-    with c_data:
-        st.metric(label="🗓️ Data Atual", value=hoje.strftime('%d/%m/%Y'))
-    with c_hora:
-        st.metric(label="⏱️ Horário atual", value=agora_br.strftime('%H:%M'))
-        
+etapa_ponto_aberta = None
+if opcao == "REGISTRO DE PONTO":
+    st.markdown(
+        """
+        <style>
+            div[data-testid="stMainBlockContainer"] {
+                width: 100%;
+                max-width: 2000px !important;
+                padding-left: 2rem;
+                padding-right: 2rem;
+            }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+    st.title("Registro de Ponto")
+    st.caption(f"🗓️ {hoje.strftime('%d/%m/%Y')}  ·  ⏱️ Horário atual: {agora_br.strftime('%H:%M')}")
     st.write("")
+
+    etapas_ponto = [
+        ("ENTRADA", "entrada"),
+        ("SAÍDA ALMOÇO", "saida_almoco"),
+        ("RETORNO ALMOÇO", "retorno_almoco"),
+        ("SAÍDA", "saida")
+    ]
+    identificadores_etapa = {
+        etapa: identificador for etapa, identificador in etapas_ponto
+    }
+    colunas_etapas = st.columns(4, gap="small")
+    containers_por_etapa = {}
+    for coluna, (etapa, identificador) in zip(colunas_etapas, etapas_ponto):
+        horario_registrado = pontos[etapa]
+        estado_card = "✅ Registrado" if horario_registrado else "◷ Pendente"
+        if horario_registrado:
+            estado_card += f"\n{horario_registrado.strftime('%H:%M:%S')}"
+        chave_card = f"ponto_card_{identificador}"
+        with coluna:
+            container_card = st.container(key=chave_card)
+            containers_por_etapa[etapa] = container_card
+            with container_card:
+                if horario_registrado:
+                    st.markdown(
+                        f'<style>.st-key-{chave_card} {{ background: #dcfce7; '
+                        'border-color: #86efac; }</style>'
+                        f'<style>.st-key-{chave_card} button {{ color: #166534; }}</style>',
+                        unsafe_allow_html=True
+                    )
+                if st.session_state.get("etapa_ponto_aberta") == etapa:
+                    st.markdown(
+                        f'<style>.st-key-{chave_card} {{ box-shadow: 0 0 0 3px #3b82f6; }}</style>',
+                        unsafe_allow_html=True
+                    )
+                if st.button(
+                    f"{etapa}\n{estado_card}",
+                    key=f"selecionar_ponto_{identificador}",
+                    use_container_width=True
+                ):
+                    if st.session_state.get("etapa_ponto_aberta") == etapa:
+                        st.session_state["etapa_ponto_aberta"] = None
+                        for nome_etapa, _ in etapas_ponto:
+                            st.session_state[f"confirmar_{nome_etapa}"] = False
+                    else:
+                        st.session_state["etapa_ponto_aberta"] = etapa
+                        for nome_etapa, _ in etapas_ponto:
+                            st.session_state[f"confirmar_{nome_etapa}"] = nome_etapa == etapa
+                    st.rerun()
+
+    etapa_ponto_aberta = st.session_state.get("etapa_ponto_aberta")
+    opcao = etapa_ponto_aberta
+
+if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
     
-    with st.container():
-        st.markdown('<div class="card-ponto">', unsafe_allow_html=True)
+    with containers_por_etapa[opcao].container(
+        key=f"ponto_detalhes_{identificadores_etapa[opcao]}"
+    ):
         horario_atual_ponto = pontos[opcao]
         
         if horario_atual_ponto:
             st.success(f"✅ Seu ponto de **{opcao}** de hoje já está registrado: **{horario_atual_ponto.strftime('%H:%M:%S')}**")
-            texto_botao = f"🔄 Alterar Horário de {opcao.title()}"
         else:
             st.info(f"ℹ️ Você ainda não marcou sua **{opcao.title()}** para o dia de hoje.")
             
@@ -1845,15 +2617,6 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                     st.caption(f"💡 **Horário da sua Saída Almoço:** {horario_saida_almoco.strftime('%H:%M:%S')}")
                 else:
                     st.caption("⚠️ Você ainda não registrou a **Saída Almoço** de hoje.")
-            
-            texto_botao = f"🔴 Registrar {opcao.title()}"
-            
-        st.markdown('</div>', unsafe_allow_html=True)
-        
-        col_btn_1, col_btn_2, col_btn_3 = st.columns([1, 2, 1])
-        with col_btn_2:
-            if st.button(texto_botao, use_container_width=True, type="secondary" if horario_atual_ponto else "primary"):
-                st.session_state[f'confirmar_{opcao}'] = True
                 
         if st.session_state.get(f'confirmar_{opcao}', False):
             st.write("")
@@ -1921,7 +2684,7 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                             if pontos["SAÍDA ALMOÇO"]:
                                 t_saida_alm = pontos["SAÍDA ALMOÇO"]
                                 tempo_almoco_segundos = int((horario_final_gravacao - t_saida_alm).total_seconds())
-                                limite_almoco = (1 * 3600) + (10 * 60)
+                                limite_almoco = 1 * 3600  # 1 hora, sem tolerância
                                 
                                 if tempo_almoco_segundos > limite_almoco:
                                     justificativa_obrigatoria = True
@@ -1995,11 +2758,11 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                 if justificativa_obrigatoria and not atende_tamanho_minimo:
                     bloquear_confirmacao = True
                     if not justificativa_limpa:
-                        st.error("🛑 Atenção: A justificativa é obrigatória para este horário.")
+                        st.error("🛑 A justificativa é obrigatória.")
                     else:
                         st.error(f"🛑 A justificativa precisa ter pelo menos 3 caracteres. (Atual: {len(justificativa_limpa)})")
                 
-                if c1.button("Confirmar Marcação", key=f"sim_{opcao}", use_container_width=True, type="primary", disabled=bloquear_confirmacao):
+                if c1.button("Gravar", key=f"sim_{opcao}", use_container_width=True, type="primary", disabled=bloquear_confirmacao):
                     
                     if justificativa_obrigatoria and (not justificativa_limpa or len(justificativa_limpa) < 3):
                         st.error("🛑 Erro: Gravação impedida! Preencha a justificativa com no mínimo 3 caracteres.")
@@ -2046,6 +2809,7 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                         
                 if c2.button("Cancelar", key=f"nao_{opcao}", use_container_width=True):
                     st.session_state[f'confirmar_{opcao}'] = False
+                    st.session_state["etapa_ponto_aberta"] = None
                     st.rerun()
 
 # =====================================================================
@@ -2209,7 +2973,7 @@ elif opcao == "LOG INTERNO":
 
 # --- MENU: RELATÓRIO ---
 elif opcao == "ESPELHO DE PONTO":
-    st.title("📊 Espelho de Ponto")
+    st.title("Espelho de Ponto")
     email_busca = user_email
     nome_busca = user_name
     
@@ -2224,7 +2988,7 @@ elif opcao == "ESPELHO DE PONTO":
     lista_todos_usuarios = []
     
     if cargo_usuario == "Master":
-        st.markdown("### 🔑 Painel de Gestão (Master)")
+        st.markdown("### 🔑 Visão de Master")
         try:
             usuarios_banco = supabase.table("usuarios_ponto").select("email, nome, celula").execute()
             if usuarios_banco.data:
@@ -2270,7 +3034,7 @@ elif opcao == "ESPELHO DE PONTO":
             st.error("Erro ao carregar a lista completa de funcionários.")
     
     elif cargo_usuario == "Supervisor":
-        st.markdown("### 🔑 Painel de Gestão (Supervisor)")
+        st.markdown("### 🔑 Visão de Supervisor")
         if celula_usuario:
             st.info(f"📍 Sua Célula atual: **{celula_usuario}**")
         if not celula_usuario:
