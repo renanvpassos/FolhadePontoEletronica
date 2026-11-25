@@ -4,3 +4,4 @@ pandas
 openpyxl
 streamlit-antd-components
 reportlab
+streamlit-option-menu
