@@ -1201,35 +1201,48 @@ def converter_para_pdf_consolidado_tabela(df, mapeamento_celulas, data_inicio, d
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Sistema de Ponto Eletrônico", page_icon="⏱️", layout="centered")
 
+# --- LIMPAR TEMA / LOCALSTORAGE DO NAVEGADOR AO CARREGAR ---
+components.html("""
+<script>
+  try {
+    // Remove especificamente o tema salvo pelo Streamlit (ou use clear() para limpar tudo)
+    Object.keys(window.parent.localStorage).forEach(function(key) {
+      if (key.toLowerCase().includes('theme')) {
+        window.parent.localStorage.removeItem(key);
+      }
+    });
+    // Caso queira limpar TODO o localStorage do domínio sempre que atualizar:
+    window.parent.localStorage.clear();
+  } catch (e) {}
+</script>
+""", height=0)
+
 st.markdown("""
     <style>
-        #MainMenu,
-        [data-testid="stMainMenu"],
-        [data-testid="stToolbarActions"],
-        [data-testid="stDecoration"],
-        [data-testid="stStatusWidget"],
-        .stDeployButton,
-        [data-testid="stAppDeployButton"],
-        a[href*="github.com"],
-        footer,
-        ._profileContainer_gzau3_53,
-        ._container_gzau3_1,
-        .viewerBadge_container__r5tak {
-            visibility: hidden !important;
-            display: none !important;
-        }
-
-        /* Garante que o botão de expandir a sidebar fique sempre visível */
-        [data-testid="stToolbar"],
-        [data-testid="stExpandSidebarButton"],
-        [data-testid="stSidebarCollapsedControl"],
-        [data-testid="collapsedControl"] {
-            visibility: visible !important;
-            display: flex !important;
-        }
-
-        html, body, .stApp {
+        :root {
             color-scheme: light !important;
+        }
+        [data-testid="stAppViewContainer"],
+        [data-testid="stHeader"],
+        [data-testid="stSidebar"] {
+            background-color: #ffffff !important;
+            color: #111827 !important;
+        }
+        [data-testid="stSidebar"] {
+            background-color: #f8fafc !important;
+            border-right: 1px solid #e5e7eb;
+        }
+        .card-log {
+            background-color: #ffffff;
+            color: #111827;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
+            margin-bottom: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        }
+        .stButton>button {
+            border-radius: 8px;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -2962,11 +2975,11 @@ elif opcao == "LOG INTERNO":
                 dt_alteracao = datetime.fromisoformat(log["data_alteracao"]).astimezone(fuso_br).strftime("%d/%m/%Y %H:%M:%S")
                 
                 html_log_interno = (
-                    f'<div class="card-log" style="border-left: 4px solid #cc0000; background-color: #000000; padding: 12px; margin-bottom: 8px; border-radius: 4px;">'
+                    f'<div class="card-log" style="border-left: 4px solid #1E3A8A; background-color: #f8fafc; color: #111827; padding: 12px; margin-bottom: 8px; border-radius: 6px;">'
                     f'<span style="float: right; color: #64748b; font-size: 0.85em;">📅 {dt_alteracao}</span>'
-                    f'🛠️ <span style="color:#ffffff;"><b>Gestor:</b> {log["quem_alterou"]}</span><br>'
-                    f'👤 <span style="color:#ffffff;"><b>Alvo:</b> {log["usuario_afetado"]} (<span>{log["email_afetado"]}</span>)</span><br>'
-                    f'<b style="color: #0043e1;">Operação:</b> <span style="color: #0f172a; font-family: monospace; background: #e2e8f0; padding: 2px 6px; border-radius: 4px;">{log["descricao"]}</span>'
+                    f'🛠️ <b>Gestor:</b> {log["quem_alterou"]}<br>'
+                    f'👤 <b>Alvo:</b> {log["usuario_afetado"]} ({log["email_afetado"]})<br>'
+                    f'<b style="color: #1E3A8A;">Operação:</b> <span style="color: #0f172a; font-family: monospace; background: #e2e8f0; padding: 2px 6px; border-radius: 4px;">{log["descricao"]}</span>'
                     f'</div>'
                 )
                 st.markdown(html_log_interno, unsafe_allow_html=True)
