@@ -1877,17 +1877,17 @@ ACOES_NOTIFICACAO = {
 }
 
 def notificar_gestores(colab_email, colab_nome, etapa, horario_str, data_str):
-    """Cria uma notificação para cada Supervisor/Master da célula do colaborador
-    (nunca para o próprio colaborador)."""
     try:
         info = supabase.table("usuarios_ponto").select("celula").eq("email", colab_email).execute()
         celula = info.data[0].get("celula") if info.data else None
+        if not celula:
+            st.warning(f"[NOTIF] {colab_email} não tem célula cadastrada.")
+            return
 
         destinatarios = set()
-        if celula:
-            g = supabase.table("usuarios_ponto").select("email") \
-                .eq("celula", celula).in_("cargo", ["Supervisor", "Master"]).execute()
-            destinatarios |= {str(x["email"]).strip().lower() for x in (g.data or [])}
+        g = supabase.table("usuarios_ponto").select("email, cargo") \
+            .eq("celula", celula).in_("cargo", ["Supervisor", "Master"]).execute()
+        destinatarios |= {str(x["email"]).strip().lower() for x in (g.data or [])}
 
         if NOTIFICAR_MASTER_TODAS_AS_CELULAS:
             m = supabase.table("usuarios_ponto").select("email").eq("cargo", "Master").execute()
@@ -1895,6 +1895,7 @@ def notificar_gestores(colab_email, colab_nome, etapa, horario_str, data_str):
 
         destinatarios.discard(str(colab_email).strip().lower())
         if not destinatarios:
+            st.warning(f"[NOTIF] Nenhum gestor encontrado na célula '{celula}'.")
             return
 
         supabase.table("notificacoes_ponto").insert([{
@@ -1906,7 +1907,7 @@ def notificar_gestores(colab_email, colab_nome, etapa, horario_str, data_str):
             "data": data_str,
         } for d in destinatarios]).execute()
     except Exception as e:
-        print(f"[NOTIFICAÇÕES] erro ao notificar: {type(e).__name__}: {e}")
+        st.error(f"[NOTIF] {type(e).__name__}: {e}")
 
 def buscar_notificacoes(email):
     try:
