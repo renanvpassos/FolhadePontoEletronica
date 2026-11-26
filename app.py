@@ -2404,7 +2404,7 @@ st.markdown("""
     section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] > div[data-testid="stVerticalBlock"] {
         display: flex;
         flex-direction: column;
-        min-height: calc(100vh - 4rem);
+        min-height: calc(100vh - 1.5rem);
     }
 
     /* ---------- Logo ---------- */
@@ -2420,9 +2420,10 @@ st.markdown("""
     }
 
     /* ---------- Logout: dentro da sidebar, canto inferior direito ---------- */
-    section[data-testid="stSidebar"] div.st-key-btn_logout {
+        section[data-testid="stSidebar"] div.st-key-btn_logout {
         margin-top: auto;
-        align-self: flex-end;
+        margin-bottom: 0;
+        align-self: flex-start;
         width: auto !important;
     }
     section[data-testid="stSidebar"] div.st-key-btn_logout button {
