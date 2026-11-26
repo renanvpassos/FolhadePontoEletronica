@@ -2399,14 +2399,6 @@ st.markdown("""
         padding: 0.5rem 0.75rem 0.75rem 0.75rem !important;
     }
 
-    /* ---------- Conteúdo da sidebar em coluna, ocupando a altura toda ---------- */
-    section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"],
-    section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] > div[data-testid="stVerticalBlock"] {
-        display: flex;
-        flex-direction: column;
-        min-height: calc(100vh - 1.5rem);
-    }
-
     /* ---------- Logo ---------- */
     .sidebar-logo {
         display: flex;
@@ -2419,12 +2411,13 @@ st.markdown("""
         height: auto;
     }
 
-    /* ---------- Logout: dentro da sidebar, canto inferior direito ---------- */
-        section[data-testid="stSidebar"] div.st-key-btn_logout {
-        margin-top: auto;
-        margin-bottom: 0;
-        align-self: flex-start;
+    /* ---------- Logout: fixo no rodapé, canto esquerdo da sidebar ---------- */
+    section[data-testid="stSidebar"] div.st-key-btn_logout {
+        position: fixed !important;
+        bottom: 12px;
+        left: 12px;
         width: auto !important;
+        z-index: 999;
     }
     section[data-testid="stSidebar"] div.st-key-btn_logout button {
         width: 44px !important;
