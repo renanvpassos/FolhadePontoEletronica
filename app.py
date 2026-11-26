@@ -1334,7 +1334,39 @@ st.markdown("""
             padding-bottom: 0;
         }
 
-        /* ---------- Notificações (sino) ---------- */
+       /* ---------- Notificações (sino) ---------- */
+        /* Sino do tamanho do ícone, alinhado à direita */
+        .st-key-sino_wrap {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+        }
+        .st-key-sino_wrap [data-testid="stPopover"],
+        .st-key-sino_wrap [data-testid="stPopover"] > button {
+            width: auto !important;
+            min-width: 0 !important;
+        }
+        .st-key-sino_wrap [data-testid="stPopover"] > button {
+            padding: 0.25rem 0.6rem;
+        }
+        /* Esconde a setinha do popover para ficar só o sino */
+        .st-key-sino_wrap [data-testid="stPopover"] > button [data-testid="stIconMaterial"] {
+            display: none;
+        }
+
+        /* Lista suspensa compacta */
+        [data-testid="stPopoverBody"]:has(.st-key-notif_lista) {
+            width: 380px;
+            max-width: 92vw;
+        }
+        [class*="st-key-notif_lida_"] button,
+        [class*="st-key-notif_nova_"] button {
+            justify-content: flex-start;
+            text-align: left;
+            min-height: 0;
+            padding: 6px 10px;
+            font-size: 0.8rem;
+        }
         [class*="st-key-notif_lida_"] button { opacity: 0.55; }
         [class*="st-key-notif_nova_"] button { border-left: 4px solid #2563EB; }
     </style>
@@ -1926,7 +1958,7 @@ def tocar_som_notificacao():
 
 @st.fragment(run_every="5s")
 def sino_notificacoes():
-    """Sino com atualização automática a cada 5s (só reroda este bloco, não a página)."""
+    """Sino compacto com lista suspensa (popover). Atualiza a cada 5s."""
     notifs = buscar_notificacoes(user_email)
     nao_lidas = [n for n in notifs if not n["lida"]]
     ids_nao_lidas = {n["id"] for n in nao_lidas}
@@ -1939,46 +1971,39 @@ def sino_notificacoes():
         tocar_som_notificacao()
     st.session_state["notif_ids_vistos"] = vistos | ids_nao_lidas
 
-    _, col_sino = st.columns([10, 2])
-    with col_sino:
-        rotulo = f"🔔 {len(nao_lidas)}" if nao_lidas else "🔔"
-        if st.button(rotulo, key="btn_sino", use_container_width=True,
-                     type="primary" if nao_lidas else "secondary",
-                     help="Notificações de ponto da sua equipe"):
-            st.session_state["notif_aberto"] = not st.session_state.get("notif_aberto", False)
-            st.rerun(scope="fragment")
+    rotulo = f"🔔 {len(nao_lidas)}" if nao_lidas else "🔔"
 
-    if st.session_state.get("notif_aberto"):
-        with st.container(border=True):
-            st.markdown("##### 🔔 Notificações")
-            c1, c2 = st.columns(2)
-            if c1.button("✔️ Ler todas", key="notif_ler_todas", use_container_width=True,
-                         disabled=not nao_lidas):
-                marcar_todas_lidas(user_email)
-                st.rerun(scope="fragment")
-            if c2.button("🧹 Limpar todas lidas", key="notif_limpar_lidas", use_container_width=True,
-                         disabled=len(notifs) == len(nao_lidas)):
-                limpar_notificacoes_lidas(user_email)
-                st.rerun(scope="fragment")
+    with st.container(key="sino_wrap"):
+        with st.popover(rotulo, help="Notificações de ponto da sua equipe"):
+            with st.container(key="notif_lista"):
+                c1, c2 = st.columns(2)
+                if c1.button("✔️ Ler todas", key="notif_ler_todas",
+                             use_container_width=True, disabled=not nao_lidas):
+                    marcar_todas_lidas(user_email)
+                    st.rerun(scope="fragment")
+                if c2.button("🧹 Limpar lidas", key="notif_limpar_lidas",
+                             use_container_width=True,
+                             disabled=len(notifs) == len(nao_lidas)):
+                    limpar_notificacoes_lidas(user_email)
+                    st.rerun(scope="fragment")
 
-            if not notifs:
-                st.caption("Nenhuma notificação.")
-            else:
-                st.caption("Clique em uma notificação para marcá-la como lida.")
-                with st.container(height=320):
-                    for n in notifs:
-                        try:
-                            dia = datetime.strptime(str(n["data"])[:10], "%Y-%m-%d").strftime("%d/%m/%Y")
-                        except Exception:
-                            dia = str(n["data"])
-                        acao = ACOES_NOTIFICACAO.get(n["etapa"], n["etapa"])
-                        icone = "⚪" if n["lida"] else "🔵"
-                        texto = f"{icone} **{n['colaborador_nome']}** {acao} às **{n['horario']}**  \n{dia}"
-                        chave = f"notif_{'lida' if n['lida'] else 'nova'}_{n['id']}"
-                        if st.button(texto, key=chave, use_container_width=True) and not n["lida"]:
-                            marcar_notificacao_lida(n["id"])
-                            st.rerun(scope="fragment")
-
+                if not notifs:
+                    st.caption("Nenhuma notificação.")
+                else:
+                    with st.container(height=300, border=False):
+                        for n in notifs:
+                            try:
+                                dia = datetime.strptime(str(n["data"])[:10], "%Y-%m-%d").strftime("%d/%m")
+                            except Exception:
+                                dia = str(n["data"])
+                            acao = ACOES_NOTIFICACAO.get(n["etapa"], n["etapa"])
+                            icone = "⚪" if n["lida"] else "🔵"
+                            texto = f"{icone} **{n['colaborador_nome']}** {acao} às **{n['horario']}** · {dia}"
+                            chave = f"notif_{'lida' if n['lida'] else 'nova'}_{n['id']}"
+                            if st.button(texto, key=chave, use_container_width=True) and not n["lida"]:
+                                marcar_notificacao_lida(n["id"])
+                                st.rerun(scope="fragment")
+                                
 # =====================================================================
 # LOGIN MODERNO
 # =====================================================================
