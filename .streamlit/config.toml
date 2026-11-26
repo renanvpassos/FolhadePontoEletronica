@@ -6,4 +6,5 @@ secondaryBackgroundColor = "#F8FAFC"
 textColor = "#111827"
 
 [client]
-toolbarMode = "minimal"
+toolbarMode = "viewer"
+
