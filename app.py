@@ -1861,6 +1861,7 @@ ACOES_NOTIFICACAO = {
     "SAÍDA ALMOÇO": "registrou a SAÍDA PARA O ALMOÇO",
     "RETORNO ALMOÇO": "registrou o RETORNO DO ALMOÇO",
     "SAÍDA": "registrou a SAÍDA",
+    "JORNADA INCOMPLETA": "registrou a jornada incompleta",
 }
 
 def notificar_gestores(colab_email, colab_nome, etapa, horario_str, data_str):
@@ -1895,6 +1896,98 @@ def notificar_gestores(colab_email, colab_nome, etapa, horario_str, data_str):
         } for d in destinatarios]).execute()
     except Exception as e:
         st.error(f"[NOTIF] {type(e).__name__}: {e}")
+
+# JORNADA INCOMPLETA (SAÍDA < 9h) - E-MAIL + NOTIFICAÇÃO NO SINO
+JORNADA_MINIMA_SEGUNDOS = 9 * 3600
+
+def _enviar_email_jornada_incompleta(destinos, colab_nome, entrada, saida_almoco,
+                                     retorno_almoco, saida, justificativa):
+    """Envia o e-mail 'JORNADA INCOMPLETA' aos gestores (SMTP de st.secrets['email'])."""
+    cfg = st.secrets["email"]
+
+    entrada = entrada or "-"
+    saida_almoco = saida_almoco or "-"
+    retorno_almoco = retorno_almoco or "-"
+    saida = saida or "-"
+    justificativa = justificativa or "-"
+
+    texto = (
+        f"O colaborador {colab_nome} registrou uma jornada incompleta.\n\n"
+        f"Entrada: {entrada}\n"
+        f"Saída Almoço: {saida_almoco}\n"
+        f"Retorno Almoço: {retorno_almoco}\n"
+        f"Saída: {saida}\n"
+        f"Justificativa: {justificativa}\n"
+    )
+
+    html = f"""
+    <div style="font-family:Segoe UI,Arial,sans-serif;font-size:14px;color:#111827;line-height:1.7">
+        <p>O colaborador <b>{escape(str(colab_nome))}</b> registrou uma jornada incompleta.</p>
+        <p>
+            <b>Entrada:</b> {escape(str(entrada))}<br>
+            <b>Saída Almoço:</b> {escape(str(saida_almoco))}<br>
+            <b>Retorno Almoço:</b> {escape(str(retorno_almoco))}<br>
+            <b>Saída:</b> <span style="color:#DC2626;font-weight:700">{escape(str(saida))}</span><br>
+            <b>Justificativa:</b> {escape(str(justificativa))}
+        </p>
+    </div>
+    """
+
+    with smtplib.SMTP(cfg["host"], int(cfg["port"]), timeout=20) as servidor:
+        servidor.starttls(context=ssl.create_default_context())
+        servidor.login(cfg["usuario"], cfg["senha"])
+        for destino in destinos:
+            msg = EmailMessage()
+            msg["Subject"] = "JORNADA INCOMPLETA"
+            msg["From"] = cfg["remetente"]
+            msg["To"] = destino
+            msg.set_content(texto)
+            msg.add_alternative(html, subtype="html")
+            servidor.send_message(msg)
+
+
+def notificar_jornada_incompleta(colab_email, colab_nome, horario_str, data_str,
+                                 entrada, saida_almoco, retorno_almoco, saida, justificativa):
+    """Notifica no sino + e-mail os Supervisores/Master da célula do colaborador."""
+    try:
+        info = supabase.table("usuarios_ponto").select("celula").eq("email", colab_email).execute()
+        celula = info.data[0].get("celula") if info.data else None
+        if not celula:
+            return
+
+        destinatarios = set()
+        g = supabase.table("usuarios_ponto").select("email, cargo") \
+            .eq("celula", celula).in_("cargo", ["Supervisor", "Master"]).execute()
+        destinatarios |= {str(x["email"]).strip().lower() for x in (g.data or [])}
+
+        if NOTIFICAR_MASTER_TODAS_AS_CELULAS:
+            m = supabase.table("usuarios_ponto").select("email").eq("cargo", "Master").execute()
+            destinatarios |= {str(x["email"]).strip().lower() for x in (m.data or [])}
+
+        destinatarios.discard(str(colab_email).strip().lower())
+        if not destinatarios:
+            return
+
+        # Notificação no sino
+        supabase.table("notificacoes_ponto").insert([{
+            "destinatario_email": d,
+            "colaborador_email": colab_email,
+            "colaborador_nome": colab_nome,
+            "etapa": "JORNADA INCOMPLETA",
+            "horario": horario_str,
+            "data": data_str,
+        } for d in destinatarios]).execute()
+
+        # E-mail (falha no envio não deve impedir o registro do ponto)
+        try:
+            _enviar_email_jornada_incompleta(
+                sorted(destinatarios), colab_nome, entrada, saida_almoco,
+                retorno_almoco, saida, justificativa
+            )
+        except Exception as e_mail:
+            print(f"[JORNADA INCOMPLETA] erro ao enviar e-mail: {type(e_mail).__name__}: {e_mail}")
+    except Exception as e:
+        print(f"[JORNADA INCOMPLETA] {type(e).__name__}: {e}")
 
 def buscar_notificacoes(email):
     try:
@@ -1986,7 +2079,10 @@ def sino_notificacoes():
                                 dia = str(n["data"])
                             acao = ACOES_NOTIFICACAO.get(n["etapa"], n["etapa"])
                             icone = "⚪" if n["lida"] else "🔵"
-                            texto = f"{icone} **{n['colaborador_nome']}** {acao} às **{n['horario']}** · {dia}"
+                            if n["etapa"] == "JORNADA INCOMPLETA":
+                                texto = f"{icone} ⚠️ O colaborador **{n['colaborador_nome']}** {acao} · {dia}"
+                            else:
+                                texto = f"{icone} **{n['colaborador_nome']}** {acao} às **{n['horario']}** · {dia}"
                             chave = f"notif_{'lida' if n['lida'] else 'nova'}_{n['id']}"
                             if st.button(texto, key=chave, use_container_width=True) and not n["lida"]:
                                 marcar_notificacao_lida(n["id"])
@@ -2982,6 +3078,25 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                             user_email, user_name, opcao,
                             horario_final_gravacao.strftime("%H:%M:%S"), str(hoje)
                         )
+
+                        # ---- JORNADA INCOMPLETA (SAÍDA < 9h), exceto fim de semana e feriado ----
+                        if opcao == "SAÍDA" and pontos["ENTRADA"]:
+                            _eh_fds = hoje.weekday() in (5, 6)
+                            _eh_feriado = hoje.strftime("%d/%m/%Y") in FERIADOS_2026
+                            _segundos = int((horario_final_gravacao - pontos["ENTRADA"]).total_seconds())
+
+                            if not _eh_fds and not _eh_feriado and _segundos < JORNADA_MINIMA_SEGUNDOS:
+                                _fmt = lambda dt: dt.strftime("%H:%M:%S") if dt else ""
+                                notificar_jornada_incompleta(
+                                    user_email, user_name,
+                                    horario_final_gravacao.strftime("%H:%M:%S"), str(hoje),
+                                    _fmt(pontos["ENTRADA"]),
+                                    _fmt(pontos["SAÍDA ALMOÇO"]),
+                                    _fmt(pontos["RETORNO ALMOÇO"]),
+                                    horario_final_gravacao.strftime("%H:%M:%S"),
+                                    justificativa_limpa
+                                )
+
                         st.session_state[f'confirmar_{opcao}'] = False
                         st.success(f"Horário gravado com sucesso!")
                         st.rerun()
