@@ -1201,22 +1201,6 @@ def converter_para_pdf_consolidado_tabela(df, mapeamento_celulas, data_inicio, d
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Sistema de Ponto Eletrônico", page_icon="⏱️", layout="centered")
 
-# --- LIMPAR TEMA / LOCALSTORAGE DO NAVEGADOR AO CARREGAR ---
-components.html("""
-<script>
-  try {
-    // Remove especificamente o tema salvo pelo Streamlit (ou use clear() para limpar tudo)
-    Object.keys(window.parent.localStorage).forEach(function(key) {
-      if (key.toLowerCase().includes('theme')) {
-        window.parent.localStorage.removeItem(key);
-      }
-    });
-    // Caso queira limpar TODO o localStorage do domínio sempre que atualizar:
-    window.parent.localStorage.clear();
-  } catch (e) {}
-</script>
-""", height=0)
-
 st.markdown("""
     <style>
         :root {
@@ -1232,17 +1216,13 @@ st.markdown("""
             background-color: #f8fafc !important;
             border-right: 1px solid #e5e7eb;
         }
-        .card-log {
-            background-color: #ffffff;
-            color: #111827;
-            padding: 15px;
-            border-radius: 8px;
-            border: 1px solid #e9ecef;
-            margin-bottom: 10px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
-        }
-        .stButton>button {
-            border-radius: 8px;
+        .card-log { ... }
+        .stButton>button { border-radius: 8px; }
+
+        /* Esconde o menu principal (⋮) onde fica a opção de trocar o tema */
+        #MainMenu,
+        [data-testid="stMainMenu"] {
+            display: none !important;
         }
     </style>
 """, unsafe_allow_html=True)
