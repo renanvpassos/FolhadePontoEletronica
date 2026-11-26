@@ -1313,6 +1313,13 @@ st.markdown("""
             padding-top: 0;
             padding-bottom: 0;
         }
+        
+        /* Botão "Gravar" (primário): texto branco ao passar o mouse */
+        [class*="st-key-ponto_detalhes_"] button[kind="primary"]:hover,
+        [class*="st-key-ponto_detalhes_"] button[kind="primary"]:hover p,
+        [class*="st-key-ponto_detalhes_"] button[kind="primary"]:hover span {
+            color: #ffffff !important;
+        }
 
        /* ---------- Notificações (sino) ---------- */
         /* Sino do tamanho do ícone, alinhado à direita */
