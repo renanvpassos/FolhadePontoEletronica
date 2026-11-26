@@ -1333,6 +1333,10 @@ st.markdown("""
             padding-top: 0;
             padding-bottom: 0;
         }
+
+        /* ---------- Notificações (sino) ---------- */
+        [class*="st-key-notif_lida_"] button { opacity: 0.55; }
+        [class*="st-key-notif_nova_"] button { border-left: 4px solid #2563EB; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -1826,6 +1830,154 @@ def converter_para_excel_multiaba(df_geral):
             dados_aba = group.drop(columns=["Funcionário", "E-mail"])
             dados_aba.to_excel(writer, index=False, sheet_name=nome_aba)
     return output.getvalue()
+
+# =====================================================================
+# NOTIFICAÇÕES (SINO) - SUPERVISOR / MASTER
+# =====================================================================
+# False = Master só recebe da própria célula | True = Master recebe de todas as células
+NOTIFICAR_MASTER_TODAS_AS_CELULAS = False
+
+ACOES_NOTIFICACAO = {
+    "ENTRADA": "registrou a ENTRADA",
+    "SAÍDA ALMOÇO": "registrou a SAÍDA PARA O ALMOÇO",
+    "RETORNO ALMOÇO": "registrou o RETORNO DO ALMOÇO",
+    "SAÍDA": "registrou a SAÍDA",
+}
+
+def notificar_gestores(colab_email, colab_nome, etapa, horario_str, data_str):
+    """Cria uma notificação para cada Supervisor/Master da célula do colaborador
+    (nunca para o próprio colaborador)."""
+    try:
+        info = supabase.table("usuarios_ponto").select("celula").eq("email", colab_email).execute()
+        celula = info.data[0].get("celula") if info.data else None
+
+        destinatarios = set()
+        if celula:
+            g = supabase.table("usuarios_ponto").select("email") \
+                .eq("celula", celula).in_("cargo", ["Supervisor", "Master"]).execute()
+            destinatarios |= {str(x["email"]).strip().lower() for x in (g.data or [])}
+
+        if NOTIFICAR_MASTER_TODAS_AS_CELULAS:
+            m = supabase.table("usuarios_ponto").select("email").eq("cargo", "Master").execute()
+            destinatarios |= {str(x["email"]).strip().lower() for x in (m.data or [])}
+
+        destinatarios.discard(str(colab_email).strip().lower())
+        if not destinatarios:
+            return
+
+        supabase.table("notificacoes_ponto").insert([{
+            "destinatario_email": d,
+            "colaborador_email": colab_email,
+            "colaborador_nome": colab_nome,
+            "etapa": etapa,
+            "horario": horario_str,
+            "data": data_str,
+        } for d in destinatarios]).execute()
+    except Exception as e:
+        print(f"[NOTIFICAÇÕES] erro ao notificar: {type(e).__name__}: {e}")
+
+def buscar_notificacoes(email):
+    try:
+        res = supabase.table("notificacoes_ponto").select("*") \
+            .eq("destinatario_email", email).order("criada_em", desc=True).limit(100).execute()
+        return res.data or []
+    except Exception:
+        return []
+
+def marcar_notificacao_lida(notif_id):
+    supabase.table("notificacoes_ponto").update({"lida": True}).eq("id", notif_id).execute()
+
+def marcar_todas_lidas(email):
+    supabase.table("notificacoes_ponto").update({"lida": True}) \
+        .eq("destinatario_email", email).eq("lida", False).execute()
+
+def limpar_notificacoes_lidas(email):
+    supabase.table("notificacoes_ponto").delete() \
+        .eq("destinatario_email", email).eq("lida", True).execute()
+
+def tocar_som_notificacao():
+    """Dois toques suaves (Web Audio API), sem arquivo de áudio."""
+    components.html(f"""
+    <!-- {time.time()} -->
+    <script>
+    (function () {{
+      try {{
+        var Ctx = window.AudioContext || window.webkitAudioContext;
+        var ctx = new Ctx();
+        function nota(freq, inicio, dur) {{
+          var osc = ctx.createOscillator();
+          var gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.value = freq;
+          gain.gain.setValueAtTime(0.0001, ctx.currentTime + inicio);
+          gain.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + inicio + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + inicio + dur);
+          osc.connect(gain); gain.connect(ctx.destination);
+          osc.start(ctx.currentTime + inicio);
+          osc.stop(ctx.currentTime + inicio + dur + 0.05);
+        }}
+        if (ctx.state === 'suspended') ctx.resume();
+        nota(659.25, 0.00, 0.45);   // Mi
+        nota(987.77, 0.18, 0.70);   // Si
+      }} catch (e) {{}}
+    }})();
+    </script>
+    """, height=0)
+
+@st.fragment(run_every="5s")
+def sino_notificacoes():
+    """Sino com atualização automática a cada 5s (só reroda este bloco, não a página)."""
+    notifs = buscar_notificacoes(user_email)
+    nao_lidas = [n for n in notifs if not n["lida"]]
+    ids_nao_lidas = {n["id"] for n in nao_lidas}
+
+    # Som apenas para notificações novas (na 1ª carga da sessão fica em silêncio)
+    vistos = st.session_state.get("notif_ids_vistos")
+    if vistos is None:
+        vistos = set(ids_nao_lidas)
+    elif ids_nao_lidas - vistos:
+        tocar_som_notificacao()
+    st.session_state["notif_ids_vistos"] = vistos | ids_nao_lidas
+
+    _, col_sino = st.columns([10, 2])
+    with col_sino:
+        rotulo = f"🔔 {len(nao_lidas)}" if nao_lidas else "🔔"
+        if st.button(rotulo, key="btn_sino", use_container_width=True,
+                     type="primary" if nao_lidas else "secondary",
+                     help="Notificações de ponto da sua equipe"):
+            st.session_state["notif_aberto"] = not st.session_state.get("notif_aberto", False)
+            st.rerun(scope="fragment")
+
+    if st.session_state.get("notif_aberto"):
+        with st.container(border=True):
+            st.markdown("##### 🔔 Notificações")
+            c1, c2 = st.columns(2)
+            if c1.button("✔️ Ler todas", key="notif_ler_todas", use_container_width=True,
+                         disabled=not nao_lidas):
+                marcar_todas_lidas(user_email)
+                st.rerun(scope="fragment")
+            if c2.button("🧹 Limpar todas lidas", key="notif_limpar_lidas", use_container_width=True,
+                         disabled=len(notifs) == len(nao_lidas)):
+                limpar_notificacoes_lidas(user_email)
+                st.rerun(scope="fragment")
+
+            if not notifs:
+                st.caption("Nenhuma notificação.")
+            else:
+                st.caption("Clique em uma notificação para marcá-la como lida.")
+                with st.container(height=320):
+                    for n in notifs:
+                        try:
+                            dia = datetime.strptime(str(n["data"])[:10], "%Y-%m-%d").strftime("%d/%m/%Y")
+                        except Exception:
+                            dia = str(n["data"])
+                        acao = ACOES_NOTIFICACAO.get(n["etapa"], n["etapa"])
+                        icone = "⚪" if n["lida"] else "🔵"
+                        texto = f"{icone} **{n['colaborador_nome']}** {acao} às **{n['horario']}**  \n{dia}"
+                        chave = f"notif_{'lida' if n['lida'] else 'nova'}_{n['id']}"
+                        if st.button(texto, key=chave, use_container_width=True) and not n["lida"]:
+                            marcar_notificacao_lida(n["id"])
+                            st.rerun(scope="fragment")
 
 # =====================================================================
 # LOGIN MODERNO
@@ -2516,6 +2668,9 @@ if st.sidebar.button("⏻", key="btn_logout", help="Sair / Desconectar"):
     st.session_state.clear()
     st.rerun()
 
+if cargo_usuario in ("Supervisor", "Master"):
+    sino_notificacoes()
+
 dados_hoje = executar_query_supabase("buscar_hoje", email=user_email, data_filtro=hoje)
 
 pontos = {
@@ -2810,6 +2965,10 @@ if opcao in ["ENTRADA", "SAÍDA ALMOÇO", "RETORNO ALMOÇO", "SAÍDA"]:
                                 dados_ponto["justificativa_saida"] = justificativa_limpa
                         
                         executar_query_supabase("salvar_ponto", data_dict=dados_ponto)
+                        notificar_gestores(
+                            user_email, user_name, opcao,
+                            horario_final_gravacao.strftime("%H:%M:%S"), str(hoje)
+                        )
                         st.session_state[f'confirmar_{opcao}'] = False
                         st.success(f"Horário gravado com sucesso!")
                         st.rerun()
